@@ -11,6 +11,7 @@ import {
   mistakeHistory,
   sampleDiagnoses,
 } from "@/data/mathtrace-demo";
+import { isDiagnoseSuccessResponse } from "@/lib/diagnose-api";
 import type {
   AgentStep,
   KnowledgePoint,
@@ -18,7 +19,10 @@ import type {
   SampleDiagnosis,
   SampleQuestionId,
   Severity,
+  StudentProfile,
 } from "@/data/mathtrace-demo";
+import { clampScore, isRecord } from "@/lib/utils";
+import type { DiagnoseSuccessResponse } from "@/lib/diagnose-api";
 
 const DEFAULT_SAMPLE_ID: SampleQuestionId = "sample_derivative_001";
 
@@ -40,37 +44,99 @@ const frequencyLabels: Record<KnowledgePoint["gaokao_frequency"], string> = {
   low: "低频",
 };
 
+interface ProfilePreview {
+  beforeProfile: StudentProfile;
+  afterProfile: StudentProfile | null;
+}
+
 export function MathTraceWorkbench(): ReactElement {
   const [selectedSampleId, setSelectedSampleId] =
     useState<SampleQuestionId>(DEFAULT_SAMPLE_ID);
   const selectedSample = getSampleById(selectedSampleId);
-  const [completedStepCount, setCompletedStepCount] = useState(
-    selectedSample.steps.length,
+  const [diagnosisSample, setDiagnosisSample] = useState<SampleDiagnosis>(
+    () => selectedSample,
   );
-  const isDiagnosing = completedStepCount < selectedSample.steps.length;
+  const [studentProfile, setStudentProfile] =
+    useState<StudentProfile>(demoStudentProfile);
+  const [profilePreview, setProfilePreview] = useState<ProfilePreview>(() => ({
+    beforeProfile: demoStudentProfile,
+    afterProfile: null,
+  }));
+  const [completedStepCount, setCompletedStepCount] = useState(
+    diagnosisSample.steps.length,
+  );
+  const [isRequestPending, setIsRequestPending] = useState(false);
+  const [apiErrorMessage, setApiErrorMessage] = useState<string | null>(null);
+  const isTimelineRunning = completedStepCount < diagnosisSample.steps.length;
+  const isDiagnosing = isRequestPending || isTimelineRunning;
 
   useEffect(() => {
-    if (completedStepCount >= selectedSample.steps.length) {
+    if (completedStepCount >= diagnosisSample.steps.length) {
       return;
     }
 
     const timeoutId = window.setTimeout(() => {
       setCompletedStepCount((currentCount) =>
-        Math.min(currentCount + 1, selectedSample.steps.length),
+        Math.min(currentCount + 1, diagnosisSample.steps.length),
       );
     }, 360);
 
     return () => window.clearTimeout(timeoutId);
-  }, [completedStepCount, selectedSample.steps.length]);
+  }, [completedStepCount, diagnosisSample.steps.length]);
 
   function handleSelectSample(sampleId: SampleQuestionId): void {
     const nextSample = getSampleById(sampleId);
     setSelectedSampleId(sampleId);
+    setDiagnosisSample(nextSample);
+    setApiErrorMessage(null);
+    setProfilePreview({
+      beforeProfile: studentProfile,
+      afterProfile: null,
+    });
     setCompletedStepCount(nextSample.steps.length);
   }
 
   function handleStartDiagnosis(): void {
+    void requestDiagnosis();
+  }
+
+  async function requestDiagnosis(): Promise<void> {
+    const localSample = getSampleById(selectedSampleId);
+    const profileBeforeDiagnosis = studentProfile;
+    setDiagnosisSample(localSample);
+    setProfilePreview({
+      beforeProfile: profileBeforeDiagnosis,
+      afterProfile: null,
+    });
+    setApiErrorMessage(null);
     setCompletedStepCount(0);
+    setIsRequestPending(true);
+
+    try {
+      const diagnosis = await requestSampleDiagnosis(
+        selectedSampleId,
+        profileBeforeDiagnosis,
+      );
+      setDiagnosisSample(diagnosis.sample_diagnosis);
+      setStudentProfile(diagnosis.student_profile);
+      setProfilePreview({
+        beforeProfile: profileBeforeDiagnosis,
+        afterProfile: diagnosis.student_profile,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "诊断接口暂时不可用，已保留当前样例结果。";
+      setApiErrorMessage(message);
+      setDiagnosisSample(localSample);
+      setProfilePreview({
+        beforeProfile: profileBeforeDiagnosis,
+        afterProfile: null,
+      });
+    } finally {
+      setIsRequestPending(false);
+    }
   }
 
   return (
@@ -101,7 +167,7 @@ export function MathTraceWorkbench(): ReactElement {
           </div>
 
           <AgentTimeline
-            steps={selectedSample.steps}
+            steps={diagnosisSample.steps}
             completedStepCount={completedStepCount}
             isDiagnosing={isDiagnosing}
           />
@@ -111,18 +177,23 @@ export function MathTraceWorkbench(): ReactElement {
               selectedSample={selectedSample}
               selectedSampleId={selectedSampleId}
               isDiagnosing={isDiagnosing}
+              apiErrorMessage={apiErrorMessage}
               onSelectSample={handleSelectSample}
               onStartDiagnosis={handleStartDiagnosis}
             />
-            <DiagnosisResultCard sample={selectedSample} />
+            <DiagnosisResultCard sample={diagnosisSample} />
           </div>
         </section>
 
-        <PracticeLab sample={selectedSample} />
+        <PracticeLab sample={diagnosisSample} />
 
         <section className="mt-8 grid gap-8 xl:grid-cols-[0.92fr_1.08fr]">
-          <ProfileInsights sample={selectedSample} />
-          <ReviewPath sample={selectedSample} />
+          <ProfileInsights
+            sample={diagnosisSample}
+            beforeProfile={profilePreview.beforeProfile}
+            afterProfile={profilePreview.afterProfile}
+          />
+          <ReviewPath sample={diagnosisSample} />
         </section>
       </div>
     </main>
@@ -163,12 +234,14 @@ function MistakeInputCard({
   selectedSample,
   selectedSampleId,
   isDiagnosing,
+  apiErrorMessage,
   onSelectSample,
   onStartDiagnosis,
 }: {
   selectedSample: SampleDiagnosis;
   selectedSampleId: SampleQuestionId;
   isDiagnosing: boolean;
+  apiErrorMessage: string | null;
   onSelectSample: (sampleId: SampleQuestionId) => void;
   onStartDiagnosis: () => void;
 }): ReactElement {
@@ -198,6 +271,12 @@ function MistakeInputCard({
         </button>
       </div>
 
+      {apiErrorMessage ? (
+        <p className="mt-3 rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]">
+          {apiErrorMessage}
+        </p>
+      ) : null}
+
       <div className="mt-5 grid gap-3">
         {sampleDiagnoses.map((sample) => {
           const isSelected = sample.id === selectedSampleId;
@@ -207,11 +286,12 @@ function MistakeInputCard({
               key={sample.id}
               type="button"
               aria-pressed={isSelected}
+              disabled={isDiagnosing}
               onClick={() => onSelectSample(sample.id)}
               className={`mathtrace-hover-lift min-h-20 cursor-pointer rounded-[20px] border p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mocha)] ${
                 isSelected
                   ? "border-[var(--mocha)] bg-[var(--mocha-muted)]"
-                  : "border-[var(--oat)] bg-white hover:border-[var(--mocha-light)] hover:shadow-[0_8px_24px_rgba(166,123,91,0.08)]"
+                  : "border-[var(--oat)] bg-white hover:border-[var(--mocha-light)] hover:shadow-[0_8px_24px_rgba(166,123,91,0.08)] disabled:cursor-not-allowed disabled:opacity-60"
               }`}
             >
               <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--warm-gray)]">
@@ -492,30 +572,44 @@ function PracticeLab({
 
 function ProfileInsights({
   sample,
+  beforeProfile,
+  afterProfile,
 }: {
   sample: SampleDiagnosis;
+  beforeProfile: StudentProfile;
+  afterProfile: StudentProfile | null;
 }): ReactElement {
   const changedKnowledgeIds = Object.keys(
     sample.memory_delta.knowledge_mastery_changes,
   );
   const profileRows = changedKnowledgeIds.map((id) => {
-    const currentScore = demoStudentProfile.mastery_scores[id] ?? 70;
+    const currentScore = beforeProfile.mastery_scores[id] ?? 70;
     const change = sample.memory_delta.knowledge_mastery_changes[id] ?? 0;
+    const nextScore =
+      afterProfile?.mastery_scores[id] ?? clampScore(currentScore + change);
 
     return {
       id,
       currentScore,
-      nextScore: clampScore(currentScore + change),
-      change,
+      nextScore,
+      change: nextScore - currentScore,
     };
   });
-  const mistakeCauseRows = Object.entries(
-    demoStudentProfile.frequent_mistake_causes,
-  ).map(([id, count]) => ({
-    id,
-    previousCount: count,
-    nextCount: count + (sample.memory_delta.mistake_cause_changes[id] ?? 0),
-  }));
+  const mistakeCauseIds = [
+    ...Object.keys(beforeProfile.frequent_mistake_causes),
+    ...Object.keys(sample.memory_delta.mistake_cause_changes),
+  ].filter((id, index, ids) => ids.indexOf(id) === index);
+  const mistakeCauseRows = mistakeCauseIds.map((id) => {
+    const count = beforeProfile.frequent_mistake_causes[id] ?? 0;
+
+    return {
+      id,
+      previousCount: count,
+      nextCount:
+        afterProfile?.frequent_mistake_causes[id] ??
+        count + (sample.memory_delta.mistake_cause_changes[id] ?? 0),
+    };
+  });
 
   return (
     <section className="mathtrace-card overflow-hidden">
@@ -698,6 +792,59 @@ function getSampleById(sampleId: SampleQuestionId): SampleDiagnosis {
   );
 }
 
+async function requestSampleDiagnosis(
+  sampleQuestionId: SampleQuestionId,
+  studentProfile: StudentProfile,
+): Promise<DiagnoseSuccessResponse> {
+  const response = await fetch("/api/diagnose", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    cache: "no-store",
+    body: JSON.stringify({
+      student_id: demoStudentProfile.student_id,
+      task_type: "sample_diagnosis",
+      sample_question_id: sampleQuestionId,
+      image_base64: null,
+      student_profile: studentProfile,
+      mistake_history: mistakeHistory,
+    }),
+  });
+  const responseBody = await readJsonResponse(response);
+
+  if (!response.ok) {
+    throw new Error(getDiagnoseErrorMessage(responseBody));
+  }
+
+  if (!isDiagnoseSuccessResponse(responseBody)) {
+    throw new Error("诊断接口返回格式异常，已保留当前样例结果。");
+  }
+
+  return responseBody;
+}
+
+async function readJsonResponse(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function getDiagnoseErrorMessage(responseBody: unknown): string {
+  if (!isRecord(responseBody)) {
+    return "诊断接口暂时不可用，已保留当前样例结果。";
+  }
+
+  const error = responseBody.error;
+  if (!isRecord(error) || typeof error.message !== "string") {
+    return "诊断接口暂时不可用，已保留当前样例结果。";
+  }
+
+  return error.message;
+}
+
 function getStepState(
   index: number,
   completedStepCount: number,
@@ -739,8 +886,4 @@ function getConciseDiagnosis(sample: SampleDiagnosis): string {
   }
 
   return `偏离点：${sample.mistake_causes.map(getMistakeName).join("、")}。`;
-}
-
-function clampScore(score: number): number {
-  return Math.max(0, Math.min(100, score));
 }

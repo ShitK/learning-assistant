@@ -774,10 +774,13 @@ image_diagnosis = 真实图片诊断
   "student_profile": {},
   "practice_questions": [],
   "review_plan": {},
+  "sample_diagnosis": {},
   "fallback_used": false,
   "warnings": []
 }
 ```
+
+P0 接口壳为兼容当前单页工作台，会额外返回 `sample_diagnosis`，内容为对应样例题的完整预标注诊断对象。前端当前可直接用该字段渲染；后续接入真实 Kimi 诊断时，应优先使用上面的结构化字段逐步替换该兼容字段。
 
 HTTP 状态码：
 
