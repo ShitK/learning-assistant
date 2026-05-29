@@ -1,26 +1,103 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #faf7f2;
+  --foreground: #2c2c2c;
+  --mocha: #a67b5b;
+  --mocha-light: #c4a77d;
+  --mocha-dark: #8b634b;
+  --mocha-muted: rgba(166, 123, 91, 0.1);
+  --amber-bg: #fff4df;
+  --amber-text: #8b634b;
+  --cream: #faf7f2;
+  --oat: #f5f0e8;
+  --deep-green: #2e5c55;
+  --deep-green-muted: rgba(46, 92, 85, 0.08);
+  --charcoal: #2c2c2c;
+  --warm-gray: #8b8680;
+  --light-gray: #e8e4de;
+  --font-sans-fallback: "Helvetica Neue", "PingFang SC", "Microsoft YaHei",
+    Arial, sans-serif;
+  --font-mono-fallback: "SFMono-Regular", Consolas, "Liberation Mono",
+    monospace;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-sans-fallback);
+  --font-mono: var(--font-mono-fallback);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans-fallback);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+.math-text {
+  word-break: break-word;
+}
+
+.math-text .katex-display {
+  margin: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+::selection {
+  background: rgba(166, 123, 91, 0.22);
+  color: var(--charcoal);
+}
+
+.mathtrace-glass {
+  background: rgba(250, 247, 242, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(166, 123, 91, 0.08);
+}
+
+.mathtrace-card {
+  background: #ffffff;
+  border: 1px solid var(--oat);
+  border-radius: 20px;
+  box-shadow: 0 2px 12px rgba(166, 123, 91, 0.04);
+}
+
+.mathtrace-soft-panel {
+  background: var(--oat);
+  border: 1px solid var(--light-gray);
+  border-radius: 20px;
+}
+
+.mathtrace-gradient-text {
+  background: linear-gradient(135deg, var(--mocha) 0%, var(--deep-green) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.mathtrace-hover-lift {
+  transition:
+    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.22s ease,
+    border-color 0.22s ease,
+    background-color 0.22s ease;
+}
+
+.mathtrace-hover-lift:active {
+  transform: scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
