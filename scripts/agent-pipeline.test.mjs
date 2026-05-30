@@ -15,6 +15,7 @@ const {
   buildDiagnoseResponse,
   runMathTraceAgent,
 } = jiti("../src/lib/mathtrace-agent-pipeline.ts");
+const { POST } = jiti("../src/app/api/diagnose/route.ts");
 
 const { demoStudentProfile, sampleDiagnoses } = jiti(
   "../src/data/mathtrace-demo.ts",
@@ -108,5 +109,25 @@ assert.equal(
   5,
 );
 assert.equal(pipelineResponse.sample_diagnosis.id, sample.id);
+
+const originalFind = sampleDiagnoses.find;
+sampleDiagnoses.find = () => undefined;
+
+try {
+  const response = await POST(
+    new Request("http://localhost/api/diagnose", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }),
+  );
+  const responseBody = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(responseBody.error.code, "unknown_sample_question_id");
+  assert.equal(responseBody.error.recoverable, true);
+} finally {
+  sampleDiagnoses.find = originalFind;
+}
 
 console.log("agent pipeline smoke test passed");

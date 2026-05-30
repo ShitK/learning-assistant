@@ -36,5 +36,16 @@ export async function POST(
     );
   }
 
-  return NextResponse.json(runMathTraceAgent(parsedRequest.value));
+  try {
+    return NextResponse.json(runMathTraceAgent(parsedRequest.value));
+  } catch {
+    return NextResponse.json(
+      createDiagnoseError(
+        "unknown_sample_question_id",
+        "未找到这个样例题，请重新选择。",
+        true,
+      ),
+      { status: 400 },
+    );
+  }
 }
