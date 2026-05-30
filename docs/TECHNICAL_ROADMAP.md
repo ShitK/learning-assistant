@@ -23,11 +23,12 @@
 - `POST /api/diagnose` 接口壳。
 - P0 演示固定走 `sample_diagnosis`，返回内置 `sample_diagnosis`。
 - 前端已经能通过接口触发诊断，并用返回的 `student_profile` 展示画像变化。
+- P1 后端具备 `image_diagnosis` 服务端路径：Anthropic-compatible provider adapter，MiMo first；模型只做图片抽取，后续仍复用确定性 Pipeline。
 
 当前还没有完成：
 
-- 真实图片上传诊断。
-- Kimi 或其他多模态模型调用。
+- 前端图片上传入口和识别结果编辑体验。
+- Kimi、DeepSeek 等非 MiMo provider 实现。
 - 真正的 Agent 内部编排模块。
 - 数据库持久化。
 - 用户登录、权限、老师端、班级端。
@@ -111,10 +112,10 @@ GET /api/history
 
 接口设计原则：
 
-- P0/P1 只让前端调用后端 API，不让前端直接调用 Kimi、OpenAI 或数据库服务密钥。
-- 请求体使用 Zod 做运行时校验。
+- P0/P1 只让前端调用后端 API，不让前端直接调用 MiMo、Kimi、OpenAI 或数据库服务密钥。
+- 请求体使用 Zod 或等价类型守卫做运行时校验。
 - 响应体也使用 Zod 或等价 schema 做内部校验，尤其是模型输出。
-- 错误响应必须稳定，包括 `invalid_request`、`invalid_json`、`model_timeout`、`model_invalid_output`、`image_too_large` 等。
+- 错误响应必须稳定，包括 `invalid_request`、`invalid_json`、`missing_image`、`invalid_image`、`image_too_large`、`model_not_configured`、`model_timeout`、`model_request_failed`、`model_invalid_output` 等。
 
 Zod 是 TypeScript-first 的 schema validation 工具，适合在 TypeScript 项目里同时获得运行时校验和静态类型推导。参考：[Zod](https://zod.dev/)。
 
@@ -142,7 +143,7 @@ runMathTraceAgent()
 - MathTrace 的主流程固定，不需要模型决定下一步。
 - 代码可读，演示时可解释。
 - 每一步都能单独测试。
-- 后续接 Kimi、OpenAI、数据库时，只替换某个模块，不重写全链路。
+- 后续接 MiMo、Kimi、OpenAI、数据库时，只替换某个模块，不重写全链路。
 
 暂时不建议在 P0/P1 引入 LangGraph 或 OpenAI Agents SDK 作为主框架。它们适合更复杂的 Agent 后端编排，例如多 Agent 交接、长流程恢复、人类确认、tracing 和复杂工具调用。OpenAI Agents SDK 官方定位包含工具、handoff、流式输出和 trace；LangGraph 则强调 durable execution、streaming、human-in-the-loop 等 Agent 编排能力。参考：[OpenAI Agents SDK](https://platform.openai.com/docs/guides/agents-sdk)、[LangGraph overview](https://docs.langchain.com/oss/python/langgraph)。
 
@@ -154,14 +155,14 @@ runMathTraceAgent()
 
 ```text
 P0：不调用模型，只用内置样例。
-P1：Kimi 多模态只负责图片识别和结构化抽取。
-P2：Vercel AI SDK 或模型 adapter 负责结构化生成练习和计划。
+P1：Anthropic-compatible 多模态 provider 只负责图片识别和结构化抽取，当前 MiMo first，Kimi/DeepSeek 后续作为 provider 实现扩展。
+P2：模型 adapter 可负责结构化生成练习和计划；是否引入 Vercel AI SDK 需要单独评估。
 P3：根据复杂度评估 OpenAI Agents SDK 或 LangGraph。
 ```
 
-Kimi 后续适合放在“题目识别模块”里。Kimi 官方文档显示其 API 平台提供多模态模型能力，并兼容 OpenAI API 格式，适合用服务端 adapter 包装。参考：[Kimi API Docs](https://platform.moonshot.ai/docs/overview)。
+MiMo、Kimi、DeepSeek 都适合放在“题目识别模块”里，由服务端 adapter 包装成统一的 `VisionExtractionProvider`。当前实现优先接 MiMo 的 Anthropic-compatible 接口，并显式关闭 `thinking` 以确保返回可解析 text block；未来新增模型时只新增 provider，不改 route 和确定性 Pipeline。
 
-Vercel AI SDK 适合 P2 引入，因为它和 Next.js/TypeScript 生态贴近，提供统一模型调用、流式输出、工具调用和结构化输出。官方文档也提到 AI SDK Core 可使用统一 API 调用模型，并支持 `generateObject` / `streamObject` 生成结构化数据。参考：[Vercel AI SDK](https://vercel.com/docs/ai-sdk)。
+Vercel AI SDK 可能适合 P2 引入，因为它和 Next.js/TypeScript 生态贴近，提供统一模型调用、流式输出、工具调用和结构化输出。但当前阶段只有一个多模态 HTTP 调用，先不引入 SDK，避免扩大依赖和调试面。
 
 建议模型 adapter 形态：
 
@@ -170,6 +171,7 @@ interface VisionExtractionProvider {
   extractQuestionFromImage(input: {
     image_base64: string;
     mime_type: string;
+    student_profile_summary: string;
   }): Promise<RecognizedQuestionDraft>;
 }
 
@@ -360,7 +362,18 @@ mistake_embeddings
 TypeScript Pipeline + Zod + 单一 API
 ```
 
-### 6.2 什么时候用 Vercel AI SDK
+### 6.2 可逐步 Agent 化的环节
+
+短期为了演示稳定、数据可控、画像不被模型污染，核心诊断仍由确定性 Pipeline 收口。后续可以按风险从低到高，把部分环节替换为 Agent 或工具调用：
+
+1. 知识点映射：从规则匹配升级为“知识库检索工具 + LLM 判断 + schema 校验”。Agent 负责检索和判断候选项，但最终只能选择已有 `knowledge_point_id`。
+2. 错因诊断：诊断 Agent 可以基于题目、学生步骤和知识点上下文分析错因，但输出必须限制在现有错因标签体系里，不能自由造标签。
+3. 练习题生成：优先智能化。模型根据本题错因和学生历史画像生成变式题，再由 parser 校验结构、题量、难度、知识点绑定和错因绑定。
+4. 7 天复习计划：Agent 可以结合历史错题、掌握度、复发错因和高考频率生成计划草稿，但最终计划仍要经过 schema 和业务规则检查。
+5. `memory_delta`：长期仍由规则引擎主导。Agent 可以提供诊断依据或严重度建议，但不能直接写 `memory_delta` 或覆盖学生画像。
+6. 学生画像合并：Agent 可以解释为什么建议调整画像；真正合并分数、错因频次和复习优先级，继续由代码控制。
+
+### 6.3 什么时候用 Vercel AI SDK
 
 当出现这些需求时引入：
 
@@ -372,7 +385,7 @@ TypeScript Pipeline + Zod + 单一 API
 
 不建议让 `ToolLoopAgent` 直接接管核心诊断流程。核心诊断要可重复、可解释。
 
-### 6.3 什么时候用 OpenAI Agents SDK
+### 6.4 什么时候用 OpenAI Agents SDK
 
 当产品进入 OpenAI 生态并需要这些能力时考虑：
 
@@ -393,7 +406,7 @@ Learning Coach Agent
   -> Final Coach Response
 ```
 
-### 6.4 什么时候用 LangGraph
+### 6.5 什么时候用 LangGraph
 
 当流程变成长任务、有分支、有用户确认、有恢复需求时考虑：
 
@@ -433,7 +446,7 @@ P3：异步识别任务 + 状态轮询或通知
 
 - 图片可能包含未成年人学习数据。
 - 不要把图片 base64 打进日志。
-- 不要把 Kimi/OpenAI API Key 暴露到前端。
+- 不要把 MiMo/Kimi/OpenAI API Key 暴露到前端。
 - 如果以后有真实用户，需要提供删除图片和删除诊断记录能力。
 
 ## 8. 练习与复习闭环
@@ -568,7 +581,7 @@ Vercel 或本地演示
 Vercel
 Supabase Postgres
 Supabase Storage
-服务端环境变量管理 Kimi/OpenAI API Key
+服务端环境变量管理 MiMo/Kimi/OpenAI API Key
 ```
 
 产品化阶段：
@@ -614,7 +627,7 @@ Supabase Storage
 4. Agent Pipeline：不用框架，先手写清晰流程。
 5. Vitest：测试 pipeline 和画像更新规则。
 6. Playwright：测试核心用户路径。
-7. Kimi / OpenAI API：服务端模型调用、多模态输入、结构化输出。
+7. MiMo / Kimi / OpenAI API：服务端模型调用、多模态输入、结构化输出。
 8. Vercel AI SDK：统一模型调用、结构化生成、流式输出。
 9. Postgres / Supabase：学生画像、错题记录、权限和 RLS。
 10. pgvector：相似错题召回。
@@ -668,22 +681,24 @@ Supabase Storage
 
 技术：
 
-- Kimi Vision API 或其他多模态模型。
-- 服务端模型 adapter。
+- Anthropic-compatible provider adapter，MiMo first。
+- 后续 Kimi、DeepSeek 作为 `VisionExtractionProvider` 实现接入。
 - 图片压缩和大小校验。
-- Zod 校验模型输出。
+- Zod 或等价类型守卫校验模型输出。
 
 交付：
 
 - `image_diagnosis` 分支。
+- 服务端图片输入校验、MiMo 抽取、JSON 解析和边界校验。
 - 识别结果预览。
 - 低置信度提示用户确认。
-- 失败时回退样例题。
+- 失败时返回可恢复错误，并保留样例题入口；不自动伪造成样例题成功。
 
 验收：
 
 - 模型不可用时 P0 样例路径不受影响。
 - 图片路径失败不会污染长期画像。
+- 模型不得直接写入 `memory_delta` 或覆盖 `student_profile`。
 
 ### Phase 3：长期记忆与数据库
 
@@ -804,7 +819,7 @@ Next.js + TypeScript Pipeline + Zod + mock 数据
 推荐中期主线：
 
 ```text
-Next.js + Kimi adapter + Vercel AI SDK + Postgres/Supabase
+Next.js + Anthropic-compatible provider adapter + Postgres/Supabase
 ```
 
 推荐长期主线：

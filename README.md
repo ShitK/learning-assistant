@@ -2,6 +2,16 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+For local image diagnosis, create `.env.local` with server-only MiMo settings:
+
+```bash
+MIMO_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic
+MIMO_MODEL=mimo-v2.5
+MIMO_API_KEY=replace-with-local-secret
+```
+
+Do not expose `MIMO_API_KEY` in frontend code, logs, docs, or commits.
+
 First, run the development server:
 
 ```bash
