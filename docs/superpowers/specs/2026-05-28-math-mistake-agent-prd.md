@@ -824,13 +824,13 @@ P0 采用前端持久化模型：
 ```text
 页面启动
 -> 从 localStorage 读取 student_profile 和 mistake_history
--> 如果不存在，则从 mock-student-profile.json 初始化
+-> 如果不存在、不可解析或结构不匹配，则从 mock-student-profile.json 初始化
 -> 调用 /api/diagnose 时把 student_profile 和 mistake_history 一起传给后端
 -> 后端无状态计算 memory_delta 和 updated_student_profile
 -> 前端用返回的 updated_student_profile 覆盖 localStorage
 ```
 
-后端 API Route 不保存跨请求状态。刷新页面不会丢失 localStorage 中的 demo 状态；点击“重置画像”可恢复初始 mock 数据。
+后端 API Route 不保存跨请求状态。刷新页面不会丢失 localStorage 中的 demo 状态；localStorage 损坏、缺失或读写失败时回退到初始 mock 数据；点击“重置画像”可恢复初始 mock 数据。
 
 ### Database and RAG Evolution
 
