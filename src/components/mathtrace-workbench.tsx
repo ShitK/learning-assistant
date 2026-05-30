@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { MathText } from "@/components/math-text";
 import {
@@ -11,6 +11,11 @@ import {
   mistakeHistory,
   sampleDiagnoses,
 } from "@/data/mathtrace-demo";
+import {
+  clearStoredStudentProfile,
+  readStoredStudentProfile,
+  writeStoredStudentProfile,
+} from "@/lib/demo-state";
 import { isDiagnoseSuccessResponse } from "@/lib/diagnose-api";
 import type {
   AgentStep,
@@ -50,23 +55,32 @@ interface ProfilePreview {
 }
 
 export function MathTraceWorkbench(): ReactElement {
+  const hasHydrated = useHasHydrated();
+  const restoredStudentProfile = hasHydrated
+    ? readStoredStudentProfile(window.localStorage)
+    : demoStudentProfile;
   const [selectedSampleId, setSelectedSampleId] =
     useState<SampleQuestionId>(DEFAULT_SAMPLE_ID);
   const selectedSample = getSampleById(selectedSampleId);
   const [diagnosisSample, setDiagnosisSample] = useState<SampleDiagnosis>(
     () => selectedSample,
   );
-  const [studentProfile, setStudentProfile] =
-    useState<StudentProfile>(demoStudentProfile);
-  const [profilePreview, setProfilePreview] = useState<ProfilePreview>(() => ({
-    beforeProfile: demoStudentProfile,
+  const [sessionStudentProfile, setSessionStudentProfile] =
+    useState<StudentProfile | null>(null);
+  const studentProfile = sessionStudentProfile ?? restoredStudentProfile;
+  const [profilePreview, setProfilePreview] = useState<ProfilePreview | null>(
+    null,
+  );
+  const visibleProfilePreview = profilePreview ?? {
+    beforeProfile: studentProfile,
     afterProfile: null,
-  }));
+  };
   const [completedStepCount, setCompletedStepCount] = useState(
     diagnosisSample.steps.length,
   );
   const [isRequestPending, setIsRequestPending] = useState(false);
   const [apiErrorMessage, setApiErrorMessage] = useState<string | null>(null);
+  const isDiagnosisRequestLockedRef = useRef(false);
   const isTimelineRunning = completedStepCount < diagnosisSample.steps.length;
   const isDiagnosing = isRequestPending || isTimelineRunning;
 
@@ -89,18 +103,34 @@ export function MathTraceWorkbench(): ReactElement {
     setSelectedSampleId(sampleId);
     setDiagnosisSample(nextSample);
     setApiErrorMessage(null);
-    setProfilePreview({
-      beforeProfile: studentProfile,
-      afterProfile: null,
-    });
+    setProfilePreview(null);
     setCompletedStepCount(nextSample.steps.length);
   }
 
   function handleStartDiagnosis(): void {
+    if (isDiagnosing || isDiagnosisRequestLockedRef.current) {
+      return;
+    }
+
     void requestDiagnosis();
   }
 
+  function handleResetProfile(): void {
+    clearStoredStudentProfile(window.localStorage);
+    setSessionStudentProfile(demoStudentProfile);
+    setProfilePreview({
+      beforeProfile: demoStudentProfile,
+      afterProfile: null,
+    });
+    setApiErrorMessage(null);
+  }
+
   async function requestDiagnosis(): Promise<void> {
+    if (isDiagnosisRequestLockedRef.current) {
+      return;
+    }
+
+    isDiagnosisRequestLockedRef.current = true;
     const localSample = getSampleById(selectedSampleId);
     const profileBeforeDiagnosis = studentProfile;
     setDiagnosisSample(localSample);
@@ -118,7 +148,8 @@ export function MathTraceWorkbench(): ReactElement {
         profileBeforeDiagnosis,
       );
       setDiagnosisSample(diagnosis.sample_diagnosis);
-      setStudentProfile(diagnosis.student_profile);
+      setSessionStudentProfile(diagnosis.student_profile);
+      writeStoredStudentProfile(window.localStorage, diagnosis.student_profile);
       setProfilePreview({
         beforeProfile: profileBeforeDiagnosis,
         afterProfile: diagnosis.student_profile,
@@ -136,6 +167,7 @@ export function MathTraceWorkbench(): ReactElement {
       });
     } finally {
       setIsRequestPending(false);
+      isDiagnosisRequestLockedRef.current = false;
     }
   }
 
@@ -190,8 +222,9 @@ export function MathTraceWorkbench(): ReactElement {
         <section className="mt-8 grid gap-8 xl:grid-cols-[0.92fr_1.08fr]">
           <ProfileInsights
             sample={diagnosisSample}
-            beforeProfile={profilePreview.beforeProfile}
-            afterProfile={profilePreview.afterProfile}
+            beforeProfile={visibleProfilePreview.beforeProfile}
+            afterProfile={visibleProfilePreview.afterProfile}
+            onResetProfile={handleResetProfile}
           />
           <ReviewPath sample={diagnosisSample} />
         </section>
@@ -574,10 +607,12 @@ function ProfileInsights({
   sample,
   beforeProfile,
   afterProfile,
+  onResetProfile,
 }: {
   sample: SampleDiagnosis;
   beforeProfile: StudentProfile;
   afterProfile: StudentProfile | null;
+  onResetProfile: () => void;
 }): ReactElement {
   const changedKnowledgeIds = Object.keys(
     sample.memory_delta.knowledge_mastery_changes,
@@ -613,12 +648,19 @@ function ProfileInsights({
 
   return (
     <section className="mathtrace-card overflow-hidden">
-      <div className="border-b border-[var(--oat)] p-5 sm:p-6">
+      <div className="flex flex-col gap-3 border-b border-[var(--oat)] p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
         <SectionHeader
           kicker="Long-term memory"
           title="画像变化"
           description={`基于 ${mistakeHistory.length} 条 mock 历史错题，展示本次 memory_delta 如何影响长期学习画像。`}
         />
+        <button
+          type="button"
+          onClick={onResetProfile}
+          className="min-h-10 w-fit rounded-full border border-[var(--light-gray)] bg-white px-4 text-sm font-medium text-[var(--warm-gray)] hover:border-[var(--mocha-light)] hover:text-[var(--mocha)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mocha)]"
+        >
+          重置画像
+        </button>
       </div>
 
       <div className="p-5 sm:p-6">
@@ -784,6 +826,28 @@ function Tag({
       {children}
     </span>
   );
+}
+
+function useHasHydrated(): boolean {
+  return useSyncExternalStore(
+    subscribeToHydration,
+    getClientHydrationSnapshot,
+    getServerHydrationSnapshot,
+  );
+}
+
+function subscribeToHydration(): () => void {
+  return function unsubscribe(): void {
+    return;
+  };
+}
+
+function getClientHydrationSnapshot(): boolean {
+  return true;
+}
+
+function getServerHydrationSnapshot(): boolean {
+  return false;
 }
 
 function getSampleById(sampleId: SampleQuestionId): SampleDiagnosis {
