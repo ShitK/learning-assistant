@@ -311,7 +311,7 @@ function hasSameItems(firstItems: string[], secondItems: string[]): boolean {
   );
 }
 
-function isStudentProfile(value: unknown): value is StudentProfile {
+export function isStudentProfile(value: unknown): value is StudentProfile {
   return (
     isRecord(value) &&
     typeof value.student_id === "string" &&
@@ -327,7 +327,7 @@ function isStudentProfile(value: unknown): value is StudentProfile {
   );
 }
 
-function applyMemoryDeltaToProfile(
+export function applyMemoryDeltaToProfile(
   profile: StudentProfile,
   memoryDelta: MemoryDelta,
 ): StudentProfile {

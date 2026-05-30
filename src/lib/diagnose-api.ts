@@ -27,6 +27,7 @@ export interface ParsedImageDiagnoseRequest {
   task_type: "image_diagnosis";
   sample_question_id: SampleQuestionId | null;
   image_base64: string | null;
+  image_mime_type: unknown;
   student_profile: unknown;
   mistake_history: unknown[];
 }
@@ -41,6 +42,16 @@ export interface RecognizedQuestion {
   module: string;
   question_text: string;
   student_answer: string;
+}
+
+export interface ImageRecognizedQuestion {
+  id: string;
+  title: string;
+  module: string;
+  question_text: string;
+  student_answer: string;
+  student_solution_steps: string[];
+  extraction_confidence: "high" | "medium" | "low";
 }
 
 export interface KnowledgeMapping {
@@ -74,12 +85,35 @@ export interface DiagnoseSuccessResponse {
   warnings: string[];
 }
 
+export interface DiagnoseImageSuccessResponse {
+  diagnosis_id: string;
+  student_id: string;
+  source: "image";
+  steps: AgentStep[];
+  recognized_question: ImageRecognizedQuestion;
+  knowledge_mapping: KnowledgeMapping;
+  mistake_diagnosis: MistakeDiagnosis;
+  memory_delta: MemoryDelta;
+  student_profile: StudentProfile;
+  practice_questions: PracticeQuestion[];
+  review_plan: ReviewPlan;
+  sample_diagnosis: null;
+  fallback_used: false;
+  warnings: string[];
+}
+
 export type DiagnoseErrorCode =
   | "invalid_json"
   | "invalid_request"
   | "missing_sample_question_id"
   | "unknown_sample_question_id"
-  | "image_diagnosis_p1";
+  | "missing_image"
+  | "invalid_image"
+  | "image_too_large"
+  | "model_not_configured"
+  | "model_timeout"
+  | "model_request_failed"
+  | "model_invalid_output";
 
 export interface DiagnoseErrorResponse {
   error: {
@@ -93,6 +127,7 @@ export interface DiagnoseErrorResponse {
 
 export type DiagnoseApiResponse =
   | DiagnoseSuccessResponse
+  | DiagnoseImageSuccessResponse
   | DiagnoseErrorResponse;
 
 type ParseDiagnoseResult =
@@ -137,6 +172,7 @@ export function parseDiagnoseRequest(payload: unknown): ParseDiagnoseResult {
           payload.sample_question_id,
         ),
         image_base64: imageBase64,
+        image_mime_type: payload.image_mime_type,
         student_profile: payload.student_profile,
         mistake_history: mistakeHistory,
       },
@@ -182,6 +218,7 @@ export function createDiagnoseError(
   code: DiagnoseErrorCode,
   message: string,
   recoverable: boolean,
+  fallbackUsed = false,
 ): DiagnoseErrorResponse {
   return {
     error: {
@@ -189,7 +226,7 @@ export function createDiagnoseError(
       message,
       recoverable,
     },
-    fallback_used: false,
+    fallback_used: fallbackUsed,
     warnings: [],
   };
 }

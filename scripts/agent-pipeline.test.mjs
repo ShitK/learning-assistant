@@ -16,6 +16,7 @@ const {
   runMathTraceAgent,
 } = jiti("../src/lib/mathtrace-agent-pipeline.ts");
 const { POST } = jiti("../src/app/api/diagnose/route.ts");
+const { handleDiagnoseRequest } = jiti("../src/lib/diagnose-service.ts");
 
 const { demoStudentProfile, sampleDiagnoses } = jiti(
   "../src/data/mathtrace-demo.ts",
@@ -160,12 +161,125 @@ await assertDiagnoseError(
 );
 await assertDiagnoseError(
   postDiagnoseJson({
-    ...createSampleRequest("sample_derivative_001"),
+    student_id: "demo_student_001",
     task_type: "image_diagnosis",
     sample_question_id: null,
+    image_base64: null,
+    student_profile: demoStudentProfile,
+    mistake_history: [],
   }),
   400,
-  "image_diagnosis_p1",
+  "missing_image",
+);
+await assertDiagnoseError(
+  postDiagnoseJson({
+    student_id: "demo_student_001",
+    task_type: "image_diagnosis",
+    sample_question_id: null,
+    image_base64: "not-base64",
+    image_mime_type: "image/png",
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  }),
+  400,
+  "invalid_image",
+);
+await assertDiagnoseError(
+  postDiagnoseJson({
+    student_id: "demo_student_001",
+    task_type: "image_diagnosis",
+    sample_question_id: null,
+    image_base64: "a".repeat(1_333_336),
+    image_mime_type: "image/png",
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  }),
+  413,
+  "image_too_large",
+);
+
+const imageServiceResponse = await handleDiagnoseRequest(
+  {
+    student_id: "demo_student_001",
+    task_type: "image_diagnosis",
+    sample_question_id: null,
+    image_base64: "iVBORw0KGgo=",
+    image_mime_type: "image/png",
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  },
+  {
+    vision_provider: {
+      async extractQuestionFromImage() {
+        return {
+          ok: true,
+          value: {
+            question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
+            student_answer: "只得到 $x=\\sqrt a$。",
+            student_solution_steps: ["求导", "遗漏分类讨论"],
+            standard_solution_draft: "需要讨论参数范围。",
+            extraction_confidence: "high",
+            warnings: [],
+          },
+        };
+      },
+    },
+  },
+);
+
+assert.equal(imageServiceResponse.status, 200);
+assert.equal(imageServiceResponse.body.source, "image");
+assert.equal(imageServiceResponse.body.fallback_used, false);
+
+const unpaddedBase64ServiceResponse = await handleDiagnoseRequest(
+  {
+    student_id: "demo_student_001",
+    task_type: "image_diagnosis",
+    sample_question_id: null,
+    image_base64: "YWJjZA",
+    image_mime_type: "image/png",
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  },
+  {
+    vision_provider: createFakeVisionProvider(),
+  },
+);
+
+assert.equal(unpaddedBase64ServiceResponse.status, 200);
+assert.equal(unpaddedBase64ServiceResponse.body.source, "image");
+
+await assertServiceError(
+  handleDiagnoseRequest(createImageRequest(), {
+    vision_provider: createErrorVisionProvider("model_timeout"),
+  }),
+  502,
+  "model_timeout",
+  true,
+);
+await assertServiceError(
+  handleDiagnoseRequest(createImageRequest(), {
+    vision_provider: createErrorVisionProvider("model_request_failed"),
+  }),
+  502,
+  "model_request_failed",
+  true,
+);
+await assertServiceError(
+  handleDiagnoseRequest(createImageRequest(), {
+    vision_provider: createErrorVisionProvider("model_invalid_output"),
+  }),
+  502,
+  "model_invalid_output",
+  true,
+);
+await assertServiceError(
+  handleDiagnoseRequest(createImageRequest(), {
+    vision_provider: createErrorVisionProvider("model_not_configured"),
+  }),
+  400,
+  "model_not_configured",
+  false,
 );
 
 const fallbackProfileResponse = runMathTraceAgent(
@@ -325,4 +439,64 @@ async function assertDiagnoseError(
   assert.equal(responseBody.error.code, expectedCode);
   assert.equal(responseBody.error.recoverable, true);
   assert.equal(responseBody.fallback_used, false);
+}
+
+function createImageRequest(overrides = {}) {
+  return {
+    student_id: "demo_student_001",
+    task_type: "image_diagnosis",
+    sample_question_id: null,
+    image_base64: "iVBORw0KGgo=",
+    image_mime_type: "image/png",
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+    ...overrides,
+  };
+}
+
+function createFakeVisionProvider() {
+  return {
+    async extractQuestionFromImage() {
+      return {
+        ok: true,
+        value: {
+          question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
+          student_answer: "只得到 $x=\\sqrt a$。",
+          student_solution_steps: ["求导", "遗漏分类讨论"],
+          standard_solution_draft: "需要讨论参数范围。",
+          extraction_confidence: "high",
+          warnings: [],
+        },
+      };
+    },
+  };
+}
+
+function createErrorVisionProvider(code) {
+  return {
+    async extractQuestionFromImage() {
+      return {
+        ok: false,
+        error: {
+          code,
+          message: `fake ${code}`,
+          recoverable: true,
+        },
+      };
+    },
+  };
+}
+
+async function assertServiceError(
+  serviceResultPromise,
+  expectedStatus,
+  expectedCode,
+  expectedFallbackUsed,
+) {
+  const result = await serviceResultPromise;
+
+  assert.equal(result.status, expectedStatus);
+  assert.equal(result.body.error.code, expectedCode);
+  assert.equal(result.body.error.recoverable, true);
+  assert.equal(result.body.fallback_used, expectedFallbackUsed);
 }
