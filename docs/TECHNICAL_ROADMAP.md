@@ -1,0 +1,832 @@
+# 错因地图 MathTrace 技术路径文档
+
+更新日期：2026-05-30  
+适用范围：从黑客松 P0 Demo 扩展到可长期使用的高中数学错题诊断产品。
+
+## 1. 文档目标
+
+这份文档回答一个问题：如果要把“错因地图 MathTrace”从当前可演示的 P0 工作台，逐步做成一个能长期服务学生的错题诊断 Agent，还需要哪些技术，以及这些技术应该按什么顺序引入。
+
+核心判断：
+
+- 当前阶段最重要的是稳定演示和清晰产品叙事，不是堆 Agent 框架。
+- 长期壁垒不在“生成一道题答案”，而在结构化错因诊断、长期学习画像、复习闭环和可解释的数据沉淀。
+- 技术路线应先从确定性的 TypeScript 业务流水线开始，再逐步接入模型、数据库、向量检索和复杂 Agent 编排。
+
+## 2. 当前项目状态
+
+当前仓库已经具备以下基础：
+
+- Next.js App Router + TypeScript + Tailwind CSS。
+- KaTeX 数学公式渲染。
+- P0 单页工作台：首页、样例题选择、诊断流程时间轴、标准解法、错因报告、画像变化、变式练习、7 天复习计划。
+- `POST /api/diagnose` 接口壳。
+- P0 演示固定走 `sample_diagnosis`，返回内置 `sample_diagnosis`。
+- 前端已经能通过接口触发诊断，并用返回的 `student_profile` 展示画像变化。
+
+当前还没有完成：
+
+- 真实图片上传诊断。
+- Kimi 或其他多模态模型调用。
+- 真正的 Agent 内部编排模块。
+- 数据库持久化。
+- 用户登录、权限、老师端、班级端。
+- 动态生成变式练习。
+- 长期用户画像的真实数据写入和回放。
+
+## 3. 总体架构目标
+
+MathTrace 最终应该是一个“学习诊断系统”，不是一个“聊天机器人”。推荐的长期架构是：
+
+```text
+用户工作台
+  -> /api/diagnose
+    -> Learning Coach Agent Pipeline
+      -> 题目识别模块
+      -> 知识点检索模块
+      -> 知识点映射模块
+      -> 错因诊断模块
+      -> 画像增量计算模块
+      -> 练习生成模块
+      -> 复习规划模块
+      -> 用户确认与持久化模块
+    -> 数据库与长期记忆
+    -> 可选向量检索
+    -> 可选模型服务
+```
+
+原则：
+
+- 前端负责体验和状态展示，不直接执行诊断逻辑。
+- 后端只有一个核心入口：`POST /api/diagnose`。
+- Agent 流程先由代码确定性编排，模型只作为其中某些步骤的工具。
+- 长期画像不保存成聊天记录，而保存成结构化学习数据。
+- 所有模型输出都必须经过 Schema 校验和业务规则收敛。
+
+## 4. 技术分层
+
+### 4.1 前端层
+
+继续使用当前栈：
+
+- Next.js App Router。
+- React + TypeScript。
+- Tailwind CSS。
+- KaTeX。
+- 必要的 client component 只放在需要交互、动画、localStorage 的组件上。
+
+Next.js App Router 的 Route Handlers 适合继续承载 `/api/diagnose` 这类服务端接口；官方文档也明确 Route Handler 通过 `app/**/route.ts` 定义，并使用 Web Request/Response API。参考：[Next.js Route Handlers](https://nextjs.org/docs/app/building-your-application/routing/route-handlers)。
+
+前端后续重点不是多页面，而是把主工作台变成一个稳定闭环：
+
+```text
+选择或上传错题
+  -> 诊断中
+  -> 标准解法
+  -> 错因报告
+  -> 画像变化
+  -> 练习
+  -> 复习计划
+  -> 确认写入长期记忆
+```
+
+### 4.2 API 层
+
+短期继续使用 Next.js Route Handler。
+
+建议核心接口保持为：
+
+```text
+POST /api/diagnose
+```
+
+未来可以新增，但不要太早拆散：
+
+```text
+POST /api/confirm
+POST /api/practice-attempts
+GET /api/profile
+GET /api/history
+```
+
+接口设计原则：
+
+- P0/P1 只让前端调用后端 API，不让前端直接调用 Kimi、OpenAI 或数据库服务密钥。
+- 请求体使用 Zod 做运行时校验。
+- 响应体也使用 Zod 或等价 schema 做内部校验，尤其是模型输出。
+- 错误响应必须稳定，包括 `invalid_request`、`invalid_json`、`model_timeout`、`model_invalid_output`、`image_too_large` 等。
+
+Zod 是 TypeScript-first 的 schema validation 工具，适合在 TypeScript 项目里同时获得运行时校验和静态类型推导。参考：[Zod](https://zod.dev/)。
+
+### 4.3 Agent 编排层
+
+短期推荐自研轻量 TypeScript Pipeline。
+
+这里的 pipeline 不是框架名字，而是一组明确的 TypeScript 函数：
+
+```text
+runMathTraceAgent()
+  -> planTask()
+  -> recognizeQuestion()
+  -> retrieveKnowledgeContext()
+  -> mapKnowledgePoints()
+  -> diagnoseMistake()
+  -> computeMemoryDelta()
+  -> generatePractice()
+  -> planReview()
+  -> buildDiagnoseResponse()
+```
+
+为什么先这样做：
+
+- MathTrace 的主流程固定，不需要模型决定下一步。
+- 代码可读，演示时可解释。
+- 每一步都能单独测试。
+- 后续接 Kimi、OpenAI、数据库时，只替换某个模块，不重写全链路。
+
+暂时不建议在 P0/P1 引入 LangGraph 或 OpenAI Agents SDK 作为主框架。它们适合更复杂的 Agent 后端编排，例如多 Agent 交接、长流程恢复、人类确认、tracing 和复杂工具调用。OpenAI Agents SDK 官方定位包含工具、handoff、流式输出和 trace；LangGraph 则强调 durable execution、streaming、human-in-the-loop 等 Agent 编排能力。参考：[OpenAI Agents SDK](https://platform.openai.com/docs/guides/agents-sdk)、[LangGraph overview](https://docs.langchain.com/oss/python/langgraph)。
+
+### 4.4 模型调用层
+
+模型调用应该是 Agent Pipeline 的工具，不是系统的主人。
+
+推荐分阶段：
+
+```text
+P0：不调用模型，只用内置样例。
+P1：Kimi 多模态只负责图片识别和结构化抽取。
+P2：Vercel AI SDK 或模型 adapter 负责结构化生成练习和计划。
+P3：根据复杂度评估 OpenAI Agents SDK 或 LangGraph。
+```
+
+Kimi 后续适合放在“题目识别模块”里。Kimi 官方文档显示其 API 平台提供多模态模型能力，并兼容 OpenAI API 格式，适合用服务端 adapter 包装。参考：[Kimi API Docs](https://platform.moonshot.ai/docs/overview)。
+
+Vercel AI SDK 适合 P2 引入，因为它和 Next.js/TypeScript 生态贴近，提供统一模型调用、流式输出、工具调用和结构化输出。官方文档也提到 AI SDK Core 可使用统一 API 调用模型，并支持 `generateObject` / `streamObject` 生成结构化数据。参考：[Vercel AI SDK](https://vercel.com/docs/ai-sdk)。
+
+建议模型 adapter 形态：
+
+```ts
+interface VisionExtractionProvider {
+  extractQuestionFromImage(input: {
+    image_base64: string;
+    mime_type: string;
+  }): Promise<RecognizedQuestionDraft>;
+}
+
+interface StructuredGenerationProvider {
+  generatePractice(input: PracticeGenerationInput): Promise<PracticeQuestion[]>;
+  generateReviewPlan(input: ReviewPlanInput): Promise<ReviewPlan>;
+}
+```
+
+注意：
+
+- 不要把模型返回内容直接写入长期画像。
+- 不要让模型自由创造知识点 ID 或错因标签。
+- 模型输出必须先转成项目内部 schema，再进入后续模块。
+
+## 5. 长期记忆与数据库技术
+
+长期用户画像的核心技术不是 Agent 框架，而是数据库设计、事件记录、画像更新规则和权限控制。
+
+推荐数据库路线：
+
+```text
+P0：localStorage + mock 数据
+P1：继续无数据库，完善 memory_delta
+P2：Supabase Postgres 或托管 Postgres
+P3：加入 pgvector 做相似错题召回
+```
+
+### 5.1 数据库选择
+
+推荐使用 Postgres。原因：
+
+- 错题记录、学生画像、练习尝试都是结构化关系数据。
+- Postgres 支持 JSONB，适合保存部分半结构化诊断结果。
+- 后续可以通过 pgvector 在同一个数据库里做向量相似搜索。
+- Supabase 提供托管 Postgres、Auth、Storage、Row Level Security，适合快速产品化。
+
+Supabase RLS 用于控制行级权限。官方文档强调暴露给 API 的 schema 应启用 RLS，启用后需要策略才允许访问。参考：[Supabase Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security)。
+
+### 5.2 核心表设计
+
+长期产品至少需要这些表：
+
+```text
+students
+student_profiles
+mistake_records
+diagnosis_runs
+memory_deltas
+practice_questions
+practice_attempts
+review_plans
+review_tasks
+knowledge_points
+mistake_taxonomy
+```
+
+关键设计：
+
+- `mistake_records` 保存每道错题的结构化信息。
+- `diagnosis_runs` 保存一次诊断过程，包括输入、输出、模型版本、置信度和错误信息。
+- `memory_deltas` 保存画像变化的增量，而不是只保存最终分数。
+- `student_profiles` 保存当前聚合后的学习画像。
+- `practice_attempts` 保存学生做变式题后的结果，用于画像回升或复发判断。
+
+示例：
+
+```text
+mistake_records
+  id
+  student_id
+  source
+  question_text
+  student_answer
+  standard_solution
+  knowledge_points
+  mistake_causes
+  severity
+  diagnosis_summary
+  review_status
+  created_at
+  updated_at
+
+memory_deltas
+  id
+  student_id
+  mistake_record_id
+  diagnosis_run_id
+  knowledge_mastery_changes
+  mistake_cause_changes
+  review_priority_changes
+  is_repeated_mistake
+  should_persist
+  rationale
+  created_at
+
+student_profiles
+  id
+  student_id
+  subject
+  grade
+  mastery_scores
+  frequent_mistake_causes
+  weak_modules
+  review_priority
+  recent_trend
+  gaokao_focus
+  created_at
+  updated_at
+```
+
+### 5.3 事件溯源式画像
+
+不要只存最终画像：
+
+```json
+{
+  "parameter_classification": 38
+}
+```
+
+还要存变化原因：
+
+```json
+{
+  "knowledge_mastery_changes": {
+    "parameter_classification": -8
+  },
+  "mistake_cause_changes": {
+    "classification_missing": 1
+  },
+  "rationale": "导数含参题再次遗漏分类讨论，且属于高考高频知识点。"
+}
+```
+
+这样未来可以做：
+
+- 画像回放。
+- 错误趋势图。
+- 老师端学情解释。
+- 模型误判后的回滚。
+- 复习计划为什么这样安排的解释。
+
+### 5.4 向量记忆
+
+向量库不是第一优先级。先把结构化画像做好。
+
+后续当需要“找相似错题”时再引入 pgvector：
+
+```text
+输入：当前错题题干、学生错误步骤、错因描述
+输出：历史上最相似的 5 道错题
+用途：判断复发、个性化解释、老师端共性问题分析
+```
+
+pgvector 是 Postgres 的向量相似搜索扩展，可以把向量和普通关系数据放在一起，支持精确和近似最近邻搜索。参考：[pgvector](https://github.com/pgvector/pgvector)。
+
+建议表：
+
+```text
+mistake_embeddings
+  id
+  mistake_record_id
+  student_id
+  embedding
+  embedding_model
+  content_hash
+  created_at
+```
+
+注意：向量检索只负责“召回相似内容”，不能替代结构化画像。
+
+## 6. Agent 框架演进路线
+
+### 6.1 当前不需要重框架
+
+当前流程固定：
+
+```text
+识别 -> 映射 -> 诊断 -> 画像 -> 练习 -> 计划
+```
+
+这更像业务流水线，不是开放式多 Agent 协作。
+
+所以当前推荐：
+
+```text
+TypeScript Pipeline + Zod + 单一 API
+```
+
+### 6.2 什么时候用 Vercel AI SDK
+
+当出现这些需求时引入：
+
+- 动态生成变式练习。
+- 动态生成复习计划。
+- 模型输出必须符合对象 schema。
+- 需要流式展示模型输出。
+- 需要在 Next.js 中统一接不同模型 provider。
+
+不建议让 `ToolLoopAgent` 直接接管核心诊断流程。核心诊断要可重复、可解释。
+
+### 6.3 什么时候用 OpenAI Agents SDK
+
+当产品进入 OpenAI 生态并需要这些能力时考虑：
+
+- 一个主 Agent 和多个专业 Agent handoff。
+- 内置 tracing，追踪工具调用和多轮 Agent 过程。
+- guardrails，控制输出和输入风险。
+- session memory，用于开放式学习对话。
+- 流式 Agent 运行状态。
+
+适合场景：
+
+```text
+学生问：“我最近导数题总错，帮我分析这 30 天的错题。”
+Learning Coach Agent
+  -> History Retrieval Agent
+  -> Mistake Diagnosis Agent
+  -> Practice Planner Agent
+  -> Final Coach Response
+```
+
+### 6.4 什么时候用 LangGraph
+
+当流程变成长任务、有分支、有用户确认、有恢复需求时考虑：
+
+```text
+上传图片
+  -> 模型识别
+  -> 置信度低则暂停，等待用户编辑
+  -> 用户确认题干
+  -> 重新诊断
+  -> 用户确认错因
+  -> 写入长期画像
+  -> 7 天后触发复习任务
+```
+
+LangGraph 的价值在于 durable execution 和 human-in-the-loop，而不是“听起来更 Agent”。官方文档也把 durable execution 描述为保存流程进度、支持暂停和恢复，适用于人工检查、长任务和中断恢复。参考：[LangGraph durable execution](https://docs.langchain.com/oss/python/langgraph/durable-execution)。
+
+## 7. 图片上传与文件存储
+
+图片上传进入 P1 后需要以下技术：
+
+- 前端图片选择和预览。
+- 图片大小、格式、尺寸校验。
+- 客户端压缩或服务端压缩。
+- 对象存储，例如 Supabase Storage、S3、Cloudflare R2。
+- 服务端只保存图片 URL、hash、元数据，不在日志里输出完整 base64。
+- 图片识别失败时回退到样例题演示或手动编辑。
+
+推荐路径：
+
+```text
+P1：前端 base64 上传到 /api/diagnose，只做小图演示
+P2：对象存储 + signed upload URL
+P3：异步识别任务 + 状态轮询或通知
+```
+
+安全要求：
+
+- 图片可能包含未成年人学习数据。
+- 不要把图片 base64 打进日志。
+- 不要把 Kimi/OpenAI API Key 暴露到前端。
+- 如果以后有真实用户，需要提供删除图片和删除诊断记录能力。
+
+## 8. 练习与复习闭环
+
+完整产品不能只停在“诊断”。要闭环到“修复”。
+
+推荐功能路线：
+
+```text
+P0：展示 3 道预写变式练习。
+P1：用户点击“做对/做错”，模拟画像变化。
+P2：用户上传练习答案图片，识别是否修正原错因。
+P3：根据练习结果动态调整 mastery_scores 和 review_priority。
+```
+
+练习题需要和错因绑定：
+
+```text
+practice_question
+  level: basic | transfer | gaokao_style
+  knowledge_points
+  target_mistake_causes
+  training_goal
+```
+
+练习尝试需要记录：
+
+```text
+practice_attempt
+  student_id
+  practice_question_id
+  result
+  detected_mistake_causes
+  mastery_delta
+  created_at
+```
+
+这样才能判断：
+
+- 学生是否真的修正了原错因。
+- 同一错因是否复发。
+- 掌握度是否应该回升。
+- 复习计划是否应该降优先级。
+
+## 9. 测试与质量保障
+
+当前项目只有 lint 和 build 还不够。完整产品需要分层测试。
+
+推荐测试技术：
+
+- Vitest：测试 TypeScript 纯函数、Agent pipeline、画像更新规则。
+- Playwright：测试完整用户流程。
+- API smoke tests：测试 `/api/diagnose` 正常和异常请求。
+- Schema fixture tests：测试 mock 数据、模型输出和 PRD schema 是否一致。
+
+Next.js 官方测试文档也把 Unit Testing、Integration Testing、E2E Testing 作为不同层次，并列出 Vitest、Playwright 等常见工具。参考：[Next.js Testing](https://nextjs.org/docs/app/guides/testing)。
+
+关键测试清单：
+
+```text
+parseDiagnoseRequest
+  -> 非 JSON
+  -> 缺 student_id
+  -> 未知 sample_question_id
+  -> image_diagnosis P1 分支
+
+runMathTraceAgent
+  -> sample_diagnosis 成功
+  -> steps 顺序正确
+  -> sample_diagnosis 兼容字段存在
+
+computeMemoryDelta
+  -> 严重错误扣分
+  -> 复发错误额外扣分
+  -> 分数 clamp 到 0-100
+  -> review_priority 去重排序
+
+localStorage
+  -> 首次进入
+  -> 损坏数据恢复
+  -> 重置画像
+
+UI
+  -> 首页加载
+  -> 样例题选择
+  -> 开始诊断
+  -> 标准解法和错因报告可见
+  -> 画像变化显示正确
+```
+
+## 10. 可观测性与评估
+
+AI 产品需要知道哪里失败，而不是只看“页面能打开”。
+
+短期：
+
+- 记录 API 错误码计数。
+- 记录模型调用耗时。
+- 记录模型输出校验失败率。
+- 记录用户是否从图片路径回退到样例题。
+
+长期：
+
+- Sentry 或同类工具做前后端错误监控。
+- OpenTelemetry 或平台日志做请求链路追踪。
+- Agent trace 保存关键步骤，但不要保存敏感图片和完整学生隐私内容。
+- 为模型输出建立 eval 集，例如 30 道手工标注错题，验证知识点和错因标签是否命中。
+
+Agent 质量评估不要只看文本好不好看，要看结构化指标：
+
+```text
+知识点命中率
+错因标签命中率
+标准解法完整率
+画像更新是否符合规则
+复习计划是否引用了真实依据
+```
+
+## 11. 部署路线
+
+黑客松阶段：
+
+```text
+Vercel 或本地演示
+无数据库
+无真实模型依赖
+```
+
+早期内测：
+
+```text
+Vercel
+Supabase Postgres
+Supabase Storage
+服务端环境变量管理 Kimi/OpenAI API Key
+```
+
+产品化阶段：
+
+```text
+正式域名
+错误监控
+日志脱敏
+数据库备份
+对象存储生命周期策略
+限流
+用户数据删除能力
+```
+
+## 12. 安全与隐私
+
+这个产品处理的是学生学习数据，后续必须当成敏感数据处理。
+
+必须做到：
+
+- API Key 只在服务端环境变量中。
+- 不在前端 bundle、日志、mock 数据、PR 或截图里出现 API Key。
+- 图片、题干、学生答案都可能包含隐私，日志只记录 hash、长度、错误码。
+- 后端限制图片大小和请求频率。
+- 数据库启用 RLS 或后端强制权限检查。
+- 老师端只能查看授权班级数据。
+- 提供删除错题、删除账号、导出数据的长期能力。
+
+模型安全：
+
+- 不允许模型自由写数据库。
+- 不允许模型自由定义知识点和错因标签。
+- 对模型输出做 schema 校验和业务规则二次确认。
+- 低置信度诊断必须进入用户确认，不直接污染长期画像。
+
+## 13. 推荐学习顺序
+
+如果以学习为目的，推荐按这个顺序：
+
+1. Next.js App Router：Server Component、Client Component、Route Handler。
+2. TypeScript：类型收窄、联合类型、`unknown` 输入处理、函数式模块拆分。
+3. Zod：请求校验、响应校验、模型输出校验。
+4. Agent Pipeline：不用框架，先手写清晰流程。
+5. Vitest：测试 pipeline 和画像更新规则。
+6. Playwright：测试核心用户路径。
+7. Kimi / OpenAI API：服务端模型调用、多模态输入、结构化输出。
+8. Vercel AI SDK：统一模型调用、结构化生成、流式输出。
+9. Postgres / Supabase：学生画像、错题记录、权限和 RLS。
+10. pgvector：相似错题召回。
+11. LangGraph 或 OpenAI Agents SDK：复杂 Agent 编排、人类确认、多 Agent。
+12. Observability：Sentry、日志、模型 eval、trace。
+
+## 14. 分阶段实施路线
+
+### Phase 0：黑客松 P0 稳定演示
+
+目标：演示完整闭环。
+
+技术：
+
+- Next.js。
+- TypeScript。
+- Tailwind。
+- KaTeX。
+- 本地 mock 数据。
+- `/api/diagnose` sample path。
+
+验收：
+
+- 评委能在 3-5 分钟看懂“标准解法 -> 错因 -> 画像 -> 练习 -> 复习计划”。
+
+### Phase 1：真实 Agent Pipeline
+
+目标：让后端内部真的按 Agent 步骤执行。
+
+技术：
+
+- TypeScript pipeline。
+- Zod。
+- Vitest。
+
+交付：
+
+- `runMathTraceAgent()`。
+- `computeMemoryDelta()`。
+- 模块化的知识点映射、错因诊断、练习生成、复习规划。
+
+验收：
+
+- `/api/diagnose` 响应契约不变。
+- 每个模块有单元测试。
+- 前端不用大改。
+
+### Phase 2：图片识别 P1
+
+目标：支持真实错题图片进入诊断流程。
+
+技术：
+
+- Kimi Vision API 或其他多模态模型。
+- 服务端模型 adapter。
+- 图片压缩和大小校验。
+- Zod 校验模型输出。
+
+交付：
+
+- `image_diagnosis` 分支。
+- 识别结果预览。
+- 低置信度提示用户确认。
+- 失败时回退样例题。
+
+验收：
+
+- 模型不可用时 P0 样例路径不受影响。
+- 图片路径失败不会污染长期画像。
+
+### Phase 3：长期记忆与数据库
+
+目标：画像从前端状态升级为真实持久化。
+
+技术：
+
+- Supabase Postgres 或托管 Postgres。
+- Auth。
+- RLS。
+- SQL migration 或 ORM。
+
+交付：
+
+- `students`。
+- `student_profiles`。
+- `mistake_records`。
+- `memory_deltas`。
+- `diagnosis_runs`。
+
+验收：
+
+- 同一学生多次诊断后画像连续变化。
+- 可以解释每个掌握度变化来自哪道错题。
+
+### Phase 4：练习闭环
+
+目标：从诊断走向修复。
+
+技术：
+
+- practice attempt 数据模型。
+- 练习结果更新规则。
+- 可选图片识别练习答案。
+
+交付：
+
+- 练习做对后掌握度回升。
+- 练习做错后复发错误计数上升。
+- 复习计划根据练习结果调整。
+
+验收：
+
+- 用户不是只看报告，而是真的能修复薄弱点。
+
+### Phase 5：相似错题和 RAG
+
+目标：让系统能从历史错题中召回相似模式。
+
+技术：
+
+- Embeddings。
+- pgvector。
+- hybrid search，优先结构化过滤，再向量召回。
+
+交付：
+
+- 相似错题推荐。
+- 复发错误解释。
+- 老师端班级共性错因分析。
+
+验收：
+
+- 当前错题能找到历史相似错题。
+- 召回结果能解释为什么相似。
+
+### Phase 6：开放式学习教练
+
+目标：支持用户自然语言提问和长期学习规划。
+
+技术：
+
+- Vercel AI SDK 或 OpenAI Agents SDK。
+- Agent tools。
+- session memory。
+- trace。
+
+交付：
+
+- “我最近导数为什么总错？”这类问题可以得到基于真实错题历史的回答。
+- Agent 可以调用画像、历史错题、复习计划工具。
+
+验收：
+
+- 回答引用真实学生数据。
+- 不编造不存在的历史。
+
+### Phase 7：复杂 Agent 编排
+
+目标：当流程需要暂停、确认、恢复、多 Agent 分工时，再引入 LangGraph 或 OpenAI Agents SDK。
+
+技术：
+
+- LangGraph durable execution。
+- Human-in-the-loop。
+- 多 Agent handoff。
+- 长流程状态持久化。
+
+交付：
+
+- 用户确认题干后继续诊断。
+- 老师确认班级报告后发布作业。
+- 长任务失败后可恢复。
+
+验收：
+
+- 复杂流程不靠前端临时状态撑着。
+- 每一步状态都可追踪、可恢复、可审计。
+
+## 15. 技术取舍总结
+
+推荐当前主线：
+
+```text
+Next.js + TypeScript Pipeline + Zod + mock 数据
+```
+
+推荐中期主线：
+
+```text
+Next.js + Kimi adapter + Vercel AI SDK + Postgres/Supabase
+```
+
+推荐长期主线：
+
+```text
+Postgres + memory_deltas + pgvector + Agent framework
+```
+
+不建议现在做：
+
+- 复杂多 Agent。
+- LangGraph 主流程重构。
+- 老师端和班级端。
+- RAG 和向量库。
+- 支付、部署流水线、商业后台。
+
+最重要的工程判断：
+
+```text
+先把诊断链路做准。
+再把画像记忆做稳。
+最后才把 Agent 做开放。
+```
+
+如果顺序反了，项目会变成一个很会说话但不可信的聊天框。MathTrace 真正应该变成的是：学生每做一道错题，系统就更懂他一点。
