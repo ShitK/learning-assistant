@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import {
-  buildSampleDiagnoseResponse,
   createDiagnoseError,
-  getSampleDiagnosisById,
   parseDiagnoseRequest,
 } from "@/lib/diagnose-api";
+import { runMathTraceAgent } from "@/lib/mathtrace-agent-pipeline";
 import type { DiagnoseApiResponse } from "@/lib/diagnose-api";
 
 export async function POST(
@@ -37,8 +36,9 @@ export async function POST(
     );
   }
 
-  const sample = getSampleDiagnosisById(parsedRequest.value.sample_question_id);
-  if (!sample) {
+  try {
+    return NextResponse.json(runMathTraceAgent(parsedRequest.value));
+  } catch {
     return NextResponse.json(
       createDiagnoseError(
         "unknown_sample_question_id",
@@ -48,6 +48,4 @@ export async function POST(
       { status: 400 },
     );
   }
-
-  return NextResponse.json(buildSampleDiagnoseResponse(sample, parsedRequest.value));
 }

@@ -1,8 +1,5 @@
-import {
-  demoStudentProfile,
-  sampleDiagnoses,
-} from "@/data/mathtrace-demo";
-import { clampScore, isRecord } from "@/lib/utils";
+import { sampleDiagnoses } from "@/data/mathtrace-demo";
+import { isRecord } from "@/lib/utils";
 import type {
   AgentStep,
   MemoryDelta,
@@ -108,8 +105,6 @@ type ParseDiagnoseResult =
       response: DiagnoseErrorResponse;
     };
 
-const DEMO_UPDATED_AT = "2026-05-29T22:00:00+08:00";
-
 export function parseDiagnoseRequest(payload: unknown): ParseDiagnoseResult {
   if (!isRecord(payload)) {
     return invalidRequest("请求体必须是 JSON 对象。");
@@ -180,58 +175,6 @@ export function parseDiagnoseRequest(payload: unknown): ParseDiagnoseResult {
       student_profile: payload.student_profile,
       mistake_history: mistakeHistory,
     },
-  };
-}
-
-export function getSampleDiagnosisById(
-  sampleQuestionId: SampleQuestionId,
-): SampleDiagnosis | null {
-  return sampleDiagnoses.find((sample) => sample.id === sampleQuestionId) ?? null;
-}
-
-export function buildSampleDiagnoseResponse(
-  sample: SampleDiagnosis,
-  request: ParsedSampleDiagnoseRequest,
-): DiagnoseSuccessResponse {
-  const baseProfile = isStudentProfile(request.student_profile)
-    ? request.student_profile
-    : demoStudentProfile;
-  const updatedStudentProfile = applyMemoryDeltaToProfile(
-    baseProfile,
-    sample.memory_delta,
-  );
-
-  return {
-    diagnosis_id: `diag_${sample.id}`,
-    student_id: request.student_id,
-    source: "sample",
-    steps: sample.steps,
-    recognized_question: {
-      id: sample.id,
-      title: sample.title,
-      module: sample.module,
-      question_text: sample.question_text,
-      student_answer: sample.student_answer,
-    },
-    knowledge_mapping: {
-      knowledge_points: sample.knowledge_points,
-      difficulty: sample.difficulty,
-    },
-    mistake_diagnosis: {
-      mistake_causes: sample.mistake_causes,
-      severity: sample.severity,
-      expected_diagnosis: sample.expected_diagnosis,
-      step_analysis: sample.step_analysis,
-      solution_highlights: sample.solution_highlights,
-      standard_solution: sample.standard_solution,
-    },
-    memory_delta: sample.memory_delta,
-    student_profile: updatedStudentProfile,
-    practice_questions: sample.practice_questions,
-    review_plan: sample.review_plan,
-    sample_diagnosis: sample,
-    fallback_used: false,
-    warnings: [],
   };
 }
 
@@ -307,67 +250,6 @@ function isSampleQuestionId(value: unknown): value is SampleQuestionId {
     typeof value === "string" &&
     sampleDiagnoses.some((sample) => sample.id === value)
   );
-}
-
-function isStudentProfile(value: unknown): value is StudentProfile {
-  return (
-    isRecord(value) &&
-    typeof value.student_id === "string" &&
-    value.subject === "math" &&
-    isNumberRecord(value.mastery_scores) &&
-    isNumberRecord(value.frequent_mistake_causes) &&
-    Array.isArray(value.weak_modules) &&
-    Array.isArray(value.review_priority) &&
-    typeof value.recent_trend === "string" &&
-    Array.isArray(value.gaokao_focus) &&
-    typeof value.created_at === "string" &&
-    typeof value.updated_at === "string"
-  );
-}
-
-function applyMemoryDeltaToProfile(
-  profile: StudentProfile,
-  memoryDelta: MemoryDelta,
-): StudentProfile {
-  const masteryScores = { ...profile.mastery_scores };
-  for (const [knowledgeId, change] of Object.entries(
-    memoryDelta.knowledge_mastery_changes,
-  )) {
-    masteryScores[knowledgeId] = clampScore((masteryScores[knowledgeId] ?? 70) + change);
-  }
-
-  const frequentMistakeCauses = { ...profile.frequent_mistake_causes };
-  for (const [causeId, change] of Object.entries(
-    memoryDelta.mistake_cause_changes,
-  )) {
-    frequentMistakeCauses[causeId] = Math.max(
-      0,
-      (frequentMistakeCauses[causeId] ?? 0) + change,
-    );
-  }
-
-  const reviewPriority = [
-    ...memoryDelta.review_priority_changes,
-    ...profile.review_priority,
-  ].filter((knowledgeId, index, allKnowledgeIds) => {
-    return allKnowledgeIds.indexOf(knowledgeId) === index;
-  });
-
-  return {
-    ...profile,
-    mastery_scores: masteryScores,
-    frequent_mistake_causes: frequentMistakeCauses,
-    review_priority: reviewPriority,
-    updated_at: DEMO_UPDATED_AT,
-  };
-}
-
-function isNumberRecord(value: unknown): value is Record<string, number> {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return Object.values(value).every((item) => typeof item === "number");
 }
 
 function isNonEmptyString(value: unknown): value is string {
