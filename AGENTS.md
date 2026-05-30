@@ -99,6 +99,9 @@
 - 如果工作区存在用户改动或无关未跟踪文件，Codex 应保持它们不被 stage；若无法判断文件归属，应先询问再提交。
 - `docs/reviews/*.md` 默认只作为本地审查材料保留，不 stage、不 commit、不 push；只有用户明确要求提交某一份审查报告时，才纳入 Git 历史。
 - PR 或最终说明中只总结“已进行本地 Claude Code 审查、已修复/保留哪些问题”，不上传完整审查报告到 GitHub。
+- 如果用户没有明确要求创建 PR，复杂或高风险任务完成本地 commit 和本地审查后，默认采用“feature 分支本地合并到 `main`，在 `main` 上重新自测，再 push `main`”的集成流程。
+- 采用本地合并流程时，Codex 必须先确认 feature 分支已提交、`main` 已更新到最新、合并后 `npm test` / `npm run lint` / `npm run build` 等相关验证通过，再推送 `main`。
+- 只有当用户明确要求 PR、需要远程协作审查，或任务风险高到需要保留 GitHub 审查记录时，才默认走“push feature branch -> create PR”的流程。
 - 简单文档修改、小范围无风险改动可以简化流程，但仍应保持改动范围清晰。
 
 ## 7. 本项目特殊约束
