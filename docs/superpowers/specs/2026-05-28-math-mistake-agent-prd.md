@@ -141,6 +141,8 @@ MVP 不做流式 SSE，不做 8 个独立接口，也不让前端串行调用多
 
 后端内部仍可以保留 Step 0-8 的结构，但不要求每一步都单独展示。`Task Planning` 是内部任务路由；`Memory Delta Generation` 合并到“更新画像”步骤展示；`Confirmation and Persistence` 在 P0 中自动完成，P1 再做用户确认交互。流式 SSE 和逐步后端推送属于 P2。
 
+P0 `sample_diagnosis` 后端实现走确定性的 TypeScript Pipeline Service：`planTask -> recognizeQuestion -> retrieveKnowledgeContext -> mapKnowledgePoints -> diagnoseMistake -> computeMemoryDelta -> generatePractice -> planReview -> buildDiagnoseResponse`。每一步使用内置样例题、知识点和错因标签数据，不调用 Kimi，不写数据库，并保持 `/api/diagnose` 响应契约不变。
+
 `/api/diagnose` 响应中必须包含 steps 数组：
 
 ```json

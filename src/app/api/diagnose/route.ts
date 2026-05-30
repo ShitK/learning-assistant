@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import {
-  buildSampleDiagnoseResponse,
   createDiagnoseError,
-  getSampleDiagnosisById,
   parseDiagnoseRequest,
 } from "@/lib/diagnose-api";
+import { runMathTraceAgent } from "@/lib/mathtrace-agent-pipeline";
 import type { DiagnoseApiResponse } from "@/lib/diagnose-api";
 
 export async function POST(
@@ -37,17 +36,5 @@ export async function POST(
     );
   }
 
-  const sample = getSampleDiagnosisById(parsedRequest.value.sample_question_id);
-  if (!sample) {
-    return NextResponse.json(
-      createDiagnoseError(
-        "unknown_sample_question_id",
-        "未找到这个样例题，请重新选择。",
-        true,
-      ),
-      { status: 400 },
-    );
-  }
-
-  return NextResponse.json(buildSampleDiagnoseResponse(sample, parsedRequest.value));
+  return NextResponse.json(runMathTraceAgent(parsedRequest.value));
 }
