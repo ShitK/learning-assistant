@@ -180,6 +180,17 @@ assert.equal(
   38,
 );
 
+const nullProfileResponse = runMathTraceAgent(
+  createSampleRequest("sample_derivative_001", {
+    student_profile: null,
+  }),
+);
+
+assert.equal(
+  nullProfileResponse.student_profile.mastery_scores.parameter_classification,
+  38,
+);
+
 const boundaryProfileResponse = runMathTraceAgent(
   createSampleRequest("sample_derivative_001", {
     student_profile: {
@@ -210,6 +221,11 @@ assert.equal(
 assert.equal(
   boundaryProfileResponse.student_profile.frequent_mistake_causes
     .classification_missing,
+  1,
+);
+assert.equal(
+  boundaryProfileResponse.student_profile.frequent_mistake_causes
+    .domain_missing,
   1,
 );
 assert.deepEqual(boundaryProfileResponse.student_profile.review_priority, [
@@ -253,6 +269,7 @@ const originalFind = sampleDiagnoses.find;
 sampleDiagnoses.find = () => undefined;
 
 try {
+  // Parser 仍通过 .some() 接受样例 ID，这里验证 pipeline 数据缺失时的 route 兜底。
   await assertDiagnoseError(
     postDiagnoseJson(createSampleRequest("sample_derivative_001")),
     400,
