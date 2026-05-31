@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { ImageUploadPanel } from "@/components/image-upload-panel";
 import { MathText } from "@/components/math-text";
 import {
   demoStudentContext,
@@ -16,7 +17,16 @@ import {
   readStoredStudentProfile,
   writeStoredStudentProfile,
 } from "@/lib/demo-state";
-import { isDiagnoseSuccessResponse } from "@/lib/diagnose-api";
+import {
+  requestImageDiagnosis,
+  requestSampleDiagnosis,
+  shouldPersistDiagnoseProfile,
+} from "@/lib/diagnose-client";
+import {
+  createImageDiagnosisViewModel,
+  createRetainedReportNotice,
+  createSampleDiagnosisViewModel,
+} from "@/lib/diagnosis-view-model";
 import type {
   AgentStep,
   KnowledgePoint,
@@ -26,10 +36,13 @@ import type {
   Severity,
   StudentProfile,
 } from "@/data/mathtrace-demo";
-import { clampScore, isRecord } from "@/lib/utils";
-import type { DiagnoseSuccessResponse } from "@/lib/diagnose-api";
+import type { DiagnosisViewModel } from "@/lib/diagnosis-view-model";
+import type { PreparedImageUpload } from "@/lib/image-upload-client";
+import { clampScore } from "@/lib/utils";
 
 const DEFAULT_SAMPLE_ID: SampleQuestionId = "sample_derivative_001";
+
+type DiagnosisMode = "sample" | "image";
 
 const practiceLevelLabels: Record<PracticeLevel, string> = {
   basic: "基础巩固",
@@ -62,8 +75,16 @@ export function MathTraceWorkbench(): ReactElement {
   const [selectedSampleId, setSelectedSampleId] =
     useState<SampleQuestionId>(DEFAULT_SAMPLE_ID);
   const selectedSample = getSampleById(selectedSampleId);
-  const [diagnosisSample, setDiagnosisSample] = useState<SampleDiagnosis>(
-    () => selectedSample,
+  const [diagnosisMode, setDiagnosisMode] = useState<DiagnosisMode>("sample");
+  const [selectedImage, setSelectedImage] = useState<PreparedImageUpload | null>(
+    null,
+  );
+  const [isImagePreparing, setIsImagePreparing] = useState(false);
+  const [imageUploadErrorMessage, setImageUploadErrorMessage] = useState<
+    string | null
+  >(null);
+  const [diagnosisView, setDiagnosisView] = useState<DiagnosisViewModel>(() =>
+    createSampleDiagnosisViewModel(selectedSample),
   );
   const [sessionStudentProfile, setSessionStudentProfile] =
     useState<StudentProfile | null>(null);
@@ -76,35 +97,87 @@ export function MathTraceWorkbench(): ReactElement {
     afterProfile: null,
   };
   const [completedStepCount, setCompletedStepCount] = useState(
-    diagnosisSample.steps.length,
+    selectedSample.steps.length,
   );
   const [isRequestPending, setIsRequestPending] = useState(false);
   const [apiErrorMessage, setApiErrorMessage] = useState<string | null>(null);
+  const [retainedReportNotice, setRetainedReportNotice] = useState<string | null>(
+    null,
+  );
   const isDiagnosisRequestLockedRef = useRef(false);
-  const isTimelineRunning = completedStepCount < diagnosisSample.steps.length;
+  const isTimelineRunning = completedStepCount < diagnosisView.steps.length;
   const isDiagnosing = isRequestPending || isTimelineRunning;
 
   useEffect(() => {
-    if (completedStepCount >= diagnosisSample.steps.length) {
+    if (completedStepCount >= diagnosisView.steps.length) {
       return;
     }
 
     const timeoutId = window.setTimeout(() => {
       setCompletedStepCount((currentCount) =>
-        Math.min(currentCount + 1, diagnosisSample.steps.length),
+        Math.min(currentCount + 1, diagnosisView.steps.length),
       );
     }, 360);
 
     return () => window.clearTimeout(timeoutId);
-  }, [completedStepCount, diagnosisSample.steps.length]);
+  }, [completedStepCount, diagnosisView.steps.length]);
 
   function handleSelectSample(sampleId: SampleQuestionId): void {
     const nextSample = getSampleById(sampleId);
     setSelectedSampleId(sampleId);
-    setDiagnosisSample(nextSample);
+    setDiagnosisMode("sample");
+    setDiagnosisView(createSampleDiagnosisViewModel(nextSample));
     setApiErrorMessage(null);
+    setRetainedReportNotice(null);
+    setImageUploadErrorMessage(null);
     setProfilePreview(null);
     setCompletedStepCount(nextSample.steps.length);
+  }
+
+  function handleSelectMode(nextMode: DiagnosisMode): void {
+    if (isDiagnosing || nextMode === diagnosisMode) {
+      return;
+    }
+
+    setDiagnosisMode(nextMode);
+    setApiErrorMessage(null);
+    setRetainedReportNotice(null);
+    setImageUploadErrorMessage(null);
+
+    if (nextMode === "sample") {
+      const nextSample = getSampleById(selectedSampleId);
+      setDiagnosisView(createSampleDiagnosisViewModel(nextSample));
+      setProfilePreview(null);
+      setCompletedStepCount(nextSample.steps.length);
+    }
+  }
+
+  function handleImagePrepareStart(): void {
+    setIsImagePreparing(true);
+    setImageUploadErrorMessage(null);
+    setApiErrorMessage(null);
+    setRetainedReportNotice(null);
+  }
+
+  function handleImagePrepared(image: PreparedImageUpload): void {
+    setSelectedImage(image);
+    setIsImagePreparing(false);
+    setImageUploadErrorMessage(null);
+  }
+
+  function handleImagePrepareError(message: string): void {
+    setSelectedImage(null);
+    setIsImagePreparing(false);
+    setImageUploadErrorMessage(message);
+  }
+
+  function handleClearImage(): void {
+    if (isDiagnosing) {
+      return;
+    }
+
+    setSelectedImage(null);
+    setImageUploadErrorMessage(null);
   }
 
   function handleStartDiagnosis(): void {
@@ -116,6 +189,10 @@ export function MathTraceWorkbench(): ReactElement {
   }
 
   function handleResetProfile(): void {
+    if (isDiagnosing) {
+      return;
+    }
+
     clearStoredStudentProfile(window.localStorage);
     setSessionStudentProfile(demoStudentProfile);
     setProfilePreview({
@@ -123,6 +200,7 @@ export function MathTraceWorkbench(): ReactElement {
       afterProfile: null,
     });
     setApiErrorMessage(null);
+    setRetainedReportNotice(null);
   }
 
   async function requestDiagnosis(): Promise<void> {
@@ -130,37 +208,90 @@ export function MathTraceWorkbench(): ReactElement {
       return;
     }
 
+    if (diagnosisMode === "image" && !selectedImage) {
+      setImageUploadErrorMessage("请先上传一张数学错题图片。");
+      return;
+    }
+
     isDiagnosisRequestLockedRef.current = true;
-    const localSample = getSampleById(selectedSampleId);
     const profileBeforeDiagnosis = studentProfile;
-    setDiagnosisSample(localSample);
+    const fallbackSample = getSampleById(selectedSampleId);
     setProfilePreview({
       beforeProfile: profileBeforeDiagnosis,
       afterProfile: null,
     });
     setApiErrorMessage(null);
+    setImageUploadErrorMessage(null);
     setCompletedStepCount(0);
     setIsRequestPending(true);
 
     try {
-      const diagnosis = await requestSampleDiagnosis(
-        selectedSampleId,
-        profileBeforeDiagnosis,
-      );
-      setDiagnosisSample(diagnosis.sample_diagnosis);
-      setSessionStudentProfile(diagnosis.student_profile);
-      writeStoredStudentProfile(window.localStorage, diagnosis.student_profile);
-      setProfilePreview({
-        beforeProfile: profileBeforeDiagnosis,
-        afterProfile: diagnosis.student_profile,
+      if (diagnosisMode === "sample") {
+        const diagnosis = await requestSampleDiagnosis({
+          fetcher: window.fetch.bind(window),
+          sample_question_id: selectedSampleId,
+          student_profile: profileBeforeDiagnosis,
+          mistake_history: mistakeHistory,
+        });
+        const nextView = createSampleDiagnosisViewModel(
+          diagnosis.sample_diagnosis,
+        );
+        setDiagnosisView(nextView);
+        setRetainedReportNotice(null);
+        setSessionStudentProfile(diagnosis.student_profile);
+        writeStoredStudentProfile(window.localStorage, diagnosis.student_profile);
+        setProfilePreview({
+          beforeProfile: profileBeforeDiagnosis,
+          afterProfile: diagnosis.student_profile,
+        });
+        return;
+      }
+
+      if (!selectedImage) {
+        throw new Error("请先上传一张数学错题图片。");
+      }
+
+      const diagnosis = await requestImageDiagnosis({
+        fetcher: window.fetch.bind(window),
+        image_base64: selectedImage.image_base64,
+        image_mime_type: selectedImage.image_mime_type,
+        student_profile: profileBeforeDiagnosis,
+        mistake_history: mistakeHistory,
       });
+      const nextView = createImageDiagnosisViewModel(diagnosis);
+      setDiagnosisView(nextView);
+      setRetainedReportNotice(null);
+
+      if (shouldPersistDiagnoseProfile(diagnosis)) {
+        setSessionStudentProfile(diagnosis.student_profile);
+        writeStoredStudentProfile(window.localStorage, diagnosis.student_profile);
+        setProfilePreview({
+          beforeProfile: profileBeforeDiagnosis,
+          afterProfile: diagnosis.student_profile,
+        });
+      } else {
+        setProfilePreview({
+          beforeProfile: profileBeforeDiagnosis,
+          afterProfile: null,
+        });
+      }
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : "诊断接口暂时不可用，已保留当前样例结果。";
+          : "诊断接口暂时不可用，已保留当前结果。";
       setApiErrorMessage(message);
-      setDiagnosisSample(localSample);
+      if (diagnosisMode === "sample") {
+        setDiagnosisView(createSampleDiagnosisViewModel(fallbackSample));
+        setRetainedReportNotice(null);
+      } else {
+        setRetainedReportNotice(createRetainedReportNotice(diagnosisView));
+      }
+      setCompletedStepCount(
+        diagnosisMode === "sample"
+          ? fallbackSample.steps.length
+          : diagnosisView.steps.length,
+      );
       setProfilePreview({
         beforeProfile: profileBeforeDiagnosis,
         afterProfile: null,
@@ -173,14 +304,16 @@ export function MathTraceWorkbench(): ReactElement {
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[var(--cream)] text-[var(--charcoal)]">
-      <HeaderBar />
+      <HeaderBar mode={diagnosisMode} />
 
       <div className="mx-auto w-full max-w-[1440px] px-4 pb-12 pt-5 sm:px-6 lg:px-8">
         <section className="grid gap-5 py-5 lg:min-h-[calc(100svh-5rem)] lg:grid-rows-[auto_1fr_auto]">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--mocha)]">
-                sample_diagnosis · P0 Demo
+                {diagnosisMode === "image"
+                  ? "image_diagnosis · P1 Experience"
+                  : "sample_diagnosis · P0 Demo"}
               </p>
               <h1 className="mt-2 text-3xl font-semibold tracking-normal text-[var(--charcoal)] sm:text-4xl">
                 错题诊断工作台
@@ -199,41 +332,54 @@ export function MathTraceWorkbench(): ReactElement {
           </div>
 
           <AgentTimeline
-            steps={diagnosisSample.steps}
+            steps={diagnosisView.steps}
             completedStepCount={completedStepCount}
             isDiagnosing={isDiagnosing}
           />
 
           <div className="grid items-stretch gap-5 lg:grid-cols-2">
             <MistakeInputCard
+              mode={diagnosisMode}
               selectedSample={selectedSample}
               selectedSampleId={selectedSampleId}
+              selectedImage={selectedImage}
               isDiagnosing={isDiagnosing}
+              isImagePreparing={isImagePreparing}
               apiErrorMessage={apiErrorMessage}
+              imageUploadErrorMessage={imageUploadErrorMessage}
+              onSelectMode={handleSelectMode}
               onSelectSample={handleSelectSample}
               onStartDiagnosis={handleStartDiagnosis}
+              onImagePrepareStart={handleImagePrepareStart}
+              onImagePrepared={handleImagePrepared}
+              onImagePrepareError={handleImagePrepareError}
+              onClearImage={handleClearImage}
             />
-            <DiagnosisResultCard sample={diagnosisSample} />
+            <DiagnosisResultCard
+              diagnosis={diagnosisView}
+              retainedReportNotice={retainedReportNotice}
+            />
           </div>
         </section>
 
-        <PracticeLab sample={diagnosisSample} />
+        <PracticeLab diagnosis={diagnosisView} />
 
         <section className="mt-8 grid gap-8 xl:grid-cols-[0.92fr_1.08fr]">
           <ProfileInsights
-            sample={diagnosisSample}
+            diagnosis={diagnosisView}
             beforeProfile={visibleProfilePreview.beforeProfile}
             afterProfile={visibleProfilePreview.afterProfile}
             onResetProfile={handleResetProfile}
+            isResetDisabled={isDiagnosing}
           />
-          <ReviewPath sample={diagnosisSample} />
+          <ReviewPath diagnosis={diagnosisView} />
         </section>
       </div>
     </main>
   );
 }
 
-function HeaderBar(): ReactElement {
+function HeaderBar({ mode }: { mode: DiagnosisMode }): ReactElement {
   return (
     <header className="mathtrace-glass sticky top-0 z-50">
       <div className="mx-auto flex min-h-16 w-full max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
@@ -245,7 +391,9 @@ function HeaderBar(): ReactElement {
             <p className="text-sm font-medium leading-none tracking-wide text-[var(--charcoal)]">
               MathTrace
             </p>
-            <p className="mt-1 text-xs text-[var(--warm-gray)]">sample_diagnosis</p>
+            <p className="mt-1 text-xs text-[var(--warm-gray)]">
+              {mode === "image" ? "image_diagnosis" : "sample_diagnosis"}
+            </p>
           </div>
         </div>
 
@@ -264,99 +412,182 @@ function HeaderBar(): ReactElement {
 }
 
 function MistakeInputCard({
+  mode,
   selectedSample,
   selectedSampleId,
+  selectedImage,
   isDiagnosing,
+  isImagePreparing,
   apiErrorMessage,
+  imageUploadErrorMessage,
+  onSelectMode,
   onSelectSample,
   onStartDiagnosis,
+  onImagePrepareStart,
+  onImagePrepared,
+  onImagePrepareError,
+  onClearImage,
 }: {
+  mode: DiagnosisMode;
   selectedSample: SampleDiagnosis;
   selectedSampleId: SampleQuestionId;
+  selectedImage: PreparedImageUpload | null;
   isDiagnosing: boolean;
+  isImagePreparing: boolean;
   apiErrorMessage: string | null;
+  imageUploadErrorMessage: string | null;
+  onSelectMode: (mode: DiagnosisMode) => void;
   onSelectSample: (sampleId: SampleQuestionId) => void;
   onStartDiagnosis: () => void;
+  onImagePrepareStart: () => void;
+  onImagePrepared: (image: PreparedImageUpload) => void;
+  onImagePrepareError: (message: string) => void;
+  onClearImage: () => void;
 }): ReactElement {
+  const canStartDiagnosis =
+    !isDiagnosing &&
+    (mode === "sample" || (selectedImage !== null && !isImagePreparing));
+
   return (
     <div className="mathtrace-card h-full p-5 sm:p-6">
       <SectionHeader
         kicker="Mistake input"
         title="上传/选择错题"
-        description="P0 正式演示使用内置样例题；图片上传入口保留为 P1 灰态。"
+        description="样例题保持稳定演示；图片诊断用于真实错题抽取与诊断体验。"
       />
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
+      <div className="mt-5 grid grid-cols-2 rounded-full bg-[var(--oat)] p-1">
         <button
           type="button"
-          disabled
-          className="min-h-12 rounded-full border border-dashed border-[var(--light-gray)] bg-[var(--oat)] px-4 text-left text-sm font-medium text-[var(--warm-gray)] disabled:cursor-not-allowed"
+          disabled={isDiagnosing}
+          onClick={() => onSelectMode("sample")}
+          className={`min-h-10 rounded-full px-4 text-sm font-semibold ${
+            mode === "sample"
+              ? "bg-white text-[var(--charcoal)] shadow-[0_2px_12px_rgba(166,123,91,0.08)]"
+              : "text-[var(--warm-gray)]"
+          } disabled:cursor-not-allowed disabled:opacity-60`}
         >
-          图片上传 · P1 即将开放
+          样例题
         </button>
         <button
           type="button"
           disabled={isDiagnosing}
+          onClick={() => onSelectMode("image")}
+          className={`min-h-10 rounded-full px-4 text-sm font-semibold ${
+            mode === "image"
+              ? "bg-white text-[var(--charcoal)] shadow-[0_2px_12px_rgba(166,123,91,0.08)]"
+              : "text-[var(--warm-gray)]"
+          } disabled:cursor-not-allowed disabled:opacity-60`}
+        >
+          图片诊断
+        </button>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="min-h-12 truncate rounded-full border border-[var(--light-gray)] bg-[var(--oat)] px-4 py-3 text-sm font-medium text-[var(--warm-gray)]">
+          {mode === "image"
+            ? selectedImage
+              ? selectedImage.file_name
+              : "等待上传错题图片"
+            : selectedSample.title}
+        </div>
+        <button
+          type="button"
+          disabled={!canStartDiagnosis}
           onClick={onStartDiagnosis}
           className="mathtrace-hover-lift min-h-12 cursor-pointer rounded-full bg-gradient-to-r from-[var(--mocha)] to-[var(--mocha-dark)] px-6 text-sm font-semibold text-white shadow-lg shadow-[#a67b5b]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mocha)] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isDiagnosing ? "诊断中" : "开始诊断"}
+          {isDiagnosing
+            ? "诊断中"
+            : mode === "image"
+              ? "开始图片诊断"
+              : "开始诊断"}
         </button>
       </div>
 
       {apiErrorMessage ? (
-        <p className="mt-3 rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]">
-          {apiErrorMessage}
-        </p>
+        <div className="mt-3 rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]">
+          <p className="whitespace-pre-line">{apiErrorMessage}</p>
+          {mode === "image" ? (
+            <button
+              type="button"
+              disabled={isDiagnosing}
+              onClick={() => onSelectMode("sample")}
+              className="mt-3 min-h-9 rounded-full bg-white px-4 text-sm font-semibold text-[var(--mocha)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              切回样例题
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
-      <div className="mt-5 grid gap-3">
-        {sampleDiagnoses.map((sample) => {
-          const isSelected = sample.id === selectedSampleId;
+      {mode === "image" ? (
+        <div className="mt-5">
+          <ImageUploadPanel
+            selectedImage={selectedImage}
+            isDisabled={isDiagnosing}
+            isPreparing={isImagePreparing}
+            errorMessage={imageUploadErrorMessage}
+            onPrepareStart={onImagePrepareStart}
+            onPrepared={onImagePrepared}
+            onPrepareError={onImagePrepareError}
+            onClear={onClearImage}
+          />
+        </div>
+      ) : (
+        <>
+          <div className="mt-5 grid gap-3">
+            {sampleDiagnoses.map((sample) => {
+              const isSelected = sample.id === selectedSampleId;
 
-          return (
-            <button
-              key={sample.id}
-              type="button"
-              aria-pressed={isSelected}
-              disabled={isDiagnosing}
-              onClick={() => onSelectSample(sample.id)}
-              className={`mathtrace-hover-lift min-h-20 cursor-pointer rounded-[20px] border p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mocha)] ${
-                isSelected
-                  ? "border-[var(--mocha)] bg-[var(--mocha-muted)]"
-                  : "border-[var(--oat)] bg-white hover:border-[var(--mocha-light)] hover:shadow-[0_8px_24px_rgba(166,123,91,0.08)] disabled:cursor-not-allowed disabled:opacity-60"
-              }`}
-            >
-              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--warm-gray)]">
-                {sample.module}
-              </span>
-              <span className="mt-2 block text-lg font-medium text-[var(--charcoal)]">
-                {sample.title}
-              </span>
-              <span className="mt-2 block text-sm leading-6 text-[var(--warm-gray)]">
-                难度 {sample.difficulty}/5 · {sample.mistake_causes.length} 个错因标签
-              </span>
-            </button>
-          );
-        })}
-      </div>
+              return (
+                <button
+                  key={sample.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  disabled={isDiagnosing}
+                  onClick={() => onSelectSample(sample.id)}
+                  className={`mathtrace-hover-lift min-h-20 cursor-pointer rounded-[20px] border p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mocha)] ${
+                    isSelected
+                      ? "border-[var(--mocha)] bg-[var(--mocha-muted)]"
+                      : "border-[var(--oat)] bg-white hover:border-[var(--mocha-light)] hover:shadow-[0_8px_24px_rgba(166,123,91,0.08)] disabled:cursor-not-allowed disabled:opacity-60"
+                  }`}
+                >
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--warm-gray)]">
+                    {sample.module}
+                  </span>
+                  <span className="mt-2 block text-lg font-medium text-[var(--charcoal)]">
+                    {sample.title}
+                  </span>
+                  <span className="mt-2 block text-sm leading-6 text-[var(--warm-gray)]">
+                    难度 {sample.difficulty}/5 · {sample.mistake_causes.length}{" "}
+                    个错因标签
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-      <div className="mt-5 rounded-[20px] bg-[var(--oat)] p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--mocha)]">
-          current sample
-        </p>
-        <p className="mt-3 text-sm leading-7 text-[var(--warm-gray)]">
-          <MathText text={selectedSample.question_text} />
-        </p>
-      </div>
+          <div className="mt-5 rounded-[20px] bg-[var(--oat)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--mocha)]">
+              current sample
+            </p>
+            <p className="mt-3 text-sm leading-7 text-[var(--warm-gray)]">
+              <MathText text={selectedSample.question_text} />
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 function DiagnosisResultCard({
-  sample,
+  diagnosis,
+  retainedReportNotice,
 }: {
-  sample: SampleDiagnosis;
+  diagnosis: DiagnosisViewModel;
+  retainedReportNotice: string | null;
 }): ReactElement {
   return (
     <section className="mathtrace-card flex h-full flex-col overflow-hidden">
@@ -369,14 +600,82 @@ function DiagnosisResultCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-5 p-5 sm:p-6">
+        {retainedReportNotice ? (
+          <p className="rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]">
+            {retainedReportNotice}
+          </p>
+        ) : null}
+
         <div className="flex flex-wrap gap-2">
-          {sample.knowledge_points.map((id) => (
+          {diagnosis.knowledge_points.map((id) => (
             <Tag key={id} tone="green">
               {getKnowledgeName(id)}
             </Tag>
           ))}
-          <Tag tone="amber">严重度：{severityLabels[sample.severity]}</Tag>
+          <Tag tone="amber">严重度：{severityLabels[diagnosis.severity]}</Tag>
         </div>
+
+        {diagnosis.source === "image" ? (
+          <div className="rounded-[20px] border border-[var(--oat)] bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[var(--charcoal)]">
+                模型识别结果
+              </p>
+              <Tag
+                tone={
+                  diagnosis.extraction_confidence === "low" ? "amber" : "green"
+                }
+              >
+                置信度：{getConfidenceLabel(diagnosis.extraction_confidence)}
+              </Tag>
+            </div>
+
+            {diagnosis.extraction_confidence === "low" ? (
+              <p className="mt-3 rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]">
+                识别置信度较低，本次报告不会写入长期画像。请检查题干和学生步骤后再决定是否重试。
+              </p>
+            ) : null}
+
+            {diagnosis.warnings.length > 0 ? (
+              <div className="mt-3 grid gap-2">
+                {diagnosis.warnings.map((warning) => (
+                  <p
+                    key={warning}
+                    className="rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]"
+                  >
+                    {warning}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-[16px] bg-[var(--oat)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--mocha)]">
+                  recognized question
+                </p>
+                <p className="mt-3 text-sm leading-7 text-[var(--charcoal)]">
+                  <MathText text={diagnosis.question_text} />
+                </p>
+              </div>
+              <div className="rounded-[16px] bg-[var(--oat)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--mocha)]">
+                  recognized steps
+                </p>
+                <div className="mt-3 grid gap-2">
+                  {diagnosis.student_solution_steps.map((step, index) => (
+                    <p
+                      key={`${index}-${step}`}
+                      className="text-sm leading-6 text-[var(--warm-gray)]"
+                    >
+                      <MathText text={`${index + 1}. ${step}`} />
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="rounded-[20px] bg-[var(--oat)] p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--mocha)]">
@@ -386,14 +685,14 @@ function DiagnosisResultCard({
             标准解法关键步骤
           </h3>
           <p className="mt-3 text-sm leading-7 text-[var(--charcoal)]">
-            <MathText text={sample.standard_solution} />
+            <MathText text={diagnosis.standard_solution} />
           </p>
           <div className="mt-4 border-t border-[var(--light-gray)] pt-4">
             <p className="text-sm font-semibold text-[var(--charcoal)]">
               关键判断点
             </p>
             <div className="mt-3 grid gap-2">
-              {sample.solution_highlights.map((item, index) => (
+              {diagnosis.solution_highlights.map((item, index) => (
                 <p
                   key={item}
                   className="flex gap-2 text-sm leading-6 text-[var(--warm-gray)]"
@@ -416,7 +715,7 @@ function DiagnosisResultCard({
               学生答案与偏离点
             </p>
             <div className="flex flex-wrap gap-2">
-              {sample.mistake_causes.map((id) => (
+              {diagnosis.mistake_causes.map((id) => (
                 <Tag key={id} tone="rust">
                   {getMistakeName(id)}
                 </Tag>
@@ -430,7 +729,7 @@ function DiagnosisResultCard({
                 student answer
               </p>
               <p className="mt-3 text-sm leading-7 text-[var(--warm-gray)]">
-                <MathText text={sample.student_answer} />
+                <MathText text={diagnosis.student_answer} />
               </p>
             </div>
 
@@ -439,7 +738,7 @@ function DiagnosisResultCard({
                 diagnosis conclusion
               </p>
               <p className="mt-3 text-sm leading-7 text-[var(--warm-gray)]">
-                <MathText text={getConciseDiagnosis(sample)} />
+                <MathText text={getConciseDiagnosis(diagnosis)} />
               </p>
             </div>
           </div>
@@ -448,7 +747,7 @@ function DiagnosisResultCard({
         <div className="rounded-[20px] bg-[var(--oat)] p-4">
           <p className="text-sm font-semibold text-[var(--charcoal)]">错误发生步骤</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {sample.step_analysis.map((item) => (
+            {diagnosis.step_analysis.map((item) => (
               <span
                 key={item}
                 className="rounded-full bg-white px-3 py-1.5 text-sm text-[var(--warm-gray)]"
@@ -549,9 +848,9 @@ function AgentTimeline({
 }
 
 function PracticeLab({
-  sample,
+  diagnosis,
 }: {
-  sample: SampleDiagnosis;
+  diagnosis: DiagnosisViewModel;
 }): ReactElement {
   return (
     <section className="mathtrace-card mt-8 overflow-hidden text-[var(--charcoal)]">
@@ -564,7 +863,7 @@ function PracticeLab({
       </div>
 
       <div className="grid gap-3 p-5 sm:p-6 lg:grid-cols-3">
-        {sample.practice_questions.map((practice, index) => (
+        {diagnosis.practice_questions.map((practice, index) => (
           <article
             key={`${practice.level}-${practice.question}`}
             className="flex min-h-[260px] flex-col rounded-[20px] border border-[var(--oat)] bg-white p-5"
@@ -604,24 +903,29 @@ function PracticeLab({
 }
 
 function ProfileInsights({
-  sample,
+  diagnosis,
   beforeProfile,
   afterProfile,
   onResetProfile,
+  isResetDisabled,
 }: {
-  sample: SampleDiagnosis;
+  diagnosis: DiagnosisViewModel;
   beforeProfile: StudentProfile;
   afterProfile: StudentProfile | null;
   onResetProfile: () => void;
+  isResetDisabled: boolean;
 }): ReactElement {
   const changedKnowledgeIds = Object.keys(
-    sample.memory_delta.knowledge_mastery_changes,
+    diagnosis.memory_delta.knowledge_mastery_changes,
   );
+  const shouldPreviewDelta =
+    diagnosis.should_persist_profile || afterProfile !== null;
   const profileRows = changedKnowledgeIds.map((id) => {
     const currentScore = beforeProfile.mastery_scores[id] ?? 70;
-    const change = sample.memory_delta.knowledge_mastery_changes[id] ?? 0;
+    const change = diagnosis.memory_delta.knowledge_mastery_changes[id] ?? 0;
     const nextScore =
-      afterProfile?.mastery_scores[id] ?? clampScore(currentScore + change);
+      afterProfile?.mastery_scores[id] ??
+      (shouldPreviewDelta ? clampScore(currentScore + change) : currentScore);
 
     return {
       id,
@@ -632,17 +936,18 @@ function ProfileInsights({
   });
   const mistakeCauseIds = [
     ...Object.keys(beforeProfile.frequent_mistake_causes),
-    ...Object.keys(sample.memory_delta.mistake_cause_changes),
+    ...Object.keys(diagnosis.memory_delta.mistake_cause_changes),
   ].filter((id, index, ids) => ids.indexOf(id) === index);
   const mistakeCauseRows = mistakeCauseIds.map((id) => {
     const count = beforeProfile.frequent_mistake_causes[id] ?? 0;
+    const nextCount = shouldPreviewDelta
+      ? count + (diagnosis.memory_delta.mistake_cause_changes[id] ?? 0)
+      : count;
 
     return {
       id,
       previousCount: count,
-      nextCount:
-        afterProfile?.frequent_mistake_causes[id] ??
-        count + (sample.memory_delta.mistake_cause_changes[id] ?? 0),
+      nextCount: afterProfile?.frequent_mistake_causes[id] ?? nextCount,
     };
   });
 
@@ -657,13 +962,19 @@ function ProfileInsights({
         <button
           type="button"
           onClick={onResetProfile}
-          className="min-h-10 w-fit rounded-full border border-[var(--light-gray)] bg-white px-4 text-sm font-medium text-[var(--warm-gray)] hover:border-[var(--mocha-light)] hover:text-[var(--mocha)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mocha)]"
+          disabled={isResetDisabled}
+          className="min-h-10 w-fit rounded-full border border-[var(--light-gray)] bg-white px-4 text-sm font-medium text-[var(--warm-gray)] hover:border-[var(--mocha-light)] hover:text-[var(--mocha)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mocha)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           重置画像
         </button>
       </div>
 
       <div className="p-5 sm:p-6">
+        {!diagnosis.should_persist_profile ? (
+          <p className="mb-5 rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]">
+            本次图片识别置信度不足，诊断建议仅展示，不写入本地学生画像。
+          </p>
+        ) : null}
         <p className="text-sm font-semibold text-[var(--charcoal)]">掌握度变化</p>
         <div className="mt-5 grid gap-5">
           {profileRows.map((row) => (
@@ -721,11 +1032,11 @@ function ProfileInsights({
 }
 
 function ReviewPath({
-  sample,
+  diagnosis,
 }: {
-  sample: SampleDiagnosis;
+  diagnosis: DiagnosisViewModel;
 }): ReactElement {
-  const priorityPlan = sample.review_plan.seven_days.slice(0, 3);
+  const priorityPlan = diagnosis.review_plan.seven_days.slice(0, 3);
 
   return (
     <section className="mathtrace-card overflow-hidden">
@@ -733,7 +1044,7 @@ function ReviewPath({
         <SectionHeader
           kicker="Review plan"
           title="下一步计划"
-          description={sample.review_plan.tomorrow}
+          description={diagnosis.review_plan.tomorrow}
         />
       </div>
 
@@ -741,7 +1052,7 @@ function ReviewPath({
         <div className="rounded-[20px] bg-[var(--oat)] p-5">
           <p className="text-sm font-semibold text-[var(--charcoal)]">今日任务</p>
           <p className="mt-3 text-sm leading-6 text-[var(--warm-gray)]">
-            {sample.review_plan.tomorrow}
+            {diagnosis.review_plan.tomorrow}
           </p>
         </div>
 
@@ -772,7 +1083,7 @@ function ReviewPath({
         <div className="mt-5 rounded-[20px] bg-[var(--oat)] p-5">
           <p className="text-sm font-semibold text-[var(--deep-green)]">计划依据</p>
           <div className="mt-3 grid gap-2">
-            {sample.review_plan.rationale.map((item) => (
+            {diagnosis.review_plan.rationale.map((item) => (
               <p key={item} className="text-sm leading-6 text-[var(--warm-gray)]">
                 {item}
               </p>
@@ -856,59 +1167,6 @@ function getSampleById(sampleId: SampleQuestionId): SampleDiagnosis {
   );
 }
 
-async function requestSampleDiagnosis(
-  sampleQuestionId: SampleQuestionId,
-  studentProfile: StudentProfile,
-): Promise<DiagnoseSuccessResponse> {
-  const response = await fetch("/api/diagnose", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    cache: "no-store",
-    body: JSON.stringify({
-      student_id: demoStudentProfile.student_id,
-      task_type: "sample_diagnosis",
-      sample_question_id: sampleQuestionId,
-      image_base64: null,
-      student_profile: studentProfile,
-      mistake_history: mistakeHistory,
-    }),
-  });
-  const responseBody = await readJsonResponse(response);
-
-  if (!response.ok) {
-    throw new Error(getDiagnoseErrorMessage(responseBody));
-  }
-
-  if (!isDiagnoseSuccessResponse(responseBody)) {
-    throw new Error("诊断接口返回格式异常，已保留当前样例结果。");
-  }
-
-  return responseBody;
-}
-
-async function readJsonResponse(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
-function getDiagnoseErrorMessage(responseBody: unknown): string {
-  if (!isRecord(responseBody)) {
-    return "诊断接口暂时不可用，已保留当前样例结果。";
-  }
-
-  const error = responseBody.error;
-  if (!isRecord(error) || typeof error.message !== "string") {
-    return "诊断接口暂时不可用，已保留当前样例结果。";
-  }
-
-  return error.message;
-}
-
 function getStepState(
   index: number,
   completedStepCount: number,
@@ -944,10 +1202,28 @@ function getMistakeShortName(id: string): string {
   return mistakeCauses[id]?.short_name ?? id;
 }
 
-function getConciseDiagnosis(sample: SampleDiagnosis): string {
-  if (sample.mistake_causes.length === 0) {
-    return sample.expected_diagnosis;
+function getConfidenceLabel(
+  confidence: DiagnosisViewModel["extraction_confidence"],
+): string {
+  if (confidence === "high") {
+    return "高";
   }
 
-  return `偏离点：${sample.mistake_causes.map(getMistakeName).join("、")}。`;
+  if (confidence === "medium") {
+    return "中";
+  }
+
+  if (confidence === "low") {
+    return "低";
+  }
+
+  return "样例";
+}
+
+function getConciseDiagnosis(diagnosis: DiagnosisViewModel): string {
+  if (diagnosis.mistake_causes.length === 0) {
+    return diagnosis.expected_diagnosis;
+  }
+
+  return `偏离点：${diagnosis.mistake_causes.map(getMistakeName).join("、")}。`;
 }

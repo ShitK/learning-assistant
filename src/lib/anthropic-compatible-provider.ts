@@ -3,7 +3,10 @@ import {
   parseVisionExtractionText,
 } from "@/lib/vision-extraction-parser";
 import { isRecord } from "@/lib/utils";
-import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
+import type {
+  VisionExtractionDebugSummary,
+  VisionExtractionDraft,
+} from "@/lib/vision-extraction-parser";
 
 export interface VisionExtractionInput {
   image_base64: string;
@@ -21,6 +24,7 @@ export interface VisionProviderError {
   code: VisionProviderErrorCode;
   message: string;
   recoverable: true;
+  debug_summary?: VisionExtractionDebugSummary;
 }
 
 export type VisionProviderResult =
@@ -101,6 +105,7 @@ export function createAnthropicCompatibleVisionProvider(
           body: JSON.stringify({
             model: config.model,
             max_tokens: 1200,
+            temperature: 0,
             thinking: {
               type: "disabled",
             },
@@ -199,11 +204,13 @@ function joinAnthropicMessagesUrl(baseUrl: string): string {
 function createProviderError(
   code: VisionProviderErrorCode,
   message: string,
+  debugSummary?: VisionExtractionDebugSummary,
 ): VisionProviderError {
   return {
     code,
     message,
     recoverable: true,
+    debug_summary: debugSummary,
   };
 }
 

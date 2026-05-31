@@ -1,6 +1,6 @@
 # 错因地图 MathTrace 技术路径文档
 
-更新日期：2026-05-30  
+更新日期：2026-05-31
 适用范围：从黑客松 P0 Demo 扩展到可长期使用的高中数学错题诊断产品。
 
 ## 1. 文档目标
@@ -24,10 +24,11 @@
 - P0 演示固定走 `sample_diagnosis`，返回内置 `sample_diagnosis`。
 - 前端已经能通过接口触发诊断，并用返回的 `student_profile` 展示画像变化。
 - P1 后端具备 `image_diagnosis` 服务端路径：Anthropic-compatible provider adapter，MiMo first；模型只做图片抽取，后续仍复用确定性 Pipeline。
+- P1 前端具备图片上传入口、预览、客户端校验和压缩、识别结果渲染、可恢复错误态，以及低置信度不写入 localStorage 的保护。
 
 当前还没有完成：
 
-- 前端图片上传入口和识别结果编辑体验。
+- 图片识别结果编辑和确认写入。
 - Kimi、DeepSeek 等非 MiMo provider 实现。
 - 真正的 Agent 内部编排模块。
 - 数据库持久化。
@@ -430,9 +431,10 @@ LangGraph 的价值在于 durable execution 和 human-in-the-loop，而不是“
 - 前端图片选择和预览。
 - 图片大小、格式、尺寸校验。
 - 客户端压缩或服务端压缩。
+- 识别结果、置信度、错误态和切回样例题入口。
 - 对象存储，例如 Supabase Storage、S3、Cloudflare R2。
 - 服务端只保存图片 URL、hash、元数据，不在日志里输出完整 base64。
-- 图片识别失败时回退到样例题演示或手动编辑。
+- 图片识别失败时展示可恢复错误，不自动伪造成样例题成功；用户可以切回样例题或后续手动编辑。
 
 推荐路径：
 
@@ -535,6 +537,9 @@ UI
   -> 开始诊断
   -> 标准解法和错因报告可见
   -> 画像变化显示正确
+  -> image_diagnosis 上传、预览、成功渲染
+  -> image_diagnosis recoverable error
+  -> 低置信度图片结果不写入 localStorage
 ```
 
 ## 10. 可观测性与评估
@@ -690,7 +695,7 @@ Supabase Storage
 
 - `image_diagnosis` 分支。
 - 服务端图片输入校验、MiMo 抽取、JSON 解析和边界校验。
-- 识别结果预览。
+- 前端图片上传、预览、压缩和识别结果预览。
 - 低置信度提示用户确认。
 - 失败时返回可恢复错误，并保留样例题入口；不自动伪造成样例题成功。
 

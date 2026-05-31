@@ -25,10 +25,77 @@ assert.deepEqual(parsed.value.student_solution_steps, [
   "临界点遗漏 $-\\sqrt a$",
 ]);
 
+const stringListModelText = JSON.stringify({
+  question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
+  student_answer: "$f'(x)=3x^2-3a$，只得到 $x=\\sqrt a$。",
+  student_solution_steps:
+    "1. 求导正确\n2. 临界点遗漏 $-\\sqrt a$\n3. 未讨论 $a\\le 0$",
+  standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$ 两类情况。",
+  extraction_confidence: "high",
+  warnings: "",
+});
+const parsedStringList = parseVisionExtractionText(stringListModelText);
+assert.equal(parsedStringList.ok, true);
+assert.deepEqual(parsedStringList.value.student_solution_steps, [
+  "求导正确",
+  "临界点遗漏 $-\\sqrt a$",
+  "未讨论 $a\\le 0$",
+]);
+assert.deepEqual(parsedStringList.value.warnings, []);
+
 const invalidJson = parseVisionExtractionText("```json\n{}\n```");
 assert.equal(invalidJson.ok, false);
 assert.equal(invalidJson.error.code, "model_invalid_output");
 assert.equal(invalidJson.error.recoverable, true);
+
+const missingStudentAnswer = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_solution_steps: ["步骤"],
+    standard_solution_draft: "解法",
+    extraction_confidence: "low",
+    warnings: ["未识别到学生作答区域"],
+  }),
+);
+assert.equal(missingStudentAnswer.ok, false);
+assert.equal(missingStudentAnswer.error.code, "model_invalid_output");
+assert.equal(
+  missingStudentAnswer.error.message,
+  "没有识别到学生作答区域，请上传包含题干和学生解题痕迹的图片。",
+);
+assert.deepEqual(missingStudentAnswer.error.debug_summary.missing_fields, [
+  "student_answer",
+]);
+assert.deepEqual(missingStudentAnswer.error.debug_summary.present_fields, [
+  "question_text",
+  "student_solution_steps",
+  "standard_solution_draft",
+  "extraction_confidence",
+  "warnings",
+]);
+assert.equal(
+  missingStudentAnswer.error.debug_summary.field_lengths.question_text,
+  2,
+);
+
+const missingStandardSolutionDraft = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_answer: "答案",
+    student_solution_steps: ["步骤"],
+    extraction_confidence: "medium",
+    warnings: [],
+  }),
+);
+assert.equal(missingStandardSolutionDraft.ok, false);
+assert.equal(
+  missingStandardSolutionDraft.error.message,
+  "模型输出缺少 standard_solution_draft。",
+);
+assert.deepEqual(
+  missingStandardSolutionDraft.error.debug_summary.missing_fields,
+  ["standard_solution_draft"],
+);
 
 const missingSteps = parseVisionExtractionText(
   JSON.stringify({
@@ -40,8 +107,67 @@ const missingSteps = parseVisionExtractionText(
     warnings: [],
   }),
 );
-assert.equal(missingSteps.ok, false);
-assert.equal(missingSteps.error.code, "model_invalid_output");
+assert.equal(missingSteps.ok, true);
+assert.equal(missingSteps.value.extraction_confidence, "low");
+assert.deepEqual(missingSteps.value.student_solution_steps, [
+  "模型未拆分出具体步骤，仅识别到学生答案。",
+]);
+assert.deepEqual(missingSteps.value.warnings, [
+  "未识别到清晰学生解题步骤，请确认图片中包含学生过程。",
+]);
+
+const overconfidentMissingAnswer = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_answer: "未识别到学生答案",
+    student_solution_steps: ["求导"],
+    standard_solution_draft: "解法",
+    extraction_confidence: "high",
+    warnings: [],
+  }),
+);
+assert.equal(overconfidentMissingAnswer.ok, true);
+assert.equal(overconfidentMissingAnswer.value.extraction_confidence, "low");
+assert.deepEqual(overconfidentMissingAnswer.value.warnings, [
+  "未识别到清晰学生作答区域，请确认图片中包含学生答案或解题痕迹。",
+]);
+
+const alternateMissingAnswerText = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_answer: "未找到学生答案",
+    student_solution_steps: ["求导"],
+    standard_solution_draft: "解法",
+    extraction_confidence: "high",
+    warnings: [],
+  }),
+);
+assert.equal(alternateMissingAnswerText.ok, true);
+assert.equal(alternateMissingAnswerText.value.extraction_confidence, "low");
+assert.deepEqual(alternateMissingAnswerText.value.warnings, [
+  "未识别到清晰学生作答区域，请确认图片中包含学生答案或解题痕迹。",
+]);
+
+const missingAnswerAndSteps = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_answer: "未识别到学生答案",
+    student_solution_steps: [],
+    standard_solution_draft: "解法",
+    extraction_confidence: "high",
+    warnings: ["图片手写内容较模糊"],
+  }),
+);
+assert.equal(missingAnswerAndSteps.ok, true);
+assert.equal(missingAnswerAndSteps.value.extraction_confidence, "low");
+assert.deepEqual(missingAnswerAndSteps.value.student_solution_steps, [
+  "模型未识别到学生答案或具体解题步骤。",
+]);
+assert.deepEqual(missingAnswerAndSteps.value.warnings, [
+  "图片手写内容较模糊",
+  "未识别到清晰学生作答区域，请确认图片中包含学生答案或解题痕迹。",
+  "未识别到清晰学生解题步骤，请确认图片中包含学生过程。",
+]);
 
 const memoryDeltaAttempt = parseVisionExtractionText(
   JSON.stringify({
@@ -62,5 +188,6 @@ const prompt = createVisionExtractionPrompt({
 });
 assert.equal(prompt.includes("不要输出 memory_delta"), true);
 assert.equal(prompt.includes("合法 JSON"), true);
+assert.equal(prompt.includes("未识别到学生答案"), true);
 
 console.log("vision extraction parser test passed");

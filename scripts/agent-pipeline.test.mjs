@@ -273,6 +273,36 @@ await assertServiceError(
   "model_invalid_output",
   true,
 );
+
+const invalidOutputDebugResponse = await handleDiagnoseRequest(
+  createImageRequest(),
+  {
+    vision_provider: createErrorVisionProvider("model_invalid_output", {
+      output_kind: "json_object",
+      raw_output_length: 180,
+      present_fields: ["question_text"],
+      missing_fields: ["student_answer"],
+      extra_fields: [],
+      forbidden_fields: [],
+      field_lengths: {
+        question_text: 28,
+      },
+      list_lengths: {},
+    }),
+  },
+);
+
+assert.equal(invalidOutputDebugResponse.status, 502);
+assert.deepEqual(invalidOutputDebugResponse.body.debug_summary.missing_fields, [
+  "student_answer",
+]);
+assert.equal(
+  JSON.stringify(invalidOutputDebugResponse.body.debug_summary).includes(
+    "已知函数",
+  ),
+  false,
+);
+
 await assertServiceError(
   handleDiagnoseRequest(createImageRequest(), {
     vision_provider: createErrorVisionProvider("model_not_configured"),
@@ -472,7 +502,7 @@ function createFakeVisionProvider() {
   };
 }
 
-function createErrorVisionProvider(code) {
+function createErrorVisionProvider(code, debugSummary = undefined) {
   return {
     async extractQuestionFromImage() {
       return {
@@ -481,6 +511,7 @@ function createErrorVisionProvider(code) {
           code,
           message: `fake ${code}`,
           recoverable: true,
+          debug_summary: debugSummary,
         },
       };
     },
