@@ -105,6 +105,7 @@ async function handleImageDiagnoseRequest(
         extractionResult.error.message,
         extractionResult.error.recoverable,
         shouldMarkFallbackUsed(extractionResult.error),
+        getSafeDebugSummary(extractionResult.error),
       ),
     };
   }
@@ -180,6 +181,16 @@ function shouldMarkFallbackUsed(error: VisionProviderError): boolean {
     error.code === "model_request_failed" ||
     error.code === "model_invalid_output"
   );
+}
+
+function getSafeDebugSummary(error: VisionProviderError):
+  | VisionProviderError["debug_summary"]
+  | undefined {
+  if (process.env.NODE_ENV === "production") {
+    return undefined;
+  }
+
+  return error.debug_summary;
 }
 
 function getImageInputErrorMessage(

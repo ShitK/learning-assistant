@@ -54,6 +54,7 @@ assert.equal(calls[0].init.headers["x-api-key"], "secret-key-for-test");
 
 const requestBody = JSON.parse(calls[0].init.body);
 assert.equal(requestBody.model, "mimo-v2.5");
+assert.equal(requestBody.temperature, 0);
 assert.deepEqual(requestBody.thinking, { type: "disabled" });
 assert.equal(requestBody.messages[0].content[0].type, "text");
 assert.equal(requestBody.messages[0].content[1].type, "image");

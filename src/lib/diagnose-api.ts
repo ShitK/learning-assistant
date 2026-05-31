@@ -10,6 +10,7 @@ import type {
   Severity,
   StudentProfile,
 } from "@/data/mathtrace-demo";
+import type { VisionExtractionDebugSummary } from "@/lib/vision-extraction-parser";
 
 export type DiagnoseTaskType = "sample_diagnosis" | "image_diagnosis";
 
@@ -123,6 +124,7 @@ export interface DiagnoseErrorResponse {
   };
   fallback_used: boolean;
   warnings: string[];
+  debug_summary?: VisionExtractionDebugSummary;
 }
 
 export type DiagnoseApiResponse =
@@ -219,6 +221,7 @@ export function createDiagnoseError(
   message: string,
   recoverable: boolean,
   fallbackUsed = false,
+  debugSummary?: VisionExtractionDebugSummary,
 ): DiagnoseErrorResponse {
   return {
     error: {
@@ -228,6 +231,7 @@ export function createDiagnoseError(
     },
     fallback_used: fallbackUsed,
     warnings: [],
+    debug_summary: debugSummary,
   };
 }
 
@@ -247,6 +251,236 @@ export function isDiagnoseSuccessResponse(
   }
 
   return isSampleQuestionId(value.sample_diagnosis.id);
+}
+
+export function isDiagnoseImageSuccessResponse(
+  value: unknown,
+): value is DiagnoseImageSuccessResponse {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (value.fallback_used !== false || value.source !== "image") {
+    return false;
+  }
+
+  if (value.sample_diagnosis !== null) {
+    return false;
+  }
+
+  if (!isRecord(value.recognized_question)) {
+    return false;
+  }
+
+  if (!isImageRecognizedQuestion(value.recognized_question)) {
+    return false;
+  }
+
+  if (!isKnowledgeMapping(value.knowledge_mapping)) {
+    return false;
+  }
+
+  if (!isMistakeDiagnosis(value.mistake_diagnosis)) {
+    return false;
+  }
+
+  if (!isMemoryDelta(value.memory_delta)) {
+    return false;
+  }
+
+  if (
+    value.recognized_question.extraction_confidence === "low" &&
+    value.memory_delta.should_persist
+  ) {
+    return false;
+  }
+
+  return (
+    typeof value.diagnosis_id === "string" &&
+    typeof value.student_id === "string" &&
+    Array.isArray(value.steps) &&
+    value.steps.every(isAgentStep) &&
+    isStudentProfile(value.student_profile) &&
+    Array.isArray(value.practice_questions) &&
+    value.practice_questions.every(isPracticeQuestion) &&
+    isReviewPlan(value.review_plan) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every(isString)
+  );
+}
+
+function isImageRecognizedQuestion(
+  value: unknown,
+): value is ImageRecognizedQuestion {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.title === "string" &&
+    typeof value.module === "string" &&
+    typeof value.question_text === "string" &&
+    typeof value.student_answer === "string" &&
+    Array.isArray(value.student_solution_steps) &&
+    value.student_solution_steps.every(isString) &&
+    (value.extraction_confidence === "high" ||
+      value.extraction_confidence === "medium" ||
+      value.extraction_confidence === "low")
+  );
+}
+
+function isKnowledgeMapping(value: unknown): value is KnowledgeMapping {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    Array.isArray(value.knowledge_points) &&
+    value.knowledge_points.every(isString) &&
+    typeof value.difficulty === "number"
+  );
+}
+
+function isMistakeDiagnosis(value: unknown): value is MistakeDiagnosis {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    Array.isArray(value.mistake_causes) &&
+    value.mistake_causes.every(isString) &&
+    isSeverity(value.severity) &&
+    typeof value.expected_diagnosis === "string" &&
+    Array.isArray(value.step_analysis) &&
+    value.step_analysis.every(isString) &&
+    Array.isArray(value.solution_highlights) &&
+    value.solution_highlights.every(isString) &&
+    typeof value.standard_solution === "string"
+  );
+}
+
+function isMemoryDelta(value: unknown): value is MemoryDelta {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isNumberRecord(value.knowledge_mastery_changes) &&
+    isNumberRecord(value.mistake_cause_changes) &&
+    typeof value.is_repeated_mistake === "boolean" &&
+    Array.isArray(value.review_priority_changes) &&
+    value.review_priority_changes.every(isString) &&
+    typeof value.should_persist === "boolean" &&
+    typeof value.rationale === "string"
+  );
+}
+
+function isStudentProfile(value: unknown): value is StudentProfile {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.student_id === "string" &&
+    typeof value.grade === "string" &&
+    value.subject === "math" &&
+    isNumberRecord(value.mastery_scores) &&
+    isNumberRecord(value.frequent_mistake_causes) &&
+    Array.isArray(value.weak_modules) &&
+    value.weak_modules.every(isString) &&
+    Array.isArray(value.review_priority) &&
+    value.review_priority.every(isString) &&
+    typeof value.recent_trend === "string" &&
+    Array.isArray(value.gaokao_focus) &&
+    value.gaokao_focus.every(isGaokaoFocusItem) &&
+    typeof value.created_at === "string" &&
+    typeof value.updated_at === "string"
+  );
+}
+
+function isGaokaoFocusItem(
+  value: unknown,
+): value is StudentProfile["gaokao_focus"][number] {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.knowledge_point === "string" &&
+    typeof value.reason === "string" &&
+    typeof value.priority === "number"
+  );
+}
+
+function isPracticeQuestion(value: unknown): value is PracticeQuestion {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    (value.level === "basic" ||
+      value.level === "transfer" ||
+      value.level === "gaokao_style") &&
+    typeof value.question === "string" &&
+    typeof value.training_goal === "string"
+  );
+}
+
+function isReviewPlan(value: unknown): value is ReviewPlan {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.tomorrow === "string" &&
+    Array.isArray(value.seven_days) &&
+    value.seven_days.every(isReviewPlanDay) &&
+    Array.isArray(value.rationale) &&
+    value.rationale.every(isString)
+  );
+}
+
+function isReviewPlanDay(value: unknown): value is ReviewPlan["seven_days"][number] {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.day === "number" &&
+    typeof value.topic === "string" &&
+    typeof value.task === "string" &&
+    typeof value.estimated_minutes === "number"
+  );
+}
+
+function isAgentStep(value: unknown): value is AgentStep {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.display_name === "string" &&
+    typeof value.duration_ms === "number" &&
+    typeof value.summary === "string"
+  );
+}
+
+function isNumberRecord(value: unknown): value is Record<string, number> {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return Object.values(value).every((item) => typeof item === "number");
+}
+
+function isSeverity(value: unknown): value is Severity {
+  return value === "minor" || value === "medium" || value === "severe";
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
 }
 
 function invalidRequest(message: string): ParseDiagnoseResult {

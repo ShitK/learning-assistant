@@ -979,7 +979,7 @@ demo state regression test passed
 ```text
 MIMO_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic
 MIMO_MODEL=mimo-v2.5
-MIMO_API_KEY=replace-with-local-secret
+MIMO_API_KEY=<local-secret>
 ```
 
 不要写真实 key。
