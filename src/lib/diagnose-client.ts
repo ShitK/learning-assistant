@@ -2,6 +2,7 @@ import {
   isDiagnoseImageSuccessResponse,
   isDiagnoseSuccessResponse,
 } from "@/lib/diagnose-api";
+import { isProviderFailureDebug } from "@/lib/provider-error";
 import { isRecord } from "@/lib/utils";
 import type {
   DiagnoseApiResponse,
@@ -181,6 +182,15 @@ function getUserFacingModelErrorMessage(
 }
 
 function getDebugText(responseBody: Record<string, unknown>): string {
+  return [
+    getModelOutputDebugText(responseBody),
+    getProviderFailureDebugText(responseBody),
+  ]
+    .filter((message) => message.length > 0)
+    .join("\n");
+}
+
+function getModelOutputDebugText(responseBody: Record<string, unknown>): string {
   if (!isModelInvalidOutputError(responseBody)) {
     return "";
   }
@@ -204,6 +214,20 @@ function getDebugText(responseBody: Record<string, unknown>): string {
   const warningCount = summary.list_lengths.warnings ?? 0;
 
   return `开发诊断：${outputText}；已返回字段 ${presentFields}；缺少字段 ${missingFields}；题干长度 ${questionLength}；学生答案长度 ${studentAnswerLength}；学生步骤数量 ${studentStepCount}；warning 数量 ${warningCount}。`;
+}
+
+function getProviderFailureDebugText(
+  responseBody: Record<string, unknown>,
+): string {
+  if (!isProviderFailureDebug(responseBody.provider_debug)) {
+    return "";
+  }
+
+  const debug = responseBody.provider_debug;
+  const httpText =
+    typeof debug.http_status === "number" ? `；HTTP ${debug.http_status}` : "";
+
+  return `开发诊断：provider ${debug.provider_name}；阶段 ${debug.provider_stage}；失败类型 ${debug.failure_kind}${httpText}。`;
 }
 
 function isModelInvalidOutputError(

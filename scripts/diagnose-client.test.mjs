@@ -52,6 +52,49 @@ assert.equal(
 );
 
 assert.equal(
+  getDiagnoseClientErrorMessage({
+    error: {
+      code: "model_request_failed",
+      message: "MiMo 图片诊断服务返回 HTTP 502，请稍后重试。",
+      recoverable: true,
+    },
+    fallback_used: true,
+    warnings: [],
+    provider_debug: {
+      provider_name: "mimo",
+      provider_stage: "vision_llm",
+      failure_kind: "http_error",
+      http_status: 502,
+    },
+  }),
+  [
+    "MiMo 图片诊断服务返回 HTTP 502，请稍后重试。",
+    "开发诊断：provider mimo；阶段 vision_llm；失败类型 http_error；HTTP 502。",
+  ].join("\n"),
+);
+
+assert.equal(
+  getDiagnoseClientErrorMessage({
+    error: {
+      code: "model_request_failed",
+      message: "MiMo 图片诊断网络请求失败，请稍后重试。",
+      recoverable: true,
+    },
+    fallback_used: true,
+    warnings: [],
+    provider_debug: {
+      provider_name: "mimo",
+      provider_stage: "vision_llm",
+      failure_kind: "network_failed",
+    },
+  }),
+  [
+    "MiMo 图片诊断网络请求失败，请稍后重试。",
+    "开发诊断：provider mimo；阶段 vision_llm；失败类型 network_failed。",
+  ].join("\n"),
+);
+
+assert.equal(
   getDiagnoseClientErrorMessage(null),
   "诊断接口暂时不可用，已保留当前结果。",
 );

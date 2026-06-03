@@ -106,6 +106,8 @@ async function handleImageDiagnoseRequest(
         extractionResult.error.recoverable,
         shouldMarkFallbackUsed(extractionResult.error),
         getSafeDebugSummary(extractionResult.error),
+        // provider_debug 只含安全元数据，生产环境也保留用于区分请求失败类型。
+        extractionResult.error.provider_debug,
       ),
     };
   }

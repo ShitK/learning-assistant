@@ -805,6 +805,28 @@ model_request_failed
 model_invalid_output
 ```
 
+图片诊断 provider 请求层失败时，错误响应可以包含 `provider_debug`：
+
+```json
+{
+  "error": {
+    "code": "model_request_failed",
+    "message": "MiMo 图片诊断服务返回 HTTP 502，请稍后重试。",
+    "recoverable": true
+  },
+  "fallback_used": true,
+  "warnings": [],
+  "provider_debug": {
+    "provider_name": "mimo",
+    "provider_stage": "vision_llm",
+    "failure_kind": "http_error",
+    "http_status": 502
+  }
+}
+```
+
+`provider_debug` 只能包含 provider 名称、阶段、失败类型和 HTTP 状态，不得包含 API Key、图片 base64、原始模型响应、题干、学生答案或学生画像明细。`provider_stage` 当前使用 `vision_llm`，未来接入 OCR 时可以复用同一结构使用 `ocr`。
+
 图片上传策略：
 
 - P1 真实图片上传使用前端压缩后的 base64，放在 JSON body 的 `image_base64` 字段。

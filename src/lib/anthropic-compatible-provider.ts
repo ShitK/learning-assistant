@@ -7,6 +7,10 @@ import type {
   VisionExtractionDebugSummary,
   VisionExtractionDraft,
 } from "@/lib/vision-extraction-parser";
+import type {
+  ProviderFailureDebug,
+  ProviderFailureKind,
+} from "@/lib/provider-error";
 
 export interface VisionExtractionInput {
   image_base64: string;
@@ -25,6 +29,7 @@ export interface VisionProviderError {
   message: string;
   recoverable: true;
   debug_summary?: VisionExtractionDebugSummary;
+  provider_debug?: ProviderFailureDebug;
 }
 
 export type VisionProviderResult =
@@ -64,6 +69,7 @@ const DEFAULT_MIMO_BASE_URL =
   "https://token-plan-cn.xiaomimimo.com/anthropic";
 const DEFAULT_MIMO_MODEL = "mimo-v2.5";
 const DEFAULT_TIMEOUT_MS = 15_000;
+const MIMO_PROVIDER_NAME = "mimo";
 const FORBIDDEN_OUTPUT_KEY_PATTERN =
   /["']?(?:memory_delta|student_profile|mistake_history|knowledge_mastery_changes|mistake_cause_changes)["']?\s*:/;
 
@@ -145,7 +151,12 @@ export function createAnthropicCompatibleVisionProvider(
         ok: false,
         error: createProviderError(
           "model_request_failed",
-          `MiMo 图片诊断请求失败，HTTP ${response.status}。`,
+          `MiMo 图片诊断服务返回 HTTP ${response.status}，请稍后重试。`,
+          undefined,
+          createProviderFailureDebug({
+            failure_kind: "http_error",
+            http_status: response.status,
+          }),
         ),
       };
     }
@@ -224,6 +235,8 @@ export function createAnthropicCompatibleVisionProvider(
             error: createProviderError(
               "model_timeout",
               "MiMo 图片诊断请求超时，请稍后重试。",
+              undefined,
+              createProviderFailureDebug({ failure_kind: "timeout" }),
             ),
           };
         }
@@ -232,7 +245,9 @@ export function createAnthropicCompatibleVisionProvider(
           ok: false,
           error: createProviderError(
             "model_request_failed",
-            "MiMo 图片诊断请求失败，请稍后重试。",
+            "MiMo 图片诊断网络请求失败，请稍后重试。",
+            undefined,
+            createProviderFailureDebug({ failure_kind: "network_failed" }),
           ),
         };
       } finally {
@@ -271,13 +286,30 @@ function createProviderError(
   code: VisionProviderErrorCode,
   message: string,
   debugSummary?: VisionExtractionDebugSummary,
+  providerDebug?: ProviderFailureDebug,
 ): VisionProviderError {
   return {
     code,
     message,
     recoverable: true,
     debug_summary: debugSummary,
+    provider_debug: providerDebug,
   };
+}
+
+function createProviderFailureDebug(input: {
+  failure_kind: ProviderFailureKind;
+  http_status?: number;
+}): ProviderFailureDebug {
+  const debug: ProviderFailureDebug = {
+    provider_name: MIMO_PROVIDER_NAME,
+    provider_stage: "vision_llm",
+    failure_kind: input.failure_kind,
+  };
+
+  return typeof input.http_status === "number"
+    ? { ...debug, http_status: input.http_status }
+    : debug;
 }
 
 function shouldRetryInvalidOutput(
@@ -323,7 +355,9 @@ async function readJsonResponse(
       ok: false,
       error: createProviderError(
         "model_request_failed",
-        "MiMo 图片诊断响应不是合法 JSON。",
+        "MiMo 图片诊断响应不是合法 JSON，请稍后重试。",
+        undefined,
+        createProviderFailureDebug({ failure_kind: "invalid_json" }),
       ),
     };
   }

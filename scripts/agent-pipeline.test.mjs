@@ -129,6 +129,7 @@ const routeSuccessBody = await routeSuccessResponse.json();
 assert.equal(routeSuccessResponse.status, 200);
 assert.equal(routeSuccessBody.source, "sample");
 assert.equal(routeSuccessBody.fallback_used, false);
+assert.equal(routeSuccessBody.provider_debug, undefined);
 
 await assertDiagnoseError(postDiagnoseRaw("{"), 400, "invalid_json");
 await assertDiagnoseError(postDiagnoseJson(null), 400, "invalid_request");
@@ -230,6 +231,7 @@ const imageServiceResponse = await handleDiagnoseRequest(
 assert.equal(imageServiceResponse.status, 200);
 assert.equal(imageServiceResponse.body.source, "image");
 assert.equal(imageServiceResponse.body.fallback_used, false);
+assert.equal(imageServiceResponse.body.provider_debug, undefined);
 
 const unpaddedBase64ServiceResponse = await handleDiagnoseRequest(
   {
@@ -264,6 +266,28 @@ await assertServiceError(
   502,
   "model_request_failed",
   true,
+);
+
+const providerDebug = {
+  provider_name: "mimo",
+  provider_stage: "vision_llm",
+  failure_kind: "http_error",
+  http_status: 502,
+};
+
+const providerDebugResponse = await handleDiagnoseRequest(createImageRequest(), {
+  vision_provider: createErrorVisionProvider(
+    "model_request_failed",
+    undefined,
+    providerDebug,
+  ),
+});
+
+assert.equal(providerDebugResponse.status, 502);
+assert.deepEqual(providerDebugResponse.body.provider_debug, providerDebug);
+assert.equal(
+  JSON.stringify(providerDebugResponse.body.provider_debug).includes("iVBOR"),
+  false,
 );
 await assertServiceError(
   handleDiagnoseRequest(createImageRequest(), {
@@ -303,14 +327,14 @@ assert.equal(
   false,
 );
 
-await assertServiceError(
-  handleDiagnoseRequest(createImageRequest(), {
-    vision_provider: createErrorVisionProvider("model_not_configured"),
-  }),
-  400,
-  "model_not_configured",
-  false,
-);
+const notConfiguredResponse = await handleDiagnoseRequest(createImageRequest(), {
+  vision_provider: createErrorVisionProvider("model_not_configured"),
+});
+
+assert.equal(notConfiguredResponse.status, 400);
+assert.equal(notConfiguredResponse.body.error.code, "model_not_configured");
+assert.equal(notConfiguredResponse.body.fallback_used, false);
+assert.equal(notConfiguredResponse.body.provider_debug, undefined);
 
 const fallbackProfileResponse = runMathTraceAgent(
   createSampleRequest("sample_derivative_001", {
@@ -502,7 +526,11 @@ function createFakeVisionProvider() {
   };
 }
 
-function createErrorVisionProvider(code, debugSummary = undefined) {
+function createErrorVisionProvider(
+  code,
+  debugSummary = undefined,
+  providerDebug = undefined,
+) {
   return {
     async extractQuestionFromImage() {
       return {
@@ -512,6 +540,7 @@ function createErrorVisionProvider(code, debugSummary = undefined) {
           message: `fake ${code}`,
           recoverable: true,
           debug_summary: debugSummary,
+          provider_debug: providerDebug,
         },
       };
     },

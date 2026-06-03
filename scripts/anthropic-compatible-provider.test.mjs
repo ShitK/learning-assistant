@@ -82,6 +82,57 @@ assert.equal(failedResult.ok, false);
 assert.equal(failedResult.error.code, "model_request_failed");
 assert.equal(failedResult.error.recoverable, true);
 assert.equal(failedResult.error.message.includes("secret-key-for-test"), false);
+assert.deepEqual(failedResult.error.provider_debug, {
+  provider_name: "mimo",
+  provider_stage: "vision_llm",
+  failure_kind: "http_error",
+  http_status: 500,
+});
+
+const invalidJsonProvider = createAnthropicCompatibleVisionProvider({
+  base_url: "https://example.test/anthropic",
+  model: "mimo-v2.5",
+  api_key: "secret-key-for-test",
+  timeout_ms: 1000,
+  fetch_impl: async () => new Response("not json", { status: 200 }),
+});
+
+const invalidJsonResult = await invalidJsonProvider.extractQuestionFromImage({
+  image_base64: "iVBORw0KGgo=",
+  mime_type: "image/png",
+  student_profile_summary: "demo profile",
+});
+assert.equal(invalidJsonResult.ok, false);
+assert.equal(invalidJsonResult.error.code, "model_request_failed");
+assert.deepEqual(invalidJsonResult.error.provider_debug, {
+  provider_name: "mimo",
+  provider_stage: "vision_llm",
+  failure_kind: "invalid_json",
+});
+
+const networkFailedProvider = createAnthropicCompatibleVisionProvider({
+  base_url: "https://example.test/anthropic",
+  model: "mimo-v2.5",
+  api_key: "secret-key-for-test",
+  timeout_ms: 1000,
+  fetch_impl: async () => {
+    throw new TypeError("fetch failed");
+  },
+});
+
+const networkFailedResult =
+  await networkFailedProvider.extractQuestionFromImage({
+    image_base64: "iVBORw0KGgo=",
+    mime_type: "image/png",
+    student_profile_summary: "demo profile",
+  });
+assert.equal(networkFailedResult.ok, false);
+assert.equal(networkFailedResult.error.code, "model_request_failed");
+assert.deepEqual(networkFailedResult.error.provider_debug, {
+  provider_name: "mimo",
+  provider_stage: "vision_llm",
+  failure_kind: "network_failed",
+});
 
 const invalidOutputProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
@@ -297,6 +348,11 @@ const timeoutResult = await timeoutProvider.extractQuestionFromImage({
 });
 assert.equal(timeoutResult.ok, false);
 assert.equal(timeoutResult.error.code, "model_timeout");
+assert.deepEqual(timeoutResult.error.provider_debug, {
+  provider_name: "mimo",
+  provider_stage: "vision_llm",
+  failure_kind: "timeout",
+});
 
 const missingEnvConfig = createMimoProviderConfigFromEnv({
   MIMO_BASE_URL: "https://token-plan-cn.xiaomimimo.com/anthropic",
@@ -304,5 +360,6 @@ const missingEnvConfig = createMimoProviderConfigFromEnv({
 });
 assert.equal(missingEnvConfig.ok, false);
 assert.equal(missingEnvConfig.error.code, "model_not_configured");
+assert.equal(missingEnvConfig.error.provider_debug, undefined);
 
 console.log("anthropic compatible provider test passed");
