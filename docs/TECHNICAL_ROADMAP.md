@@ -690,6 +690,8 @@ Supabase Storage
 - 后续 Kimi、DeepSeek 作为 `VisionExtractionProvider` 实现接入。
 - 图片压缩和大小校验。
 - Zod 或等价类型守卫校验模型输出。
+- 图片诊断输出韧性：parser 对常见 MiMo 字段值漂移做有界规范化，provider 对安全的结构化失败做一次修复重试，前端明确展示保留报告状态。
+- OCR adapter 是后续独立扩展，不属于本次图片诊断输出韧性 hardening。
 
 交付：
 
