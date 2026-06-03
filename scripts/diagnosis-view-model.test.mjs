@@ -75,12 +75,15 @@ assert.equal(imageView.extraction_confidence, "low");
 assert.equal(imageView.should_persist_profile, false);
 assert.deepEqual(imageView.warnings, ["请检查识别结果。"]);
 assert.equal(
-  createRetainedReportNotice(imageView),
-  "当前显示的是上一次成功图片诊断结果，本次请求未生成新报告。",
+  createRetainedReportNotice(
+    imageView,
+    "模型输出的 student_solution_steps 不合法。",
+  ),
+  "当前显示的是上一次成功图片诊断结果，本次图片诊断未生成新报告。原因：模型输出的 student_solution_steps 不合法。",
 );
 assert.equal(
-  createRetainedReportNotice(sampleView),
-  "当前显示的是样例题结果，本次图片诊断未生成新报告。",
+  createRetainedReportNotice(sampleView, "模型输出缺少 standard_solution_draft。"),
+  "当前显示的是样例题结果，本次图片诊断未生成新报告。原因：模型输出缺少 standard_solution_draft。",
 );
 
 console.log("diagnosis view model regression test passed");

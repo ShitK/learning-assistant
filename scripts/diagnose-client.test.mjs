@@ -89,7 +89,47 @@ assert.equal(
   }),
   [
     "没有识别到学生作答区域，请上传包含题干和学生解题痕迹的图片。",
-    "开发诊断：模型返回 JSON；已返回字段 question_text, student_solution_steps, standard_solution_draft, extraction_confidence, warnings；缺少字段 student_answer；题干长度 28；学生答案长度 0。",
+    "开发诊断：模型返回 JSON；已返回字段 question_text, student_solution_steps, standard_solution_draft, extraction_confidence, warnings；缺少字段 student_answer；题干长度 28；学生答案长度 0；学生步骤数量 2；warning 数量 1。",
+  ].join("\n"),
+);
+
+assert.equal(
+  getDiagnoseClientErrorMessage({
+    error: {
+      code: "model_invalid_output",
+      message: "模型输出的 student_solution_steps 不合法。",
+      recoverable: true,
+    },
+    fallback_used: true,
+    warnings: [],
+    debug_summary: {
+      output_kind: "json_object",
+      raw_output_length: 240,
+      present_fields: [
+        "question_text",
+        "student_answer",
+        "student_solution_steps",
+        "standard_solution_draft",
+        "extraction_confidence",
+        "warnings",
+      ],
+      missing_fields: [],
+      extra_fields: [],
+      forbidden_fields: [],
+      field_lengths: {
+        question_text: 30,
+        student_answer: 8,
+        standard_solution_draft: 120,
+      },
+      list_lengths: {
+        student_solution_steps: 10,
+        warnings: 0,
+      },
+    },
+  }),
+  [
+    "模型输出的 student_solution_steps 不合法。",
+    "开发诊断：模型返回 JSON；已返回字段 question_text, student_answer, student_solution_steps, standard_solution_draft, extraction_confidence, warnings；缺少字段 无；题干长度 30；学生答案长度 8；学生步骤数量 10；warning 数量 0。",
   ].join("\n"),
 );
 

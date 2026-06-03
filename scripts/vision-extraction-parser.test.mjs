@@ -169,6 +169,133 @@ assert.deepEqual(missingAnswerAndSteps.value.warnings, [
   "未识别到清晰学生解题步骤，请确认图片中包含学生过程。",
 ]);
 
+const objectStepItems = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_answer: "答案",
+    student_solution_steps: [
+      { text: "1. 先求导" },
+      { step: "2. 再讨论参数范围" },
+      { content: "3. 写出单调区间" },
+      { value: "4. 对照零点条件" },
+    ],
+    standard_solution_draft: "标准解法",
+    extraction_confidence: "medium",
+    warnings: [],
+  }),
+);
+assert.equal(objectStepItems.ok, true);
+assert.deepEqual(objectStepItems.value.student_solution_steps, [
+  "先求导",
+  "再讨论参数范围",
+  "写出单调区间",
+  "对照零点条件",
+]);
+
+const noisyStepItems = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_answer: "答案",
+    student_solution_steps: [
+      "1. 求导",
+      "",
+      "   ",
+      { text: "2. 讨论参数" },
+      { unsupported: "忽略这个对象" },
+    ],
+    standard_solution_draft: "标准解法",
+    extraction_confidence: "medium",
+    warnings: [],
+  }),
+);
+assert.equal(noisyStepItems.ok, true);
+assert.deepEqual(noisyStepItems.value.student_solution_steps, [
+  "求导",
+  "讨论参数",
+]);
+assert.equal(noisyStepItems.value.extraction_confidence, "low");
+assert.equal(
+  noisyStepItems.value.warnings.includes("部分学生步骤为空或格式不完整，已忽略。"),
+  true,
+);
+
+const nestedStepItems = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_answer: "答案",
+    student_solution_steps: ["1. 求导", ["2. 讨论参数"]],
+    standard_solution_draft: "标准解法",
+    extraction_confidence: "medium",
+    warnings: [],
+  }),
+);
+assert.equal(nestedStepItems.ok, false);
+assert.equal(
+  nestedStepItems.error.message,
+  "模型输出的 student_solution_steps 不合法。",
+);
+
+const duplicateWarnings = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_answer: "答案",
+    student_solution_steps: [
+      "1. 求导",
+      { unsupported: "忽略这个对象" },
+      { text: "2. 讨论参数" },
+    ],
+    standard_solution_draft: "标准解法",
+    extraction_confidence: "medium",
+    warnings: [
+      "模型警告 A",
+      "模型警告 A",
+      "模型警告 B",
+      "模型警告 C",
+      "模型警告 D",
+      "模型警告 E",
+    ],
+  }),
+);
+assert.equal(duplicateWarnings.ok, true);
+assert.deepEqual(duplicateWarnings.value.warnings, [
+  "部分学生步骤为空或格式不完整，已忽略。",
+  "模型警告 A",
+  "模型警告 B",
+  "模型警告 C",
+  "模型警告 D",
+]);
+
+const overlongStepItems = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_answer: "答案",
+    student_solution_steps: Array.from({ length: 10 }, (_item, index) => {
+      return `步骤${index + 1}`;
+    }),
+    standard_solution_draft: "标准解法",
+    extraction_confidence: "medium",
+    warnings: [],
+  }),
+);
+assert.equal(overlongStepItems.ok, true);
+assert.equal(overlongStepItems.value.student_solution_steps.length, 8);
+assert.deepEqual(overlongStepItems.value.student_solution_steps, [
+  "步骤1",
+  "步骤2",
+  "步骤3",
+  "步骤4",
+  "步骤5",
+  "步骤6",
+  "步骤7",
+  "步骤8",
+]);
+assert.equal(
+  overlongStepItems.value.warnings.includes(
+    "模型返回的学生步骤超过 8 条，已截取前 8 条。",
+  ),
+  true,
+);
+
 const memoryDeltaAttempt = parseVisionExtractionText(
   JSON.stringify({
     question_text: "题干",
@@ -189,5 +316,6 @@ const prompt = createVisionExtractionPrompt({
 assert.equal(prompt.includes("不要输出 memory_delta"), true);
 assert.equal(prompt.includes("合法 JSON"), true);
 assert.equal(prompt.includes("未识别到学生答案"), true);
+assert.equal(prompt.includes("standard_solution_draft 必须始终输出"), true);
 
 console.log("vision extraction parser test passed");

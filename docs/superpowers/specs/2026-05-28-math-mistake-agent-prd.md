@@ -145,6 +145,8 @@ P0 `sample_diagnosis` 后端实现走确定性的 TypeScript Pipeline Service：
 
 P1 `image_diagnosis` 后端通过 Anthropic-compatible provider adapter 调用 MiMo 多模态接口。模型只负责图片抽取，输出 `question_text`、`student_answer`、`student_solution_steps`、`standard_solution_draft`、`extraction_confidence` 和 `warnings`。模型输出必须先经过 JSON 解析和边界校验，再进入确定性 Pipeline；知识点映射、错因诊断、`memory_delta`、练习和复习计划仍由本地规则生成。
 
+模型输出作为不可信外部输入处理。`student_solution_steps` 可以从字符串数组、多行字符串、或含 `text`/`content`/`step`/`value` 文本字段的对象数组规范化为内部字符串数组；空项和无法解释的项会被丢弃并生成 warning；超过上限的步骤会被截断。`standard_solution_draft` 仍为必填字段，缺失时 provider 可以在不包含 forbidden fields 的前提下重试一次；重试失败仍返回 recoverable `model_invalid_output`，不会进入画像持久化。
+
 P1 图片诊断前端入口包括：图片选择/拖拽、预览、客户端格式校验、提交前压缩到 1MB 内、调用 `/api/diagnose` 的 `image_diagnosis`、渲染模型识别结果和后续 Agent Pipeline 输出。图片识别失败、模型超时、非法 JSON、未配置 API Key、图片过大等场景必须展示 recoverable error，并提供切回样例题路径。低置信度图片识别结果只展示诊断建议和练习计划，不写入 localStorage 学生画像。
 
 P1 本阶段仍不包含识别结果编辑、`/api/confirm`、数据库持久化和 LLM 动态生成练习题。
@@ -812,7 +814,7 @@ model_invalid_output
 - 开发环境下，`model_invalid_output` 可返回安全诊断摘要，只包含输出类型、字段列表、缺失字段和字段长度，不包含图片 base64、完整题干或学生答案原文。
 - 如果模型未识别到学生答案，prompt 要求仍输出 `student_answer="未识别到学生答案"`、`extraction_confidence="low"` 和对应 warnings；若模型仍缺字段，前端显示“没有识别到学生作答区域”的可恢复提示。
 - 后端不能完全信任模型自报置信度：当 `student_answer` 表示未识别到学生答案，或 `student_solution_steps` 为空时，解析层必须强制降级为 `extraction_confidence="low"`，补充 warning，并确保后续 `memory_delta.should_persist=false`。
-- 图片诊断请求失败但页面保留旧报告时，前端必须标明“当前显示的是上一次成功结果或样例题结果”，避免用户误以为旧报告来自本次失败请求。
+- 图片诊断请求失败但页面保留旧报告时，前端必须标明“当前显示的是上一次成功结果或样例题结果”，并展示本次失败的安全原因，避免用户误以为旧报告来自本次失败请求。
 - 若后端需要支持更大图片，再调整 API Route body size 或改为 multipart/form-data；这属于 P1 实现细节。
 
 ### MiMo API Key Handling

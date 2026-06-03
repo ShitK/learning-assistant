@@ -285,7 +285,9 @@ export function MathTraceWorkbench(): ReactElement {
         setDiagnosisView(createSampleDiagnosisViewModel(fallbackSample));
         setRetainedReportNotice(null);
       } else {
-        setRetainedReportNotice(createRetainedReportNotice(diagnosisView));
+        setRetainedReportNotice(
+          createRetainedReportNotice(diagnosisView, message),
+        );
       }
       setCompletedStepCount(
         diagnosisMode === "sample"

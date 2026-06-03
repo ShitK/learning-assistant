@@ -40,6 +40,26 @@ export type VisionExtractionParseResult =
   | { ok: true; value: VisionExtractionDraft }
   | { ok: false; error: VisionExtractionParseError };
 
+interface StringListParseOptions {
+  field_name: "student_solution_steps" | "warnings";
+  min_length: number;
+  max_length: number;
+  invalid_item_warning?: string;
+  truncated_warning?: string;
+}
+
+interface StringListParseResult {
+  items: string[];
+  warnings: string[];
+  has_invalid_item: boolean;
+}
+
+interface ParsedStringListItems {
+  items: string[];
+  warnings: string[];
+  dropped_invalid_item: boolean;
+}
+
 const ALLOWED_KEYS = new Set([
   "question_text",
   "student_answer",
@@ -118,7 +138,13 @@ export function parseVisionExtractionText(
     );
   }
 
-  const steps = parseStringList(parsed.student_solution_steps, 0, 8);
+  const steps = parseStringList(parsed.student_solution_steps, {
+    field_name: "student_solution_steps",
+    min_length: 0,
+    max_length: 8,
+    invalid_item_warning: "部分学生步骤为空或格式不完整，已忽略。",
+    truncated_warning: "模型返回的学生步骤超过 8 条，已截取前 8 条。",
+  });
   if (!steps) {
     return invalidOutput(
       "模型输出的 student_solution_steps 不合法。",
@@ -126,16 +152,22 @@ export function parseVisionExtractionText(
     );
   }
 
-  const warnings = parseStringList(parsed.warnings, 0, 5);
+  const warnings = parseStringList(parsed.warnings, {
+    field_name: "warnings",
+    min_length: 0,
+    max_length: Number.MAX_SAFE_INTEGER,
+  });
   if (!warnings) {
     return invalidOutput("模型输出的 warnings 不合法。", debugSummary);
   }
 
   const normalized = normalizeExtractionDraft({
     student_answer: parsed.student_answer.trim(),
-    student_solution_steps: steps,
+    student_solution_steps: steps.items,
+    has_partial_student_steps: steps.has_invalid_item,
     extraction_confidence: parsed.extraction_confidence,
-    warnings,
+    model_warnings: warnings.items,
+    parser_warnings: steps.warnings,
   });
 
   return {
@@ -159,6 +191,7 @@ export function createVisionExtractionPrompt(input: {
     "请只做题目、学生答案、学生解题步骤和标准解法草稿抽取。",
     "只输出一个合法 JSON 对象，不要输出 Markdown、解释文字或代码块。",
     "JSON 字段必须且只能包含 question_text、student_answer、student_solution_steps、standard_solution_draft、extraction_confidence、warnings。",
+    "standard_solution_draft 必须始终输出；如果图片里没有标准解法，请根据题干生成一份标准解法草稿，不要省略字段。",
     "student_solution_steps 和 warnings 必须输出为字符串数组；没有 warning 时输出空数组 []。",
     "如果没有识别到学生答案，也必须输出 student_answer=\"未识别到学生答案\"，并将 extraction_confidence 设为 \"low\"。",
     "不要输出 memory_delta、student_profile、mistake_history、错因频次或画像更新。",
@@ -234,8 +267,12 @@ function getListLength(value: unknown, key: string): number | undefined {
   }
 
   if (typeof value[key] === "string") {
-    const parsed = parseStringListText(value[key], 0, Number.MAX_SAFE_INTEGER);
-    return parsed?.length;
+    const parsed = parseStringList(value[key], {
+      field_name: key === "warnings" ? "warnings" : "student_solution_steps",
+      min_length: 0,
+      max_length: Number.MAX_SAFE_INTEGER,
+    });
+    return parsed?.items.length;
   }
 
   return undefined;
@@ -243,52 +280,115 @@ function getListLength(value: unknown, key: string): number | undefined {
 
 function parseStringList(
   value: unknown,
-  minLength: number,
-  maxLength: number,
-): string[] | null {
-  if (typeof value === "string") {
-    return parseStringListText(value, minLength, maxLength);
+  options: StringListParseOptions,
+): StringListParseResult | null {
+  const parsedItems =
+    typeof value === "string"
+      ? parseStringListText(value)
+      : parseStringListArray(value, options.field_name);
+
+  if (!parsedItems) {
+    return null;
   }
 
+  const usableItems = parsedItems.items.filter((item) => item.length > 0);
+  const warnings = [...parsedItems.warnings];
+
+  if (
+    parsedItems.dropped_invalid_item &&
+    options.invalid_item_warning &&
+    usableItems.length > 0
+  ) {
+    warnings.push(options.invalid_item_warning);
+  }
+
+  if (usableItems.length < options.min_length) {
+    return null;
+  }
+
+  const items = usableItems.slice(0, options.max_length);
+  if (usableItems.length > options.max_length && options.truncated_warning) {
+    warnings.push(options.truncated_warning);
+  }
+
+  return {
+    items,
+    warnings,
+    has_invalid_item: parsedItems.dropped_invalid_item,
+  };
+}
+
+function parseStringListText(value: string): ParsedStringListItems {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return {
+      items: [],
+      warnings: [],
+      dropped_invalid_item: false,
+    };
+  }
+
+  const items = trimmed.split(/\r?\n/).map(normalizeStringListItem);
+
+  return {
+    items,
+    warnings: [],
+    dropped_invalid_item: false,
+  };
+}
+
+function parseStringListArray(
+  value: unknown,
+  fieldName: StringListParseOptions["field_name"],
+): ParsedStringListItems | null {
   if (!Array.isArray(value)) {
     return null;
   }
 
-  if (value.length < minLength || value.length > maxLength) {
-    return null;
+  let droppedInvalidItem = false;
+  const items: string[] = [];
+
+  for (const item of value) {
+    if (Array.isArray(item)) {
+      return null;
+    }
+
+    const parsedItem = parseStringListItem(item, fieldName);
+    if (!parsedItem) {
+      droppedInvalidItem = true;
+      continue;
+    }
+
+    items.push(parsedItem);
   }
 
-  const items = value.map((item) => {
-    return typeof item === "string" ? item.trim() : "";
-  });
-
-  if (items.some((item) => item.length === 0)) {
-    return null;
-  }
-
-  return items;
+  return {
+    items,
+    warnings: [],
+    dropped_invalid_item: droppedInvalidItem,
+  };
 }
 
-function parseStringListText(
-  value: string,
-  minLength: number,
-  maxLength: number,
-): string[] | null {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return minLength === 0 ? [] : null;
+function parseStringListItem(
+  value: unknown,
+  fieldName: StringListParseOptions["field_name"],
+): string | null {
+  if (typeof value === "string") {
+    return normalizeStringListItem(value);
   }
 
-  const items = trimmed
-    .split(/\r?\n/)
-    .map(normalizeStringListItem)
-    .filter((item) => item.length > 0);
-
-  if (items.length < minLength || items.length > maxLength) {
+  if (fieldName !== "student_solution_steps" || !isRecord(value)) {
     return null;
   }
 
-  return items;
+  for (const key of ["text", "content", "step", "value"]) {
+    const fieldValue = value[key];
+    if (typeof fieldValue === "string") {
+      return normalizeStringListItem(fieldValue);
+    }
+  }
+
+  return null;
 }
 
 function normalizeStringListItem(value: string): string {
@@ -301,8 +401,10 @@ function normalizeStringListItem(value: string): string {
 function normalizeExtractionDraft(input: {
   student_answer: string;
   student_solution_steps: string[];
+  has_partial_student_steps: boolean;
   extraction_confidence: ExtractionConfidence;
-  warnings: string[];
+  model_warnings: string[];
+  parser_warnings: string[];
 }): {
   student_answer: string;
   student_solution_steps: string[];
@@ -311,27 +413,34 @@ function normalizeExtractionDraft(input: {
 } {
   const hasUnrecognizedAnswer = isUnrecognizedStudentAnswer(input.student_answer);
   const hasEmptySteps = input.student_solution_steps.length === 0;
-  const warnings = [...input.warnings];
+  const parserWarnings = [...input.parser_warnings];
+  const fallbackWarnings: string[] = [];
   const studentSolutionSteps = hasEmptySteps
     ? [getEmptyStepPlaceholder(hasUnrecognizedAnswer)]
     : input.student_solution_steps;
 
   if (hasUnrecognizedAnswer) {
-    warnings.push(
+    fallbackWarnings.push(
       "未识别到清晰学生作答区域，请确认图片中包含学生答案或解题痕迹。",
     );
   }
 
   if (hasEmptySteps) {
-    warnings.push("未识别到清晰学生解题步骤，请确认图片中包含学生过程。");
+    fallbackWarnings.push("未识别到清晰学生解题步骤，请确认图片中包含学生过程。");
   }
 
   return {
     student_answer: input.student_answer,
     student_solution_steps: studentSolutionSteps,
     extraction_confidence:
-      hasUnrecognizedAnswer || hasEmptySteps ? "low" : input.extraction_confidence,
-    warnings: dedupeStrings(warnings).slice(0, 5),
+      hasUnrecognizedAnswer || hasEmptySteps || input.has_partial_student_steps
+        ? "low"
+        : input.extraction_confidence,
+    warnings: dedupeStrings([
+      ...parserWarnings,
+      ...input.model_warnings,
+      ...fallbackWarnings,
+    ]).slice(0, 5),
   };
 }
 
