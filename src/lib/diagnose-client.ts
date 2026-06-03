@@ -200,8 +200,10 @@ function getDebugText(responseBody: Record<string, unknown>): string {
     : "无";
   const questionLength = summary.field_lengths.question_text ?? 0;
   const studentAnswerLength = summary.field_lengths.student_answer ?? 0;
+  const studentStepCount = summary.list_lengths.student_solution_steps ?? 0;
+  const warningCount = summary.list_lengths.warnings ?? 0;
 
-  return `开发诊断：${outputText}；已返回字段 ${presentFields}；缺少字段 ${missingFields}；题干长度 ${questionLength}；学生答案长度 ${studentAnswerLength}。`;
+  return `开发诊断：${outputText}；已返回字段 ${presentFields}；缺少字段 ${missingFields}；题干长度 ${questionLength}；学生答案长度 ${studentAnswerLength}；学生步骤数量 ${studentStepCount}；warning 数量 ${warningCount}。`;
 }
 
 function isModelInvalidOutputError(
@@ -228,7 +230,8 @@ function isModelInvalidOutputError(
     debugSummary.present_fields.every(isString) &&
     Array.isArray(debugSummary.missing_fields) &&
     debugSummary.missing_fields.every(isString) &&
-    isRecord(debugSummary.field_lengths)
+    isRecord(debugSummary.field_lengths) &&
+    isRecord(debugSummary.list_lengths)
   );
 }
 

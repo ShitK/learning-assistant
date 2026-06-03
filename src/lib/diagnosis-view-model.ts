@@ -93,10 +93,12 @@ export function createImageDiagnosisViewModel(
 
 export function createRetainedReportNotice(
   diagnosis: DiagnosisViewModel,
+  errorMessage: string,
 ): string {
-  if (diagnosis.source === "image") {
-    return "当前显示的是上一次成功图片诊断结果，本次请求未生成新报告。";
-  }
+  const prefix =
+    diagnosis.source === "image"
+      ? "当前显示的是上一次成功图片诊断结果，本次图片诊断未生成新报告。"
+      : "当前显示的是样例题结果，本次图片诊断未生成新报告。";
 
-  return "当前显示的是样例题结果，本次图片诊断未生成新报告。";
+  return `${prefix}原因：${errorMessage}`;
 }
