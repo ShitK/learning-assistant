@@ -51,6 +51,7 @@ interface StringListParseOptions {
 interface StringListParseResult {
   items: string[];
   warnings: string[];
+  has_invalid_item: boolean;
 }
 
 interface ParsedStringListItems {
@@ -154,7 +155,7 @@ export function parseVisionExtractionText(
   const warnings = parseStringList(parsed.warnings, {
     field_name: "warnings",
     min_length: 0,
-    max_length: 5,
+    max_length: Number.MAX_SAFE_INTEGER,
   });
   if (!warnings) {
     return invalidOutput("模型输出的 warnings 不合法。", debugSummary);
@@ -163,8 +164,10 @@ export function parseVisionExtractionText(
   const normalized = normalizeExtractionDraft({
     student_answer: parsed.student_answer.trim(),
     student_solution_steps: steps.items,
+    has_partial_student_steps: steps.has_invalid_item,
     extraction_confidence: parsed.extraction_confidence,
-    warnings: [...warnings.items, ...steps.warnings],
+    model_warnings: warnings.items,
+    parser_warnings: steps.warnings,
   });
 
   return {
@@ -311,6 +314,7 @@ function parseStringList(
   return {
     items,
     warnings,
+    has_invalid_item: parsedItems.dropped_invalid_item,
   };
 }
 
@@ -342,15 +346,21 @@ function parseStringListArray(
   }
 
   let droppedInvalidItem = false;
-  const items = value.map((item) => {
+  const items: string[] = [];
+
+  for (const item of value) {
+    if (Array.isArray(item)) {
+      return null;
+    }
+
     const parsedItem = parseStringListItem(item, fieldName);
     if (!parsedItem) {
       droppedInvalidItem = true;
-      return "";
+      continue;
     }
 
-    return parsedItem;
-  });
+    items.push(parsedItem);
+  }
 
   return {
     items,
@@ -391,8 +401,10 @@ function normalizeStringListItem(value: string): string {
 function normalizeExtractionDraft(input: {
   student_answer: string;
   student_solution_steps: string[];
+  has_partial_student_steps: boolean;
   extraction_confidence: ExtractionConfidence;
-  warnings: string[];
+  model_warnings: string[];
+  parser_warnings: string[];
 }): {
   student_answer: string;
   student_solution_steps: string[];
@@ -401,27 +413,34 @@ function normalizeExtractionDraft(input: {
 } {
   const hasUnrecognizedAnswer = isUnrecognizedStudentAnswer(input.student_answer);
   const hasEmptySteps = input.student_solution_steps.length === 0;
-  const warnings = [...input.warnings];
+  const parserWarnings = [...input.parser_warnings];
+  const fallbackWarnings: string[] = [];
   const studentSolutionSteps = hasEmptySteps
     ? [getEmptyStepPlaceholder(hasUnrecognizedAnswer)]
     : input.student_solution_steps;
 
   if (hasUnrecognizedAnswer) {
-    warnings.push(
+    fallbackWarnings.push(
       "未识别到清晰学生作答区域，请确认图片中包含学生答案或解题痕迹。",
     );
   }
 
   if (hasEmptySteps) {
-    warnings.push("未识别到清晰学生解题步骤，请确认图片中包含学生过程。");
+    fallbackWarnings.push("未识别到清晰学生解题步骤，请确认图片中包含学生过程。");
   }
 
   return {
     student_answer: input.student_answer,
     student_solution_steps: studentSolutionSteps,
     extraction_confidence:
-      hasUnrecognizedAnswer || hasEmptySteps ? "low" : input.extraction_confidence,
-    warnings: dedupeStrings(warnings).slice(0, 5),
+      hasUnrecognizedAnswer || hasEmptySteps || input.has_partial_student_steps
+        ? "low"
+        : input.extraction_confidence,
+    warnings: dedupeStrings([
+      ...parserWarnings,
+      ...input.model_warnings,
+      ...fallbackWarnings,
+    ]).slice(0, 5),
   };
 }
 

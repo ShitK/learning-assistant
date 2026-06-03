@@ -213,10 +213,57 @@ assert.deepEqual(noisyStepItems.value.student_solution_steps, [
   "求导",
   "讨论参数",
 ]);
+assert.equal(noisyStepItems.value.extraction_confidence, "low");
 assert.equal(
   noisyStepItems.value.warnings.includes("部分学生步骤为空或格式不完整，已忽略。"),
   true,
 );
+
+const nestedStepItems = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_answer: "答案",
+    student_solution_steps: ["1. 求导", ["2. 讨论参数"]],
+    standard_solution_draft: "标准解法",
+    extraction_confidence: "medium",
+    warnings: [],
+  }),
+);
+assert.equal(nestedStepItems.ok, false);
+assert.equal(
+  nestedStepItems.error.message,
+  "模型输出的 student_solution_steps 不合法。",
+);
+
+const duplicateWarnings = parseVisionExtractionText(
+  JSON.stringify({
+    question_text: "题干",
+    student_answer: "答案",
+    student_solution_steps: [
+      "1. 求导",
+      { unsupported: "忽略这个对象" },
+      { text: "2. 讨论参数" },
+    ],
+    standard_solution_draft: "标准解法",
+    extraction_confidence: "medium",
+    warnings: [
+      "模型警告 A",
+      "模型警告 A",
+      "模型警告 B",
+      "模型警告 C",
+      "模型警告 D",
+      "模型警告 E",
+    ],
+  }),
+);
+assert.equal(duplicateWarnings.ok, true);
+assert.deepEqual(duplicateWarnings.value.warnings, [
+  "部分学生步骤为空或格式不完整，已忽略。",
+  "模型警告 A",
+  "模型警告 B",
+  "模型警告 C",
+  "模型警告 D",
+]);
 
 const overlongStepItems = parseVisionExtractionText(
   JSON.stringify({
