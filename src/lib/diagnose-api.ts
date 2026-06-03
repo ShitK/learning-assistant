@@ -10,6 +10,7 @@ import type {
   Severity,
   StudentProfile,
 } from "@/data/mathtrace-demo";
+import type { ProviderFailureDebug } from "@/lib/provider-error";
 import type { VisionExtractionDebugSummary } from "@/lib/vision-extraction-parser";
 
 export type DiagnoseTaskType = "sample_diagnosis" | "image_diagnosis";
@@ -125,6 +126,7 @@ export interface DiagnoseErrorResponse {
   fallback_used: boolean;
   warnings: string[];
   debug_summary?: VisionExtractionDebugSummary;
+  provider_debug?: ProviderFailureDebug;
 }
 
 export type DiagnoseApiResponse =
@@ -222,6 +224,7 @@ export function createDiagnoseError(
   recoverable: boolean,
   fallbackUsed = false,
   debugSummary?: VisionExtractionDebugSummary,
+  providerDebug?: ProviderFailureDebug,
 ): DiagnoseErrorResponse {
   return {
     error: {
@@ -232,6 +235,7 @@ export function createDiagnoseError(
     fallback_used: fallbackUsed,
     warnings: [],
     debug_summary: debugSummary,
+    provider_debug: providerDebug,
   };
 }
 

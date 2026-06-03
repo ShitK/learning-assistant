@@ -106,6 +106,7 @@ async function handleImageDiagnoseRequest(
         extractionResult.error.recoverable,
         shouldMarkFallbackUsed(extractionResult.error),
         getSafeDebugSummary(extractionResult.error),
+        extractionResult.error.provider_debug,
       ),
     };
   }

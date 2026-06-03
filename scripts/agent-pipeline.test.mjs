@@ -265,6 +265,28 @@ await assertServiceError(
   "model_request_failed",
   true,
 );
+
+const providerDebug = {
+  provider_name: "mimo",
+  provider_stage: "vision_llm",
+  failure_kind: "http_error",
+  http_status: 502,
+};
+
+const providerDebugResponse = await handleDiagnoseRequest(createImageRequest(), {
+  vision_provider: createErrorVisionProvider(
+    "model_request_failed",
+    undefined,
+    providerDebug,
+  ),
+});
+
+assert.equal(providerDebugResponse.status, 502);
+assert.deepEqual(providerDebugResponse.body.provider_debug, providerDebug);
+assert.equal(
+  JSON.stringify(providerDebugResponse.body.provider_debug).includes("iVBOR"),
+  false,
+);
 await assertServiceError(
   handleDiagnoseRequest(createImageRequest(), {
     vision_provider: createErrorVisionProvider("model_invalid_output"),
@@ -502,7 +524,11 @@ function createFakeVisionProvider() {
   };
 }
 
-function createErrorVisionProvider(code, debugSummary = undefined) {
+function createErrorVisionProvider(
+  code,
+  debugSummary = undefined,
+  providerDebug = undefined,
+) {
   return {
     async extractQuestionFromImage() {
       return {
@@ -512,6 +538,7 @@ function createErrorVisionProvider(code, debugSummary = undefined) {
           message: `fake ${code}`,
           recoverable: true,
           debug_summary: debugSummary,
+          provider_debug: providerDebug,
         },
       };
     },
