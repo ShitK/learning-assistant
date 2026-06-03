@@ -117,6 +117,7 @@ GET /api/history
 - 请求体使用 Zod 或等价类型守卫做运行时校验。
 - 响应体也使用 Zod 或等价 schema 做内部校验，尤其是模型输出。
 - 错误响应必须稳定，包括 `invalid_request`、`invalid_json`、`missing_image`、`invalid_image`、`image_too_large`、`model_not_configured`、`model_timeout`、`model_request_failed`、`model_invalid_output` 等。
+- Provider/OCR 可观测性边界：P1 不保存原始 provider 响应，也不记录图片内容。请求失败只暴露安全元数据 `provider_debug`，用于区分 `http_error`、`invalid_json`、`network_failed` 和 `timeout`。未来 OCR provider 接入时应复用这一错误结构，而不是新增一套前端不可识别的错误通道。
 
 Zod 是 TypeScript-first 的 schema validation 工具，适合在 TypeScript 项目里同时获得运行时校验和静态类型推导。参考：[Zod](https://zod.dev/)。
 
