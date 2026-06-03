@@ -65,7 +65,7 @@ const DEFAULT_MIMO_BASE_URL =
 const DEFAULT_MIMO_MODEL = "mimo-v2.5";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const FORBIDDEN_OUTPUT_KEY_PATTERN =
-  /"?(?:memory_delta|student_profile|mistake_history|knowledge_mastery_changes|mistake_cause_changes)"?\s*:/;
+  /["']?(?:memory_delta|student_profile|mistake_history|knowledge_mastery_changes|mistake_cause_changes)["']?\s*:/;
 
 export function createMimoProviderConfigFromEnv(
   env: Record<string, string | undefined>,

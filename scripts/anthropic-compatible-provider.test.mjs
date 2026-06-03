@@ -245,6 +245,40 @@ assert.equal(malformedForbiddenRetryResult.ok, false);
 assert.equal(malformedForbiddenRetryResult.error.code, "model_invalid_output");
 assert.equal(malformedForbiddenRetryCalls.length, 1);
 
+const singleQuotedForbiddenRetryCalls = [];
+const singleQuotedForbiddenRetryProvider =
+  createAnthropicCompatibleVisionProvider({
+    base_url: "https://example.test/anthropic",
+    model: "mimo-v2.5",
+    api_key: "secret-key-for-test",
+    timeout_ms: 1000,
+    fetch_impl: async () => {
+      singleQuotedForbiddenRetryCalls.push("called");
+
+      return new Response(
+        JSON.stringify({
+          content: [
+            {
+              type: "text",
+              text: "{'question_text':'题干','memory_delta':{'should_persist':true}",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    },
+  });
+
+const singleQuotedForbiddenRetryResult =
+  await singleQuotedForbiddenRetryProvider.extractQuestionFromImage({
+    image_base64: "iVBORw0KGgo=",
+    mime_type: "image/png",
+    student_profile_summary: "demo profile",
+  });
+assert.equal(singleQuotedForbiddenRetryResult.ok, false);
+assert.equal(singleQuotedForbiddenRetryResult.error.code, "model_invalid_output");
+assert.equal(singleQuotedForbiddenRetryCalls.length, 1);
+
 const timeoutProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
   model: "mimo-v2.5",
