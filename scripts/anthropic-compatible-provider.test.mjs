@@ -212,6 +212,39 @@ assert.equal(forbiddenRetryResult.ok, false);
 assert.equal(forbiddenRetryResult.error.code, "model_invalid_output");
 assert.equal(forbiddenRetryCalls.length, 1);
 
+const malformedForbiddenRetryCalls = [];
+const malformedForbiddenRetryProvider = createAnthropicCompatibleVisionProvider({
+  base_url: "https://example.test/anthropic",
+  model: "mimo-v2.5",
+  api_key: "secret-key-for-test",
+  timeout_ms: 1000,
+  fetch_impl: async () => {
+    malformedForbiddenRetryCalls.push("called");
+
+    return new Response(
+      JSON.stringify({
+        content: [
+          {
+            type: "text",
+            text: '{"question_text":"题干","memory_delta":{"should_persist":true}',
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  },
+});
+
+const malformedForbiddenRetryResult =
+  await malformedForbiddenRetryProvider.extractQuestionFromImage({
+    image_base64: "iVBORw0KGgo=",
+    mime_type: "image/png",
+    student_profile_summary: "demo profile",
+  });
+assert.equal(malformedForbiddenRetryResult.ok, false);
+assert.equal(malformedForbiddenRetryResult.error.code, "model_invalid_output");
+assert.equal(malformedForbiddenRetryCalls.length, 1);
+
 const timeoutProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
   model: "mimo-v2.5",
