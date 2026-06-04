@@ -68,6 +68,31 @@ assert.equal(
   true,
 );
 
+assert.deepEqual(
+  createStandardSolutionBlocks(
+    "(1) f(x) 的定义域为 (0,+∞)，f'(x) = 1/x - a。(2) 由 (1) 知，a ≤ 0 时不符合题意。② f(e) < 0。③ 1/a < e。",
+  ),
+  [
+    {
+      kind: "ordered",
+      marker: "1",
+      text: "f(x) 的定义域为 (0,+∞)，f'(x) = 1/x - a。",
+    },
+    {
+      kind: "ordered",
+      marker: "2",
+      text: "由 (1) 知，a ≤ 0 时不符合题意。",
+    },
+    { kind: "ordered", marker: "3", text: "f(e) < 0。" },
+    { kind: "ordered", marker: "4", text: "1/a < e。" },
+  ],
+);
+
+assert.deepEqual(createStandardSolutionBlocks("（1）先求导。（2）再讨论。"), [
+  { kind: "ordered", marker: "1", text: "先求导。" },
+  { kind: "ordered", marker: "2", text: "再讨论。" },
+]);
+
 assert.equal(
   createStandardSolutionDisplayText(
     "当 a ≤ 0 时， f'(x) > 0 在 (0,+∞) 上恒成立。",

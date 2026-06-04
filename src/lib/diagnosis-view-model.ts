@@ -217,7 +217,7 @@ export function createStandardSolutionBlocks(
   return sentences.map((sentence, index) => ({
     kind: "ordered",
     marker: String(index + 1),
-    text: sentence,
+    text: stripLeadingSolutionMarker(sentence),
   }));
 }
 
@@ -252,6 +252,13 @@ function splitStandardSolutionSentences(text: string): string[] {
     .split(/(?<=[。；])\s*/)
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence.length > 0);
+}
+
+function stripLeadingSolutionMarker(text: string): string {
+  return text
+    .replace(/^\s*[\(（]?\d+[\)）]\s*/, "")
+    .replace(/^\s*[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
+    .trim();
 }
 
 function decorateLooseMathText(text: string): string {

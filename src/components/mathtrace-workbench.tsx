@@ -1106,13 +1106,13 @@ function StandardSolutionContent({
           {orderedBlocks.map((orderedBlock) => (
             <li
               key={`${orderedBlock.marker}-${orderedBlock.text}`}
-              className="flex items-start gap-3 text-sm leading-7 text-[var(--charcoal)]"
+              className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-4 text-sm leading-7 text-[var(--charcoal)]"
               value={Number(orderedBlock.marker)}
             >
-              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-xs font-semibold text-[var(--mocha)]">
+              <span className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-semibold text-[var(--mocha)]">
                 {orderedBlock.marker}
               </span>
-              <span>
+              <span className="min-w-0">
                 <MathText
                   text={createStandardSolutionDisplayText(orderedBlock.text)}
                 />
@@ -1146,13 +1146,13 @@ function StandardSolutionContent({
           {bulletBlocks.map((bulletBlock, bulletIndex) => (
             <li
               key={`${bulletIndex}-${bulletBlock.text}`}
-              className="flex items-start gap-3 text-sm leading-7 text-[var(--charcoal)]"
+              className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-4 text-sm leading-7 text-[var(--charcoal)]"
             >
               <span
-                className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mocha)]"
+                className="mt-3 ml-2.5 h-1.5 w-1.5 rounded-full bg-[var(--mocha)]"
                 aria-hidden="true"
               />
-              <span>
+              <span className="min-w-0">
                 <MathText
                   text={createStandardSolutionDisplayText(bulletBlock.text)}
                 />
