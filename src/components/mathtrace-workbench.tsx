@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type { ChangeEvent, ReactElement, ReactNode } from "react";
 import { ImageUploadPanel } from "@/components/image-upload-panel";
 import { MathText } from "@/components/math-text";
 import {
@@ -18,15 +18,22 @@ import {
   writeStoredStudentProfile,
 } from "@/lib/demo-state";
 import {
-  requestImageDiagnosis,
+  requestConfirmedImageDiagnosis,
+  requestImageExtractionReview,
   requestSampleDiagnosis,
   shouldPersistDiagnoseProfile,
 } from "@/lib/diagnose-client";
 import {
+  canConfirmEditableExtractionDraft,
+  createAgentTimelineStatusLabel,
+  createEditableExtractionDraft,
+  createExtractionReviewRetainedReportNotice,
   createImageDiagnosisViewModel,
   createRetainedReportNotice,
   createSampleDiagnosisViewModel,
+  createVisionExtractionDraftFromEditableDraft,
 } from "@/lib/diagnosis-view-model";
+import { parseConfirmedExtractionDraft } from "@/lib/image-confirmation";
 import type {
   AgentStep,
   KnowledgePoint,
@@ -36,7 +43,10 @@ import type {
   Severity,
   StudentProfile,
 } from "@/data/mathtrace-demo";
-import type { DiagnosisViewModel } from "@/lib/diagnosis-view-model";
+import type {
+  DiagnosisViewModel,
+  EditableExtractionDraft,
+} from "@/lib/diagnosis-view-model";
 import type { PreparedImageUpload } from "@/lib/image-upload-client";
 import { clampScore } from "@/lib/utils";
 
@@ -83,6 +93,8 @@ export function MathTraceWorkbench(): ReactElement {
   const [imageUploadErrorMessage, setImageUploadErrorMessage] = useState<
     string | null
   >(null);
+  const [editableExtractionDraft, setEditableExtractionDraft] =
+    useState<EditableExtractionDraft | null>(null);
   const [diagnosisView, setDiagnosisView] = useState<DiagnosisViewModel>(() =>
     createSampleDiagnosisViewModel(selectedSample),
   );
@@ -99,16 +111,22 @@ export function MathTraceWorkbench(): ReactElement {
   const [completedStepCount, setCompletedStepCount] = useState(
     selectedSample.steps.length,
   );
+  const [isTimelineAnimating, setIsTimelineAnimating] = useState(false);
   const [isRequestPending, setIsRequestPending] = useState(false);
   const [apiErrorMessage, setApiErrorMessage] = useState<string | null>(null);
   const [retainedReportNotice, setRetainedReportNotice] = useState<string | null>(
     null,
   );
   const isDiagnosisRequestLockedRef = useRef(false);
-  const isTimelineRunning = completedStepCount < diagnosisView.steps.length;
+  const isTimelineRunning =
+    isTimelineAnimating && completedStepCount < diagnosisView.steps.length;
   const isDiagnosing = isRequestPending || isTimelineRunning;
 
   useEffect(() => {
+    if (!isTimelineAnimating) {
+      return;
+    }
+
     if (completedStepCount >= diagnosisView.steps.length) {
       return;
     }
@@ -120,18 +138,20 @@ export function MathTraceWorkbench(): ReactElement {
     }, 360);
 
     return () => window.clearTimeout(timeoutId);
-  }, [completedStepCount, diagnosisView.steps.length]);
+  }, [completedStepCount, diagnosisView.steps.length, isTimelineAnimating]);
 
   function handleSelectSample(sampleId: SampleQuestionId): void {
     const nextSample = getSampleById(sampleId);
     setSelectedSampleId(sampleId);
     setDiagnosisMode("sample");
     setDiagnosisView(createSampleDiagnosisViewModel(nextSample));
+    setEditableExtractionDraft(null);
     setApiErrorMessage(null);
     setRetainedReportNotice(null);
     setImageUploadErrorMessage(null);
     setProfilePreview(null);
     setCompletedStepCount(nextSample.steps.length);
+    setIsTimelineAnimating(false);
   }
 
   function handleSelectMode(nextMode: DiagnosisMode): void {
@@ -140,9 +160,11 @@ export function MathTraceWorkbench(): ReactElement {
     }
 
     setDiagnosisMode(nextMode);
+    setEditableExtractionDraft(null);
     setApiErrorMessage(null);
     setRetainedReportNotice(null);
     setImageUploadErrorMessage(null);
+    setIsTimelineAnimating(false);
 
     if (nextMode === "sample") {
       const nextSample = getSampleById(selectedSampleId);
@@ -154,6 +176,7 @@ export function MathTraceWorkbench(): ReactElement {
 
   function handleImagePrepareStart(): void {
     setIsImagePreparing(true);
+    setEditableExtractionDraft(null);
     setImageUploadErrorMessage(null);
     setApiErrorMessage(null);
     setRetainedReportNotice(null);
@@ -161,12 +184,14 @@ export function MathTraceWorkbench(): ReactElement {
 
   function handleImagePrepared(image: PreparedImageUpload): void {
     setSelectedImage(image);
+    setEditableExtractionDraft(null);
     setIsImagePreparing(false);
     setImageUploadErrorMessage(null);
   }
 
   function handleImagePrepareError(message: string): void {
     setSelectedImage(null);
+    setEditableExtractionDraft(null);
     setIsImagePreparing(false);
     setImageUploadErrorMessage(message);
   }
@@ -177,6 +202,7 @@ export function MathTraceWorkbench(): ReactElement {
     }
 
     setSelectedImage(null);
+    setEditableExtractionDraft(null);
     setImageUploadErrorMessage(null);
   }
 
@@ -186,6 +212,27 @@ export function MathTraceWorkbench(): ReactElement {
     }
 
     void requestDiagnosis();
+  }
+
+  function handleUpdateEditableExtractionDraft(
+    draft: EditableExtractionDraft,
+  ): void {
+    setEditableExtractionDraft(draft);
+    setApiErrorMessage(null);
+  }
+
+  function handleConfirmExtraction(): void {
+    if (
+      isDiagnosing ||
+      isImagePreparing ||
+      isDiagnosisRequestLockedRef.current ||
+      editableExtractionDraft === null ||
+      !canConfirmEditableExtractionDraft(editableExtractionDraft)
+    ) {
+      return;
+    }
+
+    void requestConfirmedDiagnosis(editableExtractionDraft);
   }
 
   function handleResetProfile(): void {
@@ -222,7 +269,9 @@ export function MathTraceWorkbench(): ReactElement {
     });
     setApiErrorMessage(null);
     setImageUploadErrorMessage(null);
+    setEditableExtractionDraft(null);
     setCompletedStepCount(0);
+    setIsTimelineAnimating(true);
     setIsRequestPending(true);
 
     try {
@@ -251,15 +300,93 @@ export function MathTraceWorkbench(): ReactElement {
         throw new Error("请先上传一张数学错题图片。");
       }
 
-      const diagnosis = await requestImageDiagnosis({
+      const extractionReview = await requestImageExtractionReview({
         fetcher: window.fetch.bind(window),
         image_base64: selectedImage.image_base64,
         image_mime_type: selectedImage.image_mime_type,
         student_profile: profileBeforeDiagnosis,
         mistake_history: mistakeHistory,
       });
+      setEditableExtractionDraft(
+        createEditableExtractionDraft(extractionReview),
+      );
+      setRetainedReportNotice(
+        createExtractionReviewRetainedReportNotice(diagnosisView),
+      );
+      setCompletedStepCount(1);
+      setIsTimelineAnimating(false);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "诊断接口暂时不可用，已保留当前结果。";
+      setApiErrorMessage(message);
+      if (diagnosisMode === "sample") {
+        setDiagnosisView(createSampleDiagnosisViewModel(fallbackSample));
+        setRetainedReportNotice(null);
+      } else {
+        setRetainedReportNotice(
+          createRetainedReportNotice(diagnosisView, message),
+        );
+      }
+      setIsTimelineAnimating(false);
+      setCompletedStepCount(
+        diagnosisMode === "sample"
+          ? fallbackSample.steps.length
+          : diagnosisView.steps.length,
+      );
+      setProfilePreview({
+        beforeProfile: profileBeforeDiagnosis,
+        afterProfile: null,
+      });
+    } finally {
+      setIsRequestPending(false);
+      isDiagnosisRequestLockedRef.current = false;
+    }
+  }
+
+  async function requestConfirmedDiagnosis(
+    draft: EditableExtractionDraft,
+  ): Promise<void> {
+    if (isDiagnosisRequestLockedRef.current) {
+      return;
+    }
+
+    const confirmedExtractionDraft =
+      createVisionExtractionDraftFromEditableDraft(draft);
+    const parsedDraft = parseConfirmedExtractionDraft(confirmedExtractionDraft);
+
+    if (!parsedDraft.ok) {
+      setApiErrorMessage(parsedDraft.message);
+      setCompletedStepCount(1);
+      setIsTimelineAnimating(false);
+      return;
+    }
+
+    isDiagnosisRequestLockedRef.current = true;
+    const profileBeforeDiagnosis = studentProfile;
+    setProfilePreview({
+      beforeProfile: profileBeforeDiagnosis,
+      afterProfile: null,
+    });
+    setApiErrorMessage(null);
+    setImageUploadErrorMessage(null);
+    setRetainedReportNotice(null);
+    setCompletedStepCount(0);
+    setIsTimelineAnimating(true);
+    setIsRequestPending(true);
+
+    try {
+      const diagnosis = await requestConfirmedImageDiagnosis({
+        fetcher: window.fetch.bind(window),
+        confirmation_token: draft.confirmation_token,
+        confirmed_extraction: parsedDraft.value,
+        student_profile: profileBeforeDiagnosis,
+        mistake_history: mistakeHistory,
+      });
       const nextView = createImageDiagnosisViewModel(diagnosis);
       setDiagnosisView(nextView);
+      setEditableExtractionDraft(null);
       setRetainedReportNotice(null);
 
       if (shouldPersistDiagnoseProfile(diagnosis)) {
@@ -281,19 +408,9 @@ export function MathTraceWorkbench(): ReactElement {
           ? error.message
           : "诊断接口暂时不可用，已保留当前结果。";
       setApiErrorMessage(message);
-      if (diagnosisMode === "sample") {
-        setDiagnosisView(createSampleDiagnosisViewModel(fallbackSample));
-        setRetainedReportNotice(null);
-      } else {
-        setRetainedReportNotice(
-          createRetainedReportNotice(diagnosisView, message),
-        );
-      }
-      setCompletedStepCount(
-        diagnosisMode === "sample"
-          ? fallbackSample.steps.length
-          : diagnosisView.steps.length,
-      );
+      setRetainedReportNotice(createRetainedReportNotice(diagnosisView, message));
+      setCompletedStepCount(1);
+      setIsTimelineAnimating(false);
       setProfilePreview({
         beforeProfile: profileBeforeDiagnosis,
         afterProfile: null,
@@ -337,6 +454,8 @@ export function MathTraceWorkbench(): ReactElement {
             steps={diagnosisView.steps}
             completedStepCount={completedStepCount}
             isDiagnosing={isDiagnosing}
+            isAwaitingConfirmation={editableExtractionDraft !== null}
+            hasRetainedReportNotice={retainedReportNotice !== null}
           />
 
           <div className="grid items-stretch gap-5 lg:grid-cols-2">
@@ -345,6 +464,7 @@ export function MathTraceWorkbench(): ReactElement {
               selectedSample={selectedSample}
               selectedSampleId={selectedSampleId}
               selectedImage={selectedImage}
+              editableExtractionDraft={editableExtractionDraft}
               isDiagnosing={isDiagnosing}
               isImagePreparing={isImagePreparing}
               apiErrorMessage={apiErrorMessage}
@@ -352,6 +472,8 @@ export function MathTraceWorkbench(): ReactElement {
               onSelectMode={handleSelectMode}
               onSelectSample={handleSelectSample}
               onStartDiagnosis={handleStartDiagnosis}
+              onUpdateEditableExtractionDraft={handleUpdateEditableExtractionDraft}
+              onConfirmExtraction={handleConfirmExtraction}
               onImagePrepareStart={handleImagePrepareStart}
               onImagePrepared={handleImagePrepared}
               onImagePrepareError={handleImagePrepareError}
@@ -418,6 +540,7 @@ function MistakeInputCard({
   selectedSample,
   selectedSampleId,
   selectedImage,
+  editableExtractionDraft,
   isDiagnosing,
   isImagePreparing,
   apiErrorMessage,
@@ -425,6 +548,8 @@ function MistakeInputCard({
   onSelectMode,
   onSelectSample,
   onStartDiagnosis,
+  onUpdateEditableExtractionDraft,
+  onConfirmExtraction,
   onImagePrepareStart,
   onImagePrepared,
   onImagePrepareError,
@@ -434,6 +559,7 @@ function MistakeInputCard({
   selectedSample: SampleDiagnosis;
   selectedSampleId: SampleQuestionId;
   selectedImage: PreparedImageUpload | null;
+  editableExtractionDraft: EditableExtractionDraft | null;
   isDiagnosing: boolean;
   isImagePreparing: boolean;
   apiErrorMessage: string | null;
@@ -441,6 +567,8 @@ function MistakeInputCard({
   onSelectMode: (mode: DiagnosisMode) => void;
   onSelectSample: (sampleId: SampleQuestionId) => void;
   onStartDiagnosis: () => void;
+  onUpdateEditableExtractionDraft: (draft: EditableExtractionDraft) => void;
+  onConfirmExtraction: () => void;
   onImagePrepareStart: () => void;
   onImagePrepared: (image: PreparedImageUpload) => void;
   onImagePrepareError: (message: string) => void;
@@ -449,6 +577,29 @@ function MistakeInputCard({
   const canStartDiagnosis =
     !isDiagnosing &&
     (mode === "sample" || (selectedImage !== null && !isImagePreparing));
+  const canConfirmExtraction =
+    editableExtractionDraft !== null &&
+    canConfirmEditableExtractionDraft(editableExtractionDraft) &&
+    !isDiagnosing &&
+    !isImagePreparing;
+
+  function handleEditableDraftChange(
+    field:
+      | "question_text"
+      | "student_answer"
+      | "steps_text"
+      | "standard_solution_draft",
+    event: ChangeEvent<HTMLTextAreaElement>,
+  ): void {
+    if (editableExtractionDraft === null) {
+      return;
+    }
+
+    onUpdateEditableExtractionDraft({
+      ...editableExtractionDraft,
+      [field]: event.target.value,
+    });
+  }
 
   return (
     <div className="mathtrace-card h-full p-5 sm:p-6">
@@ -535,6 +686,123 @@ function MistakeInputCard({
             onPrepareError={onImagePrepareError}
             onClear={onClearImage}
           />
+
+          {editableExtractionDraft ? (
+            <div className="mt-4 rounded-[16px] bg-[var(--oat)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-[var(--charcoal)]">
+                  识别结果确认
+                </p>
+                <Tag
+                  tone={
+                    editableExtractionDraft.extraction_confidence === "low"
+                      ? "amber"
+                      : "green"
+                  }
+                >
+                  置信度：{editableExtractionDraft.extraction_confidence}
+                </Tag>
+              </div>
+
+              {editableExtractionDraft.extraction_confidence === "low" ? (
+                <p className="mt-3 rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]">
+                  模型置信度为 low。你仍可确认生成报告，但本次不会写入长期画像。
+                </p>
+              ) : null}
+
+              {editableExtractionDraft.warnings.length > 0 ? (
+                <ul className="mt-3 grid gap-2">
+                  {editableExtractionDraft.warnings.map((warning, index) => (
+                    <li
+                      key={`${index}-${warning}`}
+                      className="rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]"
+                    >
+                      {warning}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <div className="mt-4 grid gap-3">
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-semibold text-[var(--mocha)]">
+                    题干
+                  </span>
+                  <textarea
+                    value={editableExtractionDraft.question_text}
+                    rows={4}
+                    disabled={isDiagnosing || isImagePreparing}
+                    onChange={(event) =>
+                      handleEditableDraftChange("question_text", event)
+                    }
+                    className="min-h-24 resize-y rounded-[16px] border border-[var(--light-gray)] bg-white px-3 py-2 text-sm leading-6 text-[var(--charcoal)] outline-none focus:border-[var(--mocha)] disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </label>
+
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-semibold text-[var(--mocha)]">
+                    学生答案
+                  </span>
+                  <textarea
+                    value={editableExtractionDraft.student_answer}
+                    rows={3}
+                    disabled={isDiagnosing || isImagePreparing}
+                    onChange={(event) =>
+                      handleEditableDraftChange("student_answer", event)
+                    }
+                    className="min-h-20 resize-y rounded-[16px] border border-[var(--light-gray)] bg-white px-3 py-2 text-sm leading-6 text-[var(--charcoal)] outline-none focus:border-[var(--mocha)] disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </label>
+
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-semibold text-[var(--mocha)]">
+                    解题步骤
+                  </span>
+                  <textarea
+                    value={editableExtractionDraft.steps_text}
+                    rows={4}
+                    disabled={isDiagnosing || isImagePreparing}
+                    onChange={(event) =>
+                      handleEditableDraftChange("steps_text", event)
+                    }
+                    className="min-h-24 resize-y rounded-[16px] border border-[var(--light-gray)] bg-white px-3 py-2 text-sm leading-6 text-[var(--charcoal)] outline-none focus:border-[var(--mocha)] disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </label>
+
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-semibold text-[var(--mocha)]">
+                    标准解法草稿
+                  </span>
+                  <textarea
+                    value={editableExtractionDraft.standard_solution_draft}
+                    rows={4}
+                    disabled={isDiagnosing || isImagePreparing}
+                    onChange={(event) =>
+                      handleEditableDraftChange(
+                        "standard_solution_draft",
+                        event,
+                      )
+                    }
+                    className="min-h-24 resize-y rounded-[16px] border border-[var(--light-gray)] bg-white px-3 py-2 text-sm leading-6 text-[var(--charcoal)] outline-none focus:border-[var(--mocha)] disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs leading-5 text-[var(--warm-gray)]">
+                  编辑后可生成报告；画像写入以服务端确认结果为准。
+                </p>
+                <button
+                  type="button"
+                  disabled={!canConfirmExtraction}
+                  onClick={onConfirmExtraction}
+                  className="min-h-10 rounded-full bg-[var(--deep-green)] px-5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(45,95,77,0.16)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--deep-green)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isDiagnosing ? "生成报告中" : "确认生成报告"}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <>
@@ -768,11 +1036,21 @@ function AgentTimeline({
   steps,
   completedStepCount,
   isDiagnosing,
+  isAwaitingConfirmation,
+  hasRetainedReportNotice,
 }: {
   steps: AgentStep[];
   completedStepCount: number;
   isDiagnosing: boolean;
+  isAwaitingConfirmation: boolean;
+  hasRetainedReportNotice: boolean;
 }): ReactElement {
+  const statusLabel = createAgentTimelineStatusLabel({
+    isDiagnosing,
+    isAwaitingConfirmation,
+    hasRetainedReportNotice,
+  });
+
   return (
     <section className="mathtrace-card overflow-hidden p-5 text-[var(--charcoal)] sm:p-6">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
@@ -786,7 +1064,7 @@ function AgentTimeline({
           </p>
         </div>
         <span className="w-fit rounded-full bg-[var(--oat)] px-3 py-1 text-xs font-medium text-[var(--warm-gray)]">
-          {isDiagnosing ? "正在分析" : "诊断完成"}
+          {statusLabel}
         </span>
       </div>
 

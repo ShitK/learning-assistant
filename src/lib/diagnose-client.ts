@@ -1,4 +1,5 @@
 import {
+  isDiagnoseImageExtractionResponse,
   isDiagnoseImageSuccessResponse,
   isDiagnoseSuccessResponse,
 } from "@/lib/diagnose-api";
@@ -6,6 +7,7 @@ import { isProviderFailureDebug } from "@/lib/provider-error";
 import { isRecord } from "@/lib/utils";
 import type {
   DiagnoseApiResponse,
+  DiagnoseImageExtractionResponse,
   DiagnoseImageSuccessResponse,
   DiagnoseSuccessResponse,
   DiagnoseErrorResponse,
@@ -15,6 +17,7 @@ import type {
   SampleQuestionId,
   StudentProfile,
 } from "@/data/mathtrace-demo";
+import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
 
 export interface SampleDiagnosePayload {
   student_id: string;
@@ -31,6 +34,15 @@ export interface ImageDiagnosePayload {
   sample_question_id: null;
   image_base64: string;
   image_mime_type: "image/png" | "image/jpeg" | "image/webp";
+  student_profile: StudentProfile;
+  mistake_history: MistakeHistoryItem[];
+}
+
+export interface ConfirmedImageDiagnosePayload {
+  student_id: string;
+  task_type: "confirmed_image_diagnosis";
+  confirmation_token: string;
+  confirmed_extraction: VisionExtractionDraft;
   student_profile: StudentProfile;
   mistake_history: MistakeHistoryItem[];
 }
@@ -67,6 +79,22 @@ export function buildImageDiagnosePayload(input: {
   };
 }
 
+export function buildConfirmedImageDiagnosePayload(input: {
+  confirmation_token: string;
+  confirmed_extraction: VisionExtractionDraft;
+  student_profile: StudentProfile;
+  mistake_history: MistakeHistoryItem[];
+}): ConfirmedImageDiagnosePayload {
+  return {
+    student_id: input.student_profile.student_id,
+    task_type: "confirmed_image_diagnosis",
+    confirmation_token: input.confirmation_token,
+    confirmed_extraction: input.confirmed_extraction,
+    student_profile: input.student_profile,
+    mistake_history: input.mistake_history,
+  };
+}
+
 export async function requestSampleDiagnosis(input: {
   fetcher: typeof fetch;
   sample_question_id: SampleQuestionId;
@@ -85,16 +113,36 @@ export async function requestSampleDiagnosis(input: {
   return responseBody;
 }
 
-export async function requestImageDiagnosis(input: {
+export async function requestImageExtractionReview(input: {
   fetcher: typeof fetch;
   image_base64: string;
   image_mime_type: ImageDiagnosePayload["image_mime_type"];
   student_profile: StudentProfile;
   mistake_history: MistakeHistoryItem[];
-}): Promise<DiagnoseImageSuccessResponse> {
+}): Promise<DiagnoseImageExtractionResponse> {
   const responseBody = await postDiagnose(
     input.fetcher,
     buildImageDiagnosePayload(input),
+  );
+
+  if (!isDiagnoseImageExtractionResponse(responseBody)) {
+    throw new Error("图片识别结果返回格式异常，请重试或改用样例题。");
+  }
+
+  return responseBody;
+}
+
+export async function requestConfirmedImageDiagnosis(input: {
+  fetcher: typeof fetch;
+  confirmation_token: string;
+  confirmed_extraction: VisionExtractionDraft;
+  student_profile: StudentProfile;
+  mistake_history: MistakeHistoryItem[];
+}): Promise<DiagnoseImageSuccessResponse> {
+  const responseBody = await postJson(
+    input.fetcher,
+    "/api/confirm",
+    buildConfirmedImageDiagnosePayload(input),
   );
 
   if (!isDiagnoseImageSuccessResponse(responseBody)) {
@@ -105,10 +153,17 @@ export async function requestImageDiagnosis(input: {
 }
 
 export function shouldPersistDiagnoseProfile(
-  response: DiagnoseSuccessResponse | DiagnoseImageSuccessResponse,
+  response:
+    | DiagnoseSuccessResponse
+    | DiagnoseImageSuccessResponse
+    | DiagnoseImageExtractionResponse,
 ): boolean {
   if (response.source === "sample") {
     return true;
+  }
+
+  if ("stage" in response) {
+    return false;
   }
 
   return (
@@ -136,10 +191,22 @@ async function postDiagnose(
   fetcher: typeof fetch,
   payload: SampleDiagnosePayload | ImageDiagnosePayload,
 ): Promise<DiagnoseApiResponse> {
+  return (await postJson(
+    fetcher,
+    "/api/diagnose",
+    payload,
+  )) as DiagnoseApiResponse;
+}
+
+async function postJson(
+  fetcher: typeof fetch,
+  url: string,
+  payload: unknown,
+): Promise<unknown> {
   let response: Response;
 
   try {
-    response = await fetcher("/api/diagnose", {
+    response = await fetcher(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -156,7 +223,7 @@ async function postDiagnose(
     throw new Error(getDiagnoseClientErrorMessage(responseBody));
   }
 
-  return responseBody as DiagnoseApiResponse;
+  return responseBody;
 }
 
 async function readJsonResponse(response: Response): Promise<unknown> {

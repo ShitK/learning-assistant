@@ -56,6 +56,17 @@ export interface ImageRecognizedQuestion {
   extraction_confidence: "high" | "medium" | "low";
 }
 
+export interface ImageExtractionReviewDraft {
+  id: string;
+  title: string;
+  module: string;
+  question_text: string;
+  student_answer: string;
+  student_solution_steps: string[];
+  standard_solution_draft: string;
+  extraction_confidence: "high" | "medium" | "low";
+}
+
 export interface KnowledgeMapping {
   knowledge_points: string[];
   difficulty: number;
@@ -104,6 +115,20 @@ export interface DiagnoseImageSuccessResponse {
   warnings: string[];
 }
 
+export interface DiagnoseImageExtractionResponse {
+  diagnosis_id: string;
+  student_id: string;
+  source: "image";
+  stage: "extraction_review";
+  recognized_question: ImageExtractionReviewDraft;
+  requires_confirmation: true;
+  can_persist_after_confirmation: boolean;
+  confirmation_token: string;
+  sample_diagnosis: null;
+  fallback_used: false;
+  warnings: string[];
+}
+
 export type DiagnoseErrorCode =
   | "invalid_json"
   | "invalid_request"
@@ -132,6 +157,7 @@ export interface DiagnoseErrorResponse {
 export type DiagnoseApiResponse =
   | DiagnoseSuccessResponse
   | DiagnoseImageSuccessResponse
+  | DiagnoseImageExtractionResponse
   | DiagnoseErrorResponse;
 
 type ParseDiagnoseResult =
@@ -313,6 +339,48 @@ export function isDiagnoseImageSuccessResponse(
   );
 }
 
+export function isDiagnoseImageExtractionResponse(
+  value: unknown,
+): value is DiagnoseImageExtractionResponse {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (
+    value.fallback_used !== false ||
+    value.source !== "image" ||
+    value.stage !== "extraction_review"
+  ) {
+    return false;
+  }
+
+  if (value.sample_diagnosis !== null) {
+    return false;
+  }
+
+  if (!isImageExtractionReviewDraft(value.recognized_question)) {
+    return false;
+  }
+
+  if (
+    value.can_persist_after_confirmation !==
+    (value.recognized_question.extraction_confidence !== "low")
+  ) {
+    return false;
+  }
+
+  return (
+    typeof value.diagnosis_id === "string" &&
+    typeof value.student_id === "string" &&
+    value.requires_confirmation === true &&
+    typeof value.can_persist_after_confirmation === "boolean" &&
+    typeof value.confirmation_token === "string" &&
+    value.confirmation_token.length > 0 &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every(isString)
+  );
+}
+
 function isImageRecognizedQuestion(
   value: unknown,
 ): value is ImageRecognizedQuestion {
@@ -328,6 +396,28 @@ function isImageRecognizedQuestion(
     typeof value.student_answer === "string" &&
     Array.isArray(value.student_solution_steps) &&
     value.student_solution_steps.every(isString) &&
+    (value.extraction_confidence === "high" ||
+      value.extraction_confidence === "medium" ||
+      value.extraction_confidence === "low")
+  );
+}
+
+function isImageExtractionReviewDraft(
+  value: unknown,
+): value is ImageExtractionReviewDraft {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.title === "string" &&
+    typeof value.module === "string" &&
+    typeof value.question_text === "string" &&
+    typeof value.student_answer === "string" &&
+    Array.isArray(value.student_solution_steps) &&
+    value.student_solution_steps.every(isString) &&
+    typeof value.standard_solution_draft === "string" &&
     (value.extraction_confidence === "high" ||
       value.extraction_confidence === "medium" ||
       value.extraction_confidence === "low")

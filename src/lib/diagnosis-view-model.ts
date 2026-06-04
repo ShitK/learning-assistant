@@ -6,7 +6,15 @@ import type {
   SampleDiagnosis,
   Severity,
 } from "@/data/mathtrace-demo";
-import type { DiagnoseImageSuccessResponse } from "@/lib/diagnose-api";
+import type {
+  DiagnoseImageExtractionResponse,
+  DiagnoseImageSuccessResponse,
+} from "@/lib/diagnose-api";
+import {
+  joinEditableStepsText,
+  splitEditableStepsText,
+} from "@/lib/image-confirmation";
+import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
 
 export interface DiagnosisViewModel {
   source: "sample" | "image";
@@ -31,6 +39,23 @@ export interface DiagnosisViewModel {
   steps: AgentStep[];
   should_persist_profile: boolean;
   warnings: string[];
+}
+
+export interface EditableExtractionDraft {
+  confirmation_token: string;
+  question_text: string;
+  student_answer: string;
+  steps_text: string;
+  standard_solution_draft: string;
+  extraction_confidence: "high" | "medium" | "low";
+  warnings: string[];
+  can_persist_after_confirmation: boolean;
+}
+
+interface AgentTimelineStatusInput {
+  isDiagnosing: boolean;
+  isAwaitingConfirmation: boolean;
+  hasRetainedReportNotice: boolean;
 }
 
 export function createSampleDiagnosisViewModel(
@@ -91,6 +116,48 @@ export function createImageDiagnosisViewModel(
   };
 }
 
+export function createEditableExtractionDraft(
+  response: DiagnoseImageExtractionResponse,
+): EditableExtractionDraft {
+  return {
+    confirmation_token: response.confirmation_token,
+    question_text: response.recognized_question.question_text,
+    student_answer: response.recognized_question.student_answer,
+    steps_text: joinEditableStepsText(
+      response.recognized_question.student_solution_steps,
+    ),
+    standard_solution_draft:
+      response.recognized_question.standard_solution_draft,
+    extraction_confidence: response.recognized_question.extraction_confidence,
+    warnings: [...response.warnings],
+    can_persist_after_confirmation: response.can_persist_after_confirmation,
+  };
+}
+
+export function createVisionExtractionDraftFromEditableDraft(
+  draft: EditableExtractionDraft,
+): VisionExtractionDraft {
+  return {
+    question_text: draft.question_text,
+    student_answer: draft.student_answer,
+    student_solution_steps: splitEditableStepsText(draft.steps_text),
+    standard_solution_draft: draft.standard_solution_draft,
+    extraction_confidence: draft.extraction_confidence,
+    warnings: draft.warnings,
+  };
+}
+
+export function canConfirmEditableExtractionDraft(
+  draft: EditableExtractionDraft,
+): boolean {
+  return (
+    draft.question_text.trim().length > 0 &&
+    draft.student_answer.trim().length > 0 &&
+    draft.standard_solution_draft.trim().length > 0 &&
+    splitEditableStepsText(draft.steps_text).length > 0
+  );
+}
+
 export function createRetainedReportNotice(
   diagnosis: DiagnosisViewModel,
   errorMessage: string,
@@ -101,4 +168,35 @@ export function createRetainedReportNotice(
       : "当前显示的是样例题结果，本次图片诊断未生成新报告。";
 
   return `${prefix}原因：${errorMessage}`;
+}
+
+export function createExtractionReviewRetainedReportNotice(
+  diagnosis: DiagnosisViewModel,
+): string {
+  const prefix =
+    diagnosis.source === "image"
+      ? "当前显示的是上一次成功图片诊断报告，"
+      : "当前显示的是样例题结果，";
+
+  return `${prefix}本次图片只完成识别抽取，确认后才会生成新报告。`;
+}
+
+export function createAgentTimelineStatusLabel({
+  isDiagnosing,
+  isAwaitingConfirmation,
+  hasRetainedReportNotice,
+}: AgentTimelineStatusInput): string {
+  if (isDiagnosing) {
+    return "正在分析";
+  }
+
+  if (isAwaitingConfirmation) {
+    return "待确认识别";
+  }
+
+  if (hasRetainedReportNotice) {
+    return "保留旧报告";
+  }
+
+  return "诊断完成";
 }

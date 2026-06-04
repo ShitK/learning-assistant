@@ -251,6 +251,25 @@ const unpaddedBase64ServiceResponse = await handleDiagnoseRequest(
 assert.equal(unpaddedBase64ServiceResponse.status, 200);
 assert.equal(unpaddedBase64ServiceResponse.body.source, "image");
 
+const originalNodeEnv = process.env.NODE_ENV;
+const originalConfirmSecret = process.env.MATHTRACE_CONFIRM_SECRET;
+try {
+  process.env.NODE_ENV = "production";
+  delete process.env.MATHTRACE_CONFIRM_SECRET;
+
+  await assertServiceError(
+    handleDiagnoseRequest(createImageRequest(), {
+      vision_provider: createFakeVisionProvider(),
+    }),
+    502,
+    "model_request_failed",
+    true,
+  );
+} finally {
+  restoreEnvValue("NODE_ENV", originalNodeEnv);
+  restoreEnvValue("MATHTRACE_CONFIRM_SECRET", originalConfirmSecret);
+}
+
 await assertServiceError(
   handleDiagnoseRequest(createImageRequest(), {
     vision_provider: createErrorVisionProvider("model_timeout"),
@@ -545,6 +564,15 @@ function createErrorVisionProvider(
       };
     },
   };
+}
+
+function restoreEnvValue(key, value) {
+  if (value === undefined) {
+    delete process.env[key];
+    return;
+  }
+
+  process.env[key] = value;
 }
 
 async function assertServiceError(

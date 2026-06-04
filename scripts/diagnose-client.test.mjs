@@ -7,12 +7,18 @@ const { demoStudentProfile, mistakeHistory } = jiti(
   "../src/data/mathtrace-demo.ts",
 );
 const {
+  buildConfirmedImageDiagnosePayload,
   buildImageDiagnosePayload,
   buildSampleDiagnosePayload,
   getDiagnoseClientErrorMessage,
+  requestConfirmedImageDiagnosis,
+  requestImageExtractionReview,
   shouldPersistDiagnoseProfile,
 } = jiti("../src/lib/diagnose-client.ts");
-const { isDiagnoseImageSuccessResponse } = jiti(
+const {
+  isDiagnoseImageExtractionResponse,
+  isDiagnoseImageSuccessResponse,
+} = jiti(
   "../src/lib/diagnose-api.ts",
 );
 
@@ -257,12 +263,222 @@ assert.equal(
   false,
 );
 
+const extractionReviewResponse = {
+  diagnosis_id: "diag_image_draft_1",
+  student_id: "demo_student_001",
+  source: "image",
+  stage: "extraction_review",
+  recognized_question: {
+    id: "image_draft_1",
+    title: "图片识别错题",
+    module: "导数",
+    question_text: "求函数单调区间。",
+    student_answer: "遗漏参数讨论。",
+    student_solution_steps: ["求导", "直接判断"],
+    standard_solution_draft: "先求导，再分类讨论。",
+    extraction_confidence: "medium",
+  },
+  requires_confirmation: true,
+  can_persist_after_confirmation: true,
+  confirmation_token: "signed-confirmation-token",
+  sample_diagnosis: null,
+  fallback_used: false,
+  warnings: [],
+};
+
+assert.equal(typeof extractionReviewResponse.confirmation_token, "string");
+assert.equal(isDiagnoseImageExtractionResponse(extractionReviewResponse), true);
+assert.equal(shouldPersistDiagnoseProfile(extractionReviewResponse), false);
+
+const confirmedExtractionDraft = {
+  question_text: extractionReviewResponse.recognized_question.question_text,
+  student_answer: extractionReviewResponse.recognized_question.student_answer,
+  student_solution_steps:
+    extractionReviewResponse.recognized_question.student_solution_steps,
+  standard_solution_draft:
+    extractionReviewResponse.recognized_question.standard_solution_draft,
+  extraction_confidence:
+    extractionReviewResponse.recognized_question.extraction_confidence,
+  warnings: extractionReviewResponse.warnings,
+};
+
+const confirmPayload = buildConfirmedImageDiagnosePayload({
+  confirmed_extraction: confirmedExtractionDraft,
+  confirmation_token: extractionReviewResponse.confirmation_token,
+  student_profile: demoStudentProfile,
+  mistake_history: mistakeHistory,
+});
+
+assert.equal(confirmPayload.task_type, "confirmed_image_diagnosis");
+assert.equal(confirmPayload.student_id, "demo_student_001");
+assert.equal(
+  confirmPayload.confirmation_token,
+  extractionReviewResponse.confirmation_token,
+);
+assert.equal(
+  confirmPayload.confirmed_extraction.standard_solution_draft,
+  "先求导，再分类讨论。",
+);
+assert.deepEqual(confirmPayload.confirmed_extraction.warnings, []);
+
+const imageExtractionRequests = [];
+const imageExtractionResult = await requestImageExtractionReview({
+  fetcher: async (url, init) => {
+    imageExtractionRequests.push({
+      url,
+      method: init.method,
+      headers: init.headers,
+      cache: init.cache,
+      body: JSON.parse(init.body),
+    });
+
+    return new Response(JSON.stringify(extractionReviewResponse), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  },
+  image_base64: "YWJjZA==",
+  image_mime_type: "image/jpeg",
+  student_profile: demoStudentProfile,
+  mistake_history: mistakeHistory,
+});
+
+assert.deepEqual(imageExtractionResult, extractionReviewResponse);
+assert.equal(imageExtractionRequests.length, 1);
+assert.equal(imageExtractionRequests[0].url, "/api/diagnose");
+assert.equal(imageExtractionRequests[0].method, "POST");
+assert.equal(
+  imageExtractionRequests[0].headers["Content-Type"],
+  "application/json",
+);
+assert.equal(imageExtractionRequests[0].cache, "no-store");
+assert.equal(imageExtractionRequests[0].body.task_type, "image_diagnosis");
+
+const confirmedDiagnosisRequests = [];
+const confirmedDiagnosisResult = await requestConfirmedImageDiagnosis({
+  fetcher: async (url, init) => {
+    confirmedDiagnosisRequests.push({
+      url,
+      method: init.method,
+      headers: init.headers,
+      cache: init.cache,
+      body: JSON.parse(init.body),
+    });
+
+    return new Response(JSON.stringify(highConfidenceImageResponse), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  },
+  confirmed_extraction: confirmedExtractionDraft,
+  confirmation_token: extractionReviewResponse.confirmation_token,
+  student_profile: demoStudentProfile,
+  mistake_history: mistakeHistory,
+});
+
+assert.deepEqual(confirmedDiagnosisResult, highConfidenceImageResponse);
+assert.equal(confirmedDiagnosisRequests.length, 1);
+assert.equal(confirmedDiagnosisRequests[0].url, "/api/confirm");
+assert.equal(confirmedDiagnosisRequests[0].method, "POST");
+assert.equal(
+  confirmedDiagnosisRequests[0].headers["Content-Type"],
+  "application/json",
+);
+assert.equal(confirmedDiagnosisRequests[0].cache, "no-store");
+assert.equal(
+  confirmedDiagnosisRequests[0].body.task_type,
+  "confirmed_image_diagnosis",
+);
+assert.equal(
+  confirmedDiagnosisRequests[0].body.confirmation_token,
+  extractionReviewResponse.confirmation_token,
+);
+assert.deepEqual(
+  confirmedDiagnosisRequests[0].body.confirmed_extraction.warnings,
+  [],
+);
+
+const missingTokenExtractionReviewResponse = { ...extractionReviewResponse };
+delete missingTokenExtractionReviewResponse.confirmation_token;
+
+assert.equal(
+  isDiagnoseImageExtractionResponse(missingTokenExtractionReviewResponse),
+  false,
+);
+
+const inconsistentLowExtractionReviewResponse = {
+  ...extractionReviewResponse,
+  recognized_question: {
+    ...extractionReviewResponse.recognized_question,
+    extraction_confidence: "low",
+  },
+  can_persist_after_confirmation: true,
+};
+
+assert.equal(
+  isDiagnoseImageExtractionResponse(inconsistentLowExtractionReviewResponse),
+  false,
+);
+
+const missingStageExtractionReviewResponse = { ...extractionReviewResponse };
+delete missingStageExtractionReviewResponse.stage;
+
+assert.equal(
+  isDiagnoseImageExtractionResponse(missingStageExtractionReviewResponse),
+  false,
+);
+
+const malformedExtractionReviewResponse = {
+  ...extractionReviewResponse,
+  recognized_question: {
+    ...extractionReviewResponse.recognized_question,
+    standard_solution_draft: null,
+  },
+};
+
+assert.equal(
+  isDiagnoseImageExtractionResponse(malformedExtractionReviewResponse),
+  false,
+);
+
+await assert.rejects(
+  () =>
+    requestImageExtractionReview({
+      fetcher: async () =>
+        new Response(JSON.stringify(malformedExtractionReviewResponse), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      image_base64: "YWJjZA==",
+      image_mime_type: "image/jpeg",
+      student_profile: demoStudentProfile,
+      mistake_history: mistakeHistory,
+    }),
+  /图片识别结果返回格式异常，请重试或改用样例题。/,
+);
+
 const malformedImageResponse = {
   ...highConfidenceImageResponse,
   knowledge_mapping: null,
 };
 
 assert.equal(isDiagnoseImageSuccessResponse(malformedImageResponse), false);
+
+await assert.rejects(
+  () =>
+    requestConfirmedImageDiagnosis({
+      fetcher: async () =>
+        new Response(JSON.stringify(malformedImageResponse), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      confirmed_extraction: confirmedExtractionDraft,
+      confirmation_token: extractionReviewResponse.confirmation_token,
+      student_profile: demoStudentProfile,
+      mistake_history: mistakeHistory,
+    }),
+  /图片诊断返回格式异常，请重试或改用样例题。/,
+);
 
 const malformedProfileImageResponse = {
   ...highConfidenceImageResponse,

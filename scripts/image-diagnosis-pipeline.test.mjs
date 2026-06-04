@@ -27,7 +27,11 @@ const extraction = {
   warnings: [],
 };
 
-const response = runImageMathTraceAgent({ request, extraction });
+const response = runImageMathTraceAgent({
+  request,
+  extraction,
+  is_extraction_confirmed: true,
+});
 
 assert.equal(response.source, "image");
 assert.equal(response.fallback_used, false);
@@ -55,12 +59,26 @@ const lowConfidenceResponse = runImageMathTraceAgent({
     extraction_confidence: "low",
     warnings: ["图片较模糊，需要学生确认。"],
   },
+  is_extraction_confirmed: true,
 });
 
 assert.equal(lowConfidenceResponse.memory_delta.should_persist, false);
 assert.equal(lowConfidenceResponse.warnings.includes("图片较模糊，需要学生确认。"), true);
 assert.equal(
   lowConfidenceResponse.student_profile.frequent_mistake_causes
+    .classification_missing,
+  4,
+);
+
+const unconfirmedResponse = runImageMathTraceAgent({
+  request,
+  extraction,
+  is_extraction_confirmed: false,
+});
+
+assert.equal(unconfirmedResponse.memory_delta.should_persist, false);
+assert.equal(
+  unconfirmedResponse.student_profile.frequent_mistake_causes
     .classification_missing,
   4,
 );

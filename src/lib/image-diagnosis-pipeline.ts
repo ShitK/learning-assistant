@@ -20,7 +20,6 @@ import type {
   ImageRecognizedQuestion,
   KnowledgeMapping,
   MistakeDiagnosis,
-  ParsedImageDiagnoseRequest,
 } from "@/lib/diagnose-api";
 import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
 
@@ -64,8 +63,9 @@ const IMAGE_AGENT_STEPS: AgentStep[] = [
 ];
 
 export function runImageMathTraceAgent(input: {
-  request: ParsedImageDiagnoseRequest;
+  request: ImageDiagnosisPipelineRequest;
   extraction: VisionExtractionDraft;
+  is_extraction_confirmed: boolean;
 }): DiagnoseImageSuccessResponse {
   const knowledgeMapping = mapImageKnowledgePoints(input.extraction);
   const recognizedQuestion = recognizeImageQuestion(
@@ -79,6 +79,7 @@ export function runImageMathTraceAgent(input: {
   const memoryDelta = computeImageMemoryDelta({
     request: input.request,
     extraction: input.extraction,
+    is_extraction_confirmed: input.is_extraction_confirmed,
     knowledgeMapping,
     mistakeDiagnosis,
   });
@@ -106,6 +107,12 @@ export function runImageMathTraceAgent(input: {
     fallback_used: false,
     warnings: input.extraction.warnings,
   };
+}
+
+interface ImageDiagnosisPipelineRequest {
+  student_id: string;
+  student_profile: unknown;
+  mistake_history: unknown[];
 }
 
 function recognizeImageQuestion(
@@ -215,8 +222,9 @@ function diagnoseImageMistake(
 }
 
 function computeImageMemoryDelta(input: {
-  request: ParsedImageDiagnoseRequest;
+  request: ImageDiagnosisPipelineRequest;
   extraction: VisionExtractionDraft;
+  is_extraction_confirmed: boolean;
   knowledgeMapping: KnowledgeMapping;
   mistakeDiagnosis: MistakeDiagnosis;
 }): MemoryDelta {
@@ -242,16 +250,22 @@ function computeImageMemoryDelta(input: {
     mistakeCauseChanges[causeId] = 1;
   }
 
+  const shouldPersist =
+    input.is_extraction_confirmed &&
+    input.extraction.extraction_confidence !== "low";
+
   return {
     knowledge_mastery_changes: knowledgeMasteryChanges,
     mistake_cause_changes: mistakeCauseChanges,
     is_repeated_mistake: isRepeatedMistake,
     review_priority_changes: input.knowledgeMapping.knowledge_points,
-    should_persist: input.extraction.extraction_confidence !== "low",
+    should_persist: shouldPersist,
     rationale:
-      input.extraction.extraction_confidence === "low"
+      shouldPersist
+        ? "用户已确认图片识别结果，且抽取置信度不是 low；由本地规则计算画像增量。"
+        : input.extraction.extraction_confidence === "low"
         ? "图片抽取置信度低，本次只展示诊断建议，不写入长期画像。"
-        : "图片抽取通过校验后，由本地规则根据知识点和错因计算画像增量。",
+        : "图片识别结果尚未确认，本次不写入长期画像。",
   };
 }
 

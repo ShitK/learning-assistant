@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node scripts/vision-extraction-parser.test.mjs && node scripts/anthropic-compatible-provider.test.mjs && node scripts/image-diagnosis-pipeline.test.mjs && node scripts/diagnose-client.test.mjs && node scripts/image-upload-client.test.mjs && node scripts/diagnosis-view-model.test.mjs && node scripts/agent-pipeline.test.mjs && node scripts/demo-state.test.mjs"
+    "test": "node scripts/vision-extraction-parser.test.mjs && node scripts/anthropic-compatible-provider.test.mjs && node scripts/image-diagnosis-pipeline.test.mjs && node scripts/image-confirmation.test.mjs && node scripts/diagnose-client.test.mjs && node scripts/image-upload-client.test.mjs && node scripts/diagnosis-view-model.test.mjs && node scripts/agent-pipeline.test.mjs && node scripts/demo-state.test.mjs"
   },
   "dependencies": {
     "katex": "^0.17.0",

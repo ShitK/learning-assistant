@@ -7,9 +7,14 @@ const { demoStudentProfile, sampleDiagnoses } = jiti(
   "../src/data/mathtrace-demo.ts",
 );
 const {
+  canConfirmEditableExtractionDraft,
+  createAgentTimelineStatusLabel,
+  createEditableExtractionDraft,
+  createExtractionReviewRetainedReportNotice,
   createImageDiagnosisViewModel,
   createRetainedReportNotice,
   createSampleDiagnosisViewModel,
+  createVisionExtractionDraftFromEditableDraft,
 } = jiti("../src/lib/diagnosis-view-model.ts");
 
 const sample = sampleDiagnoses[0];
@@ -84,6 +89,128 @@ assert.equal(
 assert.equal(
   createRetainedReportNotice(sampleView, "模型输出缺少 standard_solution_draft。"),
   "当前显示的是样例题结果，本次图片诊断未生成新报告。原因：模型输出缺少 standard_solution_draft。",
+);
+assert.equal(
+  createExtractionReviewRetainedReportNotice(imageView),
+  "当前显示的是上一次成功图片诊断报告，本次图片只完成识别抽取，确认后才会生成新报告。",
+);
+assert.equal(
+  createExtractionReviewRetainedReportNotice(sampleView),
+  "当前显示的是样例题结果，本次图片只完成识别抽取，确认后才会生成新报告。",
+);
+assert.equal(
+  createAgentTimelineStatusLabel({
+    isDiagnosing: true,
+    isAwaitingConfirmation: false,
+    hasRetainedReportNotice: true,
+  }),
+  "正在分析",
+);
+assert.equal(
+  createAgentTimelineStatusLabel({
+    isDiagnosing: false,
+    isAwaitingConfirmation: true,
+    hasRetainedReportNotice: true,
+  }),
+  "待确认识别",
+);
+assert.equal(
+  createAgentTimelineStatusLabel({
+    isDiagnosing: false,
+    isAwaitingConfirmation: false,
+    hasRetainedReportNotice: true,
+  }),
+  "保留旧报告",
+);
+assert.equal(
+  createAgentTimelineStatusLabel({
+    isDiagnosing: false,
+    isAwaitingConfirmation: false,
+    hasRetainedReportNotice: false,
+  }),
+  "诊断完成",
+);
+
+const extractionReviewResponse = {
+  diagnosis_id: "diag_extraction_1",
+  student_id: "demo_student_001",
+  source: "image",
+  stage: "extraction_review",
+  recognized_question: {
+    id: "image_draft_1",
+    title: "图片识别草稿",
+    module: "导数",
+    question_text: "求函数单调区间。",
+    student_answer: "单调递增",
+    student_solution_steps: ["求导", "直接判断"],
+    standard_solution_draft: "先求导，再判断导数符号。",
+    extraction_confidence: "high",
+  },
+  requires_confirmation: true,
+  can_persist_after_confirmation: true,
+  confirmation_token: "confirm_token_1",
+  sample_diagnosis: null,
+  fallback_used: false,
+  warnings: ["请确认定义域。"],
+};
+
+const draft = createEditableExtractionDraft(extractionReviewResponse);
+assert.equal(draft.confirmation_token, "confirm_token_1");
+assert.equal(draft.question_text, "求函数单调区间。");
+assert.equal(draft.student_answer, "单调递增");
+assert.equal(draft.steps_text, "求导\n直接判断");
+assert.equal(draft.standard_solution_draft, "先求导，再判断导数符号。");
+assert.equal(draft.extraction_confidence, "high");
+assert.deepEqual(draft.warnings, ["请确认定义域。"]);
+assert.equal(draft.can_persist_after_confirmation, true);
+
+const lowDraft = createEditableExtractionDraft({
+  ...extractionReviewResponse,
+  recognized_question: {
+    ...extractionReviewResponse.recognized_question,
+    extraction_confidence: "low",
+  },
+  can_persist_after_confirmation: false,
+});
+assert.equal(lowDraft.can_persist_after_confirmation, false);
+
+assert.deepEqual(createVisionExtractionDraftFromEditableDraft(draft), {
+  question_text: "求函数单调区间。",
+  student_answer: "单调递增",
+  student_solution_steps: ["求导", "直接判断"],
+  standard_solution_draft: "先求导，再判断导数符号。",
+  extraction_confidence: "high",
+  warnings: ["请确认定义域。"],
+});
+
+assert.equal(canConfirmEditableExtractionDraft(draft), true);
+assert.equal(
+  canConfirmEditableExtractionDraft({
+    ...draft,
+    question_text: " ",
+  }),
+  false,
+);
+assert.equal(
+  canConfirmEditableExtractionDraft({
+    ...draft,
+    student_answer: " ",
+  }),
+  false,
+);
+assert.equal(
+  canConfirmEditableExtractionDraft({
+    ...draft,
+    steps_text: "\n  \n",
+  }),
+  false,
+);
+assert.equal(
+  canConfirmEditableExtractionDraft({
+    ...draft,
+    standard_solution_draft: " ",
+  }),
+  false,
 );
 
 console.log("diagnosis view model regression test passed");

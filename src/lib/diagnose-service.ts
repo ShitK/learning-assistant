@@ -3,12 +3,16 @@ import {
   createMimoProviderConfigFromEnv,
 } from "@/lib/anthropic-compatible-provider";
 import { createDiagnoseError, parseDiagnoseRequest } from "@/lib/diagnose-api";
+import {
+  createImageConfirmationFingerprint,
+  createImageConfirmationToken,
+} from "@/lib/image-confirmation-token";
 import { parseImageInput } from "@/lib/image-input";
-import { runImageMathTraceAgent } from "@/lib/image-diagnosis-pipeline";
 import { runMathTraceAgent } from "@/lib/mathtrace-agent-pipeline";
 import { isRecord } from "@/lib/utils";
 import type {
   DiagnoseApiResponse,
+  DiagnoseImageExtractionResponse,
   ParsedImageDiagnoseRequest,
 } from "@/lib/diagnose-api";
 import type {
@@ -16,6 +20,7 @@ import type {
   VisionExtractionProvider,
   VisionProviderError,
 } from "@/lib/anthropic-compatible-provider";
+import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
 
 export interface DiagnoseServiceResult {
   status: number;
@@ -112,13 +117,83 @@ async function handleImageDiagnoseRequest(
     };
   }
 
+  try {
+    return {
+      status: 200,
+      body: buildImageExtractionResponse({
+        student_id: request.student_id,
+        extraction: extractionResult.value,
+      }),
+    };
+  } catch {
+    return {
+      status: 502,
+      body: createDiagnoseError(
+        "model_request_failed",
+        "图片诊断确认令牌生成失败，请稍后重试或联系维护者。",
+        true,
+        true,
+      ),
+    };
+  }
+}
+
+function buildImageExtractionResponse(input: {
+  student_id: string;
+  extraction: VisionExtractionDraft;
+}): DiagnoseImageExtractionResponse {
+  const id = `image_draft_${hashExtractionDraft(input.extraction)}`;
+  const canPersistAfterConfirmation =
+    input.extraction.extraction_confidence !== "low";
+
   return {
-    status: 200,
-    body: runImageMathTraceAgent({
-      request,
-      extraction: extractionResult.value,
+    diagnosis_id: `diag_${id}`,
+    student_id: input.student_id,
+    source: "image",
+    stage: "extraction_review",
+    recognized_question: {
+      id,
+      title: "图片识别错题",
+      module: "待确认",
+      question_text: input.extraction.question_text,
+      student_answer: input.extraction.student_answer,
+      student_solution_steps: input.extraction.student_solution_steps,
+      standard_solution_draft: input.extraction.standard_solution_draft,
+      extraction_confidence: input.extraction.extraction_confidence,
+    },
+    requires_confirmation: true,
+    can_persist_after_confirmation: canPersistAfterConfirmation,
+    confirmation_token: createImageConfirmationToken({
+      draft_id: id,
+      extraction_confidence: input.extraction.extraction_confidence,
+      can_persist_after_confirmation: canPersistAfterConfirmation,
+      draft_fingerprint: createImageConfirmationFingerprint(input.extraction),
     }),
+    sample_diagnosis: null,
+    fallback_used: false,
+    warnings: input.extraction.warnings,
   };
+}
+
+function hashExtractionDraft(extraction: VisionExtractionDraft): string {
+  return hashText(
+    JSON.stringify({
+      question_text: extraction.question_text,
+      student_answer: extraction.student_answer,
+      student_solution_steps: extraction.student_solution_steps,
+      standard_solution_draft: extraction.standard_solution_draft,
+      extraction_confidence: extraction.extraction_confidence,
+    }),
+  );
+}
+
+function hashText(text: string): string {
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+  }
+
+  return hash.toString(36);
 }
 
 function getVisionProvider(
