@@ -33,6 +33,7 @@ import {
   createRetainedReportNotice,
   createSampleDiagnosisViewModel,
   createStandardSolutionBlocks,
+  createStandardSolutionDisplayText,
   createVisionExtractionDraftFromEditableDraft,
 } from "@/lib/diagnosis-view-model";
 import { parseConfirmedExtractionDraft } from "@/lib/image-confirmation";
@@ -1112,7 +1113,9 @@ function StandardSolutionContent({
                 {orderedBlock.marker}
               </span>
               <span>
-                <MathText text={orderedBlock.text} />
+                <MathText
+                  text={createStandardSolutionDisplayText(orderedBlock.text)}
+                />
               </span>
             </li>
           ))}
@@ -1150,7 +1153,9 @@ function StandardSolutionContent({
                 aria-hidden="true"
               />
               <span>
-                <MathText text={bulletBlock.text} />
+                <MathText
+                  text={createStandardSolutionDisplayText(bulletBlock.text)}
+                />
               </span>
             </li>
           ))}
@@ -1166,7 +1171,7 @@ function StandardSolutionContent({
         key={`paragraph-${index}-${block.text}`}
         className="text-sm leading-7 text-[var(--charcoal)]"
       >
-        <MathText text={block.text} />
+        <MathText text={createStandardSolutionDisplayText(block.text)} />
       </p>,
     );
   }

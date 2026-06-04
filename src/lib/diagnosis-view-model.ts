@@ -221,6 +221,28 @@ export function createStandardSolutionBlocks(
   }));
 }
 
+export function createStandardSolutionDisplayText(text: string): string {
+  const parts: string[] = [];
+  const mathPattern = /(?<!\\)(\$\$?)[\s\S]+?(?<!\\)\1/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = mathPattern.exec(text)) !== null) {
+    if (match.index > cursor) {
+      parts.push(decorateLooseMathText(text.slice(cursor, match.index)));
+    }
+
+    parts.push(match[0]);
+    cursor = match.index + match[0].length;
+  }
+
+  if (cursor < text.length) {
+    parts.push(decorateLooseMathText(text.slice(cursor)));
+  }
+
+  return parts.join("");
+}
+
 function hasMultilineDisplayMath(text: string): boolean {
   return /\$\$[\s\S]*\n[\s\S]*\$\$/.test(text);
 }
@@ -230,6 +252,34 @@ function splitStandardSolutionSentences(text: string): string[] {
     .split(/(?<=[。；])\s*/)
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence.length > 0);
+}
+
+function decorateLooseMathText(text: string): string {
+  return text.replace(
+    /[A-Za-z0-9'′()+\-*/=<>≤≥∈∞,.\s]+/g,
+    (candidate) => decorateLooseMathCandidate(candidate),
+  );
+}
+
+function decorateLooseMathCandidate(candidate: string): string {
+  const leadingWhitespace = candidate.match(/^\s*/)?.[0] ?? "";
+  const trailingWhitespace = candidate.match(/\s*$/)?.[0] ?? "";
+  const core = candidate.trim();
+
+  if (core.length === 0 || !isLikelyLooseMath(core)) {
+    return candidate;
+  }
+
+  return `${leadingWhitespace}$${core}$${trailingWhitespace}`;
+}
+
+function isLikelyLooseMath(text: string): boolean {
+  return (
+    /[=<>≤≥∈∞]/.test(text) ||
+    /\b[a-zA-Z][′']?\([^)]*\)/.test(text) ||
+    /\bln\([^)]*\)/.test(text) ||
+    /\d+\/[a-zA-Z]/.test(text)
+  );
 }
 
 export function createRetainedReportNotice(

@@ -15,6 +15,7 @@ const {
   createImageDiagnosisViewModel,
   createRetainedReportNotice,
   createSampleDiagnosisViewModel,
+  createStandardSolutionDisplayText,
   createStandardSolutionBlocks,
   createVisionExtractionDraftFromEditableDraft,
 } = jiti("../src/lib/diagnosis-view-model.ts");
@@ -65,6 +66,25 @@ assert.equal(
     block.text.includes("$a>0$"),
   ),
   true,
+);
+
+assert.equal(
+  createStandardSolutionDisplayText(
+    "当 a ≤ 0 时， f'(x) > 0 在 (0,+∞) 上恒成立。",
+  ),
+  "当 $a ≤ 0$ 时， $f'(x) > 0$ 在 $(0,+∞)$ 上恒成立。",
+);
+
+assert.equal(
+  createStandardSolutionDisplayText(
+    "f(e) = 1 - ae + 1 = 2 - ae < 0，解得 a > 2/e。",
+  ),
+  "$f(e) = 1 - ae + 1 = 2 - ae < 0$，解得 $a > 2/e$。",
+);
+
+assert.equal(
+  createStandardSolutionDisplayText("应讨论 $a\\le 0$ 与 a > 0。"),
+  "应讨论 $a\\le 0$ 与 $a > 0$。",
 );
 
 const imageResponse = {
