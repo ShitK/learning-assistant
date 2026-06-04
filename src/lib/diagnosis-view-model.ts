@@ -52,6 +52,11 @@ export interface EditableExtractionDraft {
   can_persist_after_confirmation: boolean;
 }
 
+export type StandardSolutionBlock =
+  | { kind: "ordered"; marker: string; text: string }
+  | { kind: "bullet"; text: string }
+  | { kind: "paragraph"; text: string };
+
 interface AgentTimelineStatusInput {
   isDiagnosing: boolean;
   isAwaitingConfirmation: boolean;
@@ -161,6 +166,70 @@ export function canConfirmEditableExtractionDraft(
     draft.standard_solution_draft.trim().length > 0 &&
     splitEditableStepsText(draft.steps_text).length > 0
   );
+}
+
+export function createStandardSolutionBlocks(
+  text: string,
+): StandardSolutionBlock[] {
+  const trimmedText = text.trim();
+
+  if (hasMultilineDisplayMath(trimmedText)) {
+    return trimmedText.length > 0
+      ? [{ kind: "paragraph", text: trimmedText }]
+      : [];
+  }
+
+  const lines = trimmedText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const blocks: StandardSolutionBlock[] = lines.map((line) => {
+    const orderedMatch = /^(\d+)\.\s+(.+)$/.exec(line);
+
+    if (orderedMatch) {
+      return {
+        kind: "ordered",
+        marker: orderedMatch[1],
+        text: orderedMatch[2].trim(),
+      };
+    }
+
+    const bulletMatch = /^-\s+(.+)$/.exec(line);
+
+    if (bulletMatch) {
+      return { kind: "bullet", text: bulletMatch[1].trim() };
+    }
+
+    return { kind: "paragraph", text: line };
+  });
+
+  if (blocks.some((block) => block.kind !== "paragraph")) {
+    return blocks;
+  }
+
+  const sentences = splitStandardSolutionSentences(trimmedText);
+
+  if (sentences.length <= 1) {
+    return blocks;
+  }
+
+  return sentences.map((sentence, index) => ({
+    kind: "ordered",
+    marker: String(index + 1),
+    text: sentence,
+  }));
+}
+
+function hasMultilineDisplayMath(text: string): boolean {
+  return /\$\$[\s\S]*\n[\s\S]*\$\$/.test(text);
+}
+
+function splitStandardSolutionSentences(text: string): string[] {
+  return text
+    .split(/(?<=[。；])\s*/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
 }
 
 export function createRetainedReportNotice(

@@ -32,6 +32,7 @@ import {
   createImageDiagnosisViewModel,
   createRetainedReportNotice,
   createSampleDiagnosisViewModel,
+  createStandardSolutionBlocks,
   createVisionExtractionDraftFromEditableDraft,
 } from "@/lib/diagnosis-view-model";
 import { parseConfirmedExtractionDraft } from "@/lib/image-confirmation";
@@ -47,6 +48,7 @@ import type {
 import type {
   DiagnosisViewModel,
   EditableExtractionDraft,
+  StandardSolutionBlock,
 } from "@/lib/diagnosis-view-model";
 import type { PreparedImageUpload } from "@/lib/image-upload-client";
 import { clampScore } from "@/lib/utils";
@@ -54,6 +56,14 @@ import { clampScore } from "@/lib/utils";
 const DEFAULT_SAMPLE_ID: SampleQuestionId = "sample_derivative_001";
 
 type DiagnosisMode = "sample" | "image";
+type OrderedStandardSolutionBlock = Extract<
+  StandardSolutionBlock,
+  { kind: "ordered" }
+>;
+type BulletStandardSolutionBlock = Extract<
+  StandardSolutionBlock,
+  { kind: "bullet" }
+>;
 
 const practiceLevelLabels: Record<PracticeLevel, string> = {
   basic: "基础巩固",
@@ -878,6 +888,9 @@ function DiagnosisResultCard({
     source: diagnosis.source,
     isCurrentConfirmedImageReport,
   });
+  const standardSolutionBlocks = createStandardSolutionBlocks(
+    diagnosis.standard_solution,
+  );
 
   return (
     <section className="mathtrace-card flex h-full flex-col overflow-hidden">
@@ -974,9 +987,7 @@ function DiagnosisResultCard({
           <h3 className="mt-2 text-xl font-semibold text-[var(--charcoal)]">
             标准解法关键步骤
           </h3>
-          <p className="mt-3 text-sm leading-7 text-[var(--charcoal)]">
-            <MathText text={diagnosis.standard_solution} />
-          </p>
+          <StandardSolutionContent blocks={standardSolutionBlocks} />
           <div className="mt-4 border-t border-[var(--light-gray)] pt-4">
             <p className="text-sm font-semibold text-[var(--charcoal)]">
               关键判断点
@@ -1058,6 +1069,121 @@ function DiagnosisResultCard({
       </div>
     </section>
   );
+}
+
+function StandardSolutionContent({
+  blocks,
+}: {
+  blocks: StandardSolutionBlock[];
+}): ReactElement {
+  const elements: ReactElement[] = [];
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+
+    if (block.kind === "ordered") {
+      const orderedBlocks: OrderedStandardSolutionBlock[] = [block];
+      let nextIndex = index + 1;
+
+      while (true) {
+        const nextBlock = blocks[nextIndex];
+
+        if (!isOrderedStandardSolutionBlock(nextBlock)) {
+          break;
+        }
+
+        orderedBlocks.push(nextBlock);
+        nextIndex += 1;
+      }
+
+      elements.push(
+        <ol
+          key={`ordered-${index}`}
+          className="grid list-none gap-2"
+          start={Number(block.marker)}
+        >
+          {orderedBlocks.map((orderedBlock) => (
+            <li
+              key={`${orderedBlock.marker}-${orderedBlock.text}`}
+              className="flex items-start gap-3 text-sm leading-7 text-[var(--charcoal)]"
+              value={Number(orderedBlock.marker)}
+            >
+              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-xs font-semibold text-[var(--mocha)]">
+                {orderedBlock.marker}
+              </span>
+              <span>
+                <MathText text={orderedBlock.text} />
+              </span>
+            </li>
+          ))}
+        </ol>,
+      );
+
+      index = nextIndex - 1;
+      continue;
+    }
+
+    if (block.kind === "bullet") {
+      const bulletBlocks: BulletStandardSolutionBlock[] = [block];
+      let nextIndex = index + 1;
+
+      while (true) {
+        const nextBlock = blocks[nextIndex];
+
+        if (!isBulletStandardSolutionBlock(nextBlock)) {
+          break;
+        }
+
+        bulletBlocks.push(nextBlock);
+        nextIndex += 1;
+      }
+
+      elements.push(
+        <ul key={`bullet-${index}`} className="grid list-none gap-2">
+          {bulletBlocks.map((bulletBlock, bulletIndex) => (
+            <li
+              key={`${bulletIndex}-${bulletBlock.text}`}
+              className="flex items-start gap-3 text-sm leading-7 text-[var(--charcoal)]"
+            >
+              <span
+                className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mocha)]"
+                aria-hidden="true"
+              />
+              <span>
+                <MathText text={bulletBlock.text} />
+              </span>
+            </li>
+          ))}
+        </ul>,
+      );
+
+      index = nextIndex - 1;
+      continue;
+    }
+
+    elements.push(
+      <p
+        key={`paragraph-${index}-${block.text}`}
+        className="text-sm leading-7 text-[var(--charcoal)]"
+      >
+        <MathText text={block.text} />
+      </p>,
+    );
+  }
+
+  return <div className="mt-3 grid gap-2">{elements}</div>;
+}
+
+function isOrderedStandardSolutionBlock(
+  block: StandardSolutionBlock | undefined,
+): block is OrderedStandardSolutionBlock {
+  return block?.kind === "ordered";
+}
+
+function isBulletStandardSolutionBlock(
+  block: StandardSolutionBlock | undefined,
+): block is BulletStandardSolutionBlock {
+  return block?.kind === "bullet";
 }
 
 function AgentTimeline({

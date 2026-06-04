@@ -15,6 +15,7 @@ const {
   createImageDiagnosisViewModel,
   createRetainedReportNotice,
   createSampleDiagnosisViewModel,
+  createStandardSolutionBlocks,
   createVisionExtractionDraftFromEditableDraft,
 } = jiti("../src/lib/diagnosis-view-model.ts");
 
@@ -27,6 +28,44 @@ assert.equal(sampleView.question_text, sample.question_text);
 assert.deepEqual(sampleView.knowledge_points, sample.knowledge_points);
 assert.equal(sampleView.extraction_confidence, null);
 assert.equal(sampleView.should_persist_profile, true);
+
+assert.deepEqual(
+  createStandardSolutionBlocks(
+    "\n1. 先求导得到 $f'(x)$。\n2. 再讨论导数符号。\n- 注意定义域\n补充说明。",
+  ),
+  [
+    { kind: "ordered", marker: "1", text: "先求导得到 $f'(x)$。" },
+    { kind: "ordered", marker: "2", text: "再讨论导数符号。" },
+    { kind: "bullet", text: "注意定义域" },
+    { kind: "paragraph", text: "补充说明。" },
+  ],
+);
+
+assert.deepEqual(createStandardSolutionBlocks("0.5<x<1 时函数递增。"), [
+  { kind: "paragraph", text: "0.5<x<1 时函数递增。" },
+]);
+
+assert.deepEqual(createStandardSolutionBlocks("1.先求导。"), [
+  { kind: "paragraph", text: "1.先求导。" },
+]);
+
+assert.deepEqual(
+  createStandardSolutionBlocks("1. $$\nf'(x)=3x^2-3a\n$$"),
+  [{ kind: "paragraph", text: "1. $$\nf'(x)=3x^2-3a\n$$" }],
+);
+
+const sampleStandardSolutionBlocks = createStandardSolutionBlocks(
+  sample.standard_solution,
+);
+assert.equal(sampleStandardSolutionBlocks.length >= 2, true);
+assert.equal(sampleStandardSolutionBlocks[0].kind, "ordered");
+assert.equal(sampleStandardSolutionBlocks[0].marker, "1");
+assert.equal(
+  sampleStandardSolutionBlocks.some((block) =>
+    block.text.includes("$a>0$"),
+  ),
+  true,
+);
 
 const imageResponse = {
   diagnosis_id: "diag_image_1",
