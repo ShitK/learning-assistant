@@ -214,11 +214,15 @@ export function createStandardSolutionBlocks(
     return blocks;
   }
 
-  return sentences.map((sentence, index) => ({
-    kind: "ordered",
-    marker: String(index + 1),
-    text: stripLeadingSolutionMarker(sentence),
-  }));
+  return sentences.map((sentence, index) => {
+    const leadingMarker = extractLeadingSolutionMarker(sentence);
+
+    return {
+      kind: "ordered",
+      marker: leadingMarker?.marker ?? String(index + 1),
+      text: leadingMarker?.text ?? sentence,
+    };
+  });
 }
 
 export function createStandardSolutionDisplayText(text: string): string {
@@ -254,11 +258,28 @@ function splitStandardSolutionSentences(text: string): string[] {
     .filter((sentence) => sentence.length > 0);
 }
 
-function stripLeadingSolutionMarker(text: string): string {
-  return text
-    .replace(/^\s*[\(（]?\d+[\)）]\s*/, "")
-    .replace(/^\s*[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
-    .trim();
+function extractLeadingSolutionMarker(
+  text: string,
+): { marker: string; text: string } | null {
+  const numericMarkerMatch = /^\s*([\(（]?\d+[\)）])\s*(.+)$/.exec(text);
+
+  if (numericMarkerMatch) {
+    return {
+      marker: numericMarkerMatch[1],
+      text: numericMarkerMatch[2].trim(),
+    };
+  }
+
+  const circledMarkerMatch = /^\s*([①②③④⑤⑥⑦⑧⑨⑩])\s*(.+)$/.exec(text);
+
+  if (circledMarkerMatch) {
+    return {
+      marker: circledMarkerMatch[1],
+      text: circledMarkerMatch[2].trim(),
+    };
+  }
+
+  return null;
 }
 
 function decorateLooseMathText(text: string): string {
