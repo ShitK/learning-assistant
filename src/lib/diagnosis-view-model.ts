@@ -58,6 +58,11 @@ interface AgentTimelineStatusInput {
   hasRetainedReportNotice: boolean;
 }
 
+export interface DiagnosisResultVisibility {
+  show_image_recognition: boolean;
+  show_student_answer_text: boolean;
+}
+
 export function createSampleDiagnosisViewModel(
   sample: SampleDiagnosis,
 ): DiagnosisViewModel {
@@ -199,4 +204,17 @@ export function createAgentTimelineStatusLabel({
   }
 
   return "诊断完成";
+}
+
+export function createDiagnosisResultVisibility(input: {
+  source: DiagnosisViewModel["source"];
+  isCurrentConfirmedImageReport: boolean;
+}): DiagnosisResultVisibility {
+  const shouldHideConfirmedRecognition =
+    input.source === "image" && input.isCurrentConfirmedImageReport;
+
+  return {
+    show_image_recognition: !shouldHideConfirmedRecognition,
+    show_student_answer_text: !shouldHideConfirmedRecognition,
+  };
 }

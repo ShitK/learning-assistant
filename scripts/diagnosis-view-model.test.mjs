@@ -11,6 +11,7 @@ const {
   createAgentTimelineStatusLabel,
   createEditableExtractionDraft,
   createExtractionReviewRetainedReportNotice,
+  createDiagnosisResultVisibility,
   createImageDiagnosisViewModel,
   createRetainedReportNotice,
   createSampleDiagnosisViewModel,
@@ -129,6 +130,36 @@ assert.equal(
     hasRetainedReportNotice: false,
   }),
   "诊断完成",
+);
+assert.deepEqual(
+  createDiagnosisResultVisibility({
+    source: "image",
+    isCurrentConfirmedImageReport: true,
+  }),
+  {
+    show_image_recognition: false,
+    show_student_answer_text: false,
+  },
+);
+assert.deepEqual(
+  createDiagnosisResultVisibility({
+    source: "image",
+    isCurrentConfirmedImageReport: false,
+  }),
+  {
+    show_image_recognition: true,
+    show_student_answer_text: true,
+  },
+);
+assert.deepEqual(
+  createDiagnosisResultVisibility({
+    source: "sample",
+    isCurrentConfirmedImageReport: true,
+  }),
+  {
+    show_image_recognition: true,
+    show_student_answer_text: true,
+  },
 );
 
 const extractionReviewResponse = {

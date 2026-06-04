@@ -26,6 +26,7 @@ import {
 import {
   canConfirmEditableExtractionDraft,
   createAgentTimelineStatusLabel,
+  createDiagnosisResultVisibility,
   createEditableExtractionDraft,
   createExtractionReviewRetainedReportNotice,
   createImageDiagnosisViewModel,
@@ -98,6 +99,8 @@ export function MathTraceWorkbench(): ReactElement {
   const [diagnosisView, setDiagnosisView] = useState<DiagnosisViewModel>(() =>
     createSampleDiagnosisViewModel(selectedSample),
   );
+  const [isCurrentConfirmedImageReport, setIsCurrentConfirmedImageReport] =
+    useState(false);
   const [sessionStudentProfile, setSessionStudentProfile] =
     useState<StudentProfile | null>(null);
   const studentProfile = sessionStudentProfile ?? restoredStudentProfile;
@@ -145,6 +148,7 @@ export function MathTraceWorkbench(): ReactElement {
     setSelectedSampleId(sampleId);
     setDiagnosisMode("sample");
     setDiagnosisView(createSampleDiagnosisViewModel(nextSample));
+    setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
     setApiErrorMessage(null);
     setRetainedReportNotice(null);
@@ -169,6 +173,7 @@ export function MathTraceWorkbench(): ReactElement {
     if (nextMode === "sample") {
       const nextSample = getSampleById(selectedSampleId);
       setDiagnosisView(createSampleDiagnosisViewModel(nextSample));
+      setIsCurrentConfirmedImageReport(false);
       setProfilePreview(null);
       setCompletedStepCount(nextSample.steps.length);
     }
@@ -176,6 +181,7 @@ export function MathTraceWorkbench(): ReactElement {
 
   function handleImagePrepareStart(): void {
     setIsImagePreparing(true);
+    setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
     setImageUploadErrorMessage(null);
     setApiErrorMessage(null);
@@ -184,6 +190,7 @@ export function MathTraceWorkbench(): ReactElement {
 
   function handleImagePrepared(image: PreparedImageUpload): void {
     setSelectedImage(image);
+    setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
     setIsImagePreparing(false);
     setImageUploadErrorMessage(null);
@@ -191,6 +198,7 @@ export function MathTraceWorkbench(): ReactElement {
 
   function handleImagePrepareError(message: string): void {
     setSelectedImage(null);
+    setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
     setIsImagePreparing(false);
     setImageUploadErrorMessage(message);
@@ -202,6 +210,7 @@ export function MathTraceWorkbench(): ReactElement {
     }
 
     setSelectedImage(null);
+    setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
     setImageUploadErrorMessage(null);
   }
@@ -269,6 +278,7 @@ export function MathTraceWorkbench(): ReactElement {
     });
     setApiErrorMessage(null);
     setImageUploadErrorMessage(null);
+    setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
     setCompletedStepCount(0);
     setIsTimelineAnimating(true);
@@ -286,6 +296,7 @@ export function MathTraceWorkbench(): ReactElement {
           diagnosis.sample_diagnosis,
         );
         setDiagnosisView(nextView);
+        setIsCurrentConfirmedImageReport(false);
         setRetainedReportNotice(null);
         setSessionStudentProfile(diagnosis.student_profile);
         writeStoredStudentProfile(window.localStorage, diagnosis.student_profile);
@@ -386,6 +397,7 @@ export function MathTraceWorkbench(): ReactElement {
       });
       const nextView = createImageDiagnosisViewModel(diagnosis);
       setDiagnosisView(nextView);
+      setIsCurrentConfirmedImageReport(true);
       setEditableExtractionDraft(null);
       setRetainedReportNotice(null);
 
@@ -482,6 +494,7 @@ export function MathTraceWorkbench(): ReactElement {
             <DiagnosisResultCard
               diagnosis={diagnosisView}
               retainedReportNotice={retainedReportNotice}
+              isCurrentConfirmedImageReport={isCurrentConfirmedImageReport}
             />
           </div>
         </section>
@@ -855,10 +868,17 @@ function MistakeInputCard({
 function DiagnosisResultCard({
   diagnosis,
   retainedReportNotice,
+  isCurrentConfirmedImageReport,
 }: {
   diagnosis: DiagnosisViewModel;
   retainedReportNotice: string | null;
+  isCurrentConfirmedImageReport: boolean;
 }): ReactElement {
+  const visibility = createDiagnosisResultVisibility({
+    source: diagnosis.source,
+    isCurrentConfirmedImageReport,
+  });
+
   return (
     <section className="mathtrace-card flex h-full flex-col overflow-hidden">
       <div className="border-b border-[var(--oat)] p-5 sm:p-6">
@@ -885,7 +905,7 @@ function DiagnosisResultCard({
           <Tag tone="amber">严重度：{severityLabels[diagnosis.severity]}</Tag>
         </div>
 
-        {diagnosis.source === "image" ? (
+        {diagnosis.source === "image" && visibility.show_image_recognition ? (
           <div className="rounded-[20px] border border-[var(--oat)] bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm font-semibold text-[var(--charcoal)]">
@@ -993,15 +1013,23 @@ function DiagnosisResultCard({
             </div>
           </div>
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="rounded-[16px] bg-[var(--oat)] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--mocha)]">
-                student answer
-              </p>
-              <p className="mt-3 text-sm leading-7 text-[var(--warm-gray)]">
-                <MathText text={diagnosis.student_answer} />
-              </p>
-            </div>
+          <div
+            className={
+              visibility.show_student_answer_text
+                ? "mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]"
+                : "mt-4 grid gap-4"
+            }
+          >
+            {visibility.show_student_answer_text ? (
+              <div className="rounded-[16px] bg-[var(--oat)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--mocha)]">
+                  student answer
+                </p>
+                <p className="mt-3 text-sm leading-7 text-[var(--warm-gray)]">
+                  <MathText text={diagnosis.student_answer} />
+                </p>
+              </div>
+            ) : null}
 
             <div className="rounded-[16px] bg-[var(--oat)] p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--mocha)]">
