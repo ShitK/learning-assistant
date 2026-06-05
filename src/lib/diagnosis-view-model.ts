@@ -171,7 +171,7 @@ export function canConfirmEditableExtractionDraft(
 export function createStandardSolutionBlocks(
   text: string,
 ): StandardSolutionBlock[] {
-  const trimmedText = text.trim();
+  const trimmedText = normalizeStandardSolutionBlockText(text).trim();
 
   if (hasMultilineDisplayMath(trimmedText)) {
     return trimmedText.length > 0
@@ -198,7 +198,7 @@ export function createStandardSolutionBlocks(
     const bulletMatch = /^-\s+(.+)$/.exec(line);
 
     if (bulletMatch) {
-      return { kind: "bullet", text: bulletMatch[1].trim() };
+      return { kind: "paragraph", text: bulletMatch[1].trim() };
     }
 
     return { kind: "paragraph", text: line };
@@ -234,6 +234,7 @@ export function createStandardSolutionBlocks(
 
   if (
     sentenceBlocks.some((block) => block.kind === "ordered") ||
+    sentenceBlocks.some(hasParagraphLeadingSolutionMarker) ||
     shouldSplitLongStandardSolution(trimmedText, sentences)
   ) {
     return sentenceBlocks;
@@ -269,6 +270,13 @@ function normalizeEscapedNewlines(text: string): string {
   return text.replace(/\\n/g, "\n");
 }
 
+function normalizeStandardSolutionBlockText(text: string): string {
+  return normalizeEscapedNewlines(text).replace(
+    /(^|[。；\n]\s*)\\(?=(?:[（(]\d+[）)]|[①②③④⑤⑥⑦⑧⑨⑩]|当|若|要使|由|故|因此|所以|综上))/g,
+    "$1",
+  );
+}
+
 function hasMultilineDisplayMath(text: string): boolean {
   return /\$\$[\s\S]*\n[\s\S]*\$\$/.test(text);
 }
@@ -276,9 +284,28 @@ function hasMultilineDisplayMath(text: string): boolean {
 function splitStandardSolutionSentences(text: string): string[] {
   return text
     .split(/(?<=[。；])\s*/)
+    .flatMap((sentence) => splitStandardSolutionInlineMarkers(sentence))
     .flatMap((sentence) => splitStandardSolutionConditionBranches(sentence))
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence.length > 0);
+}
+
+function splitStandardSolutionInlineMarkers(text: string): string[] {
+  const parts: string[] = [];
+  const markerPattern = /(?<=[。；])\s*(?=(?:[（(]\d+[）)]|[①②③④⑤⑥⑦⑧⑨⑩])\s*)/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = markerPattern.exec(text)) !== null) {
+    parts.push(text.slice(cursor, match.index));
+    cursor = match.index;
+  }
+
+  if (cursor < text.length) {
+    parts.push(text.slice(cursor));
+  }
+
+  return parts.length > 0 ? parts : [text];
 }
 
 function splitStandardSolutionConditionBranches(text: string): string[] {
@@ -323,25 +350,16 @@ function extractLeadingSolutionMarker(
     };
   }
 
-  const numericMarkerMatch = /^\s*([\(（]?\d+[\)）])\s*(.+)$/.exec(text);
-
-  if (numericMarkerMatch) {
-    return {
-      marker: numericMarkerMatch[1],
-      text: numericMarkerMatch[2].trim(),
-    };
-  }
-
-  const circledMarkerMatch = /^\s*([①②③④⑤⑥⑦⑧⑨⑩])\s*(.+)$/.exec(text);
-
-  if (circledMarkerMatch) {
-    return {
-      marker: circledMarkerMatch[1],
-      text: circledMarkerMatch[2].trim(),
-    };
-  }
-
   return null;
+}
+
+function hasParagraphLeadingSolutionMarker(
+  block: StandardSolutionBlock,
+): boolean {
+  return (
+    block.kind === "paragraph" &&
+    /^\s*(?:[\(（]\d+[\)）]|[①②③④⑤⑥⑦⑧⑨⑩])\s*/.test(block.text)
+  );
 }
 
 function decorateLooseMathText(text: string): string {

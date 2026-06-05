@@ -36,8 +36,8 @@ function renderPart(part: MathTextPart, index: number): ReactNode {
       key={index}
       className={
         part.displayMode
-          ? "my-3 block overflow-x-auto"
-          : "inline-block max-w-full overflow-x-auto align-baseline"
+          ? "math-text-display my-3 block overflow-x-auto"
+          : "math-text-inline inline-block max-w-full overflow-x-auto"
       }
       dangerouslySetInnerHTML={{ __html: html }}
     />

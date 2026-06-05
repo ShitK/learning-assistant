@@ -37,7 +37,7 @@ assert.deepEqual(
   [
     { kind: "ordered", marker: "1", text: "先求导得到 $f'(x)$。" },
     { kind: "ordered", marker: "2", text: "再讨论导数符号。" },
-    { kind: "bullet", text: "注意定义域" },
+    { kind: "paragraph", text: "注意定义域" },
     { kind: "paragraph", text: "补充说明。" },
   ],
 );
@@ -73,23 +73,21 @@ assert.deepEqual(
   ),
   [
     {
-      kind: "ordered",
-      marker: "(1)",
-      text: "f(x) 的定义域为 (0,+∞)，f'(x) = 1/x - a。",
+      kind: "paragraph",
+      text: "(1) f(x) 的定义域为 (0,+∞)，f'(x) = 1/x - a。",
     },
     {
-      kind: "ordered",
-      marker: "(2)",
-      text: "由 (1) 知，a ≤ 0 时不符合题意。",
+      kind: "paragraph",
+      text: "(2) 由 (1) 知，a ≤ 0 时不符合题意。",
     },
-    { kind: "ordered", marker: "②", text: "f(e) < 0。" },
-    { kind: "ordered", marker: "③", text: "1/a < e。" },
+    { kind: "paragraph", text: "② f(e) < 0。" },
+    { kind: "paragraph", text: "③ 1/a < e。" },
   ],
 );
 
 assert.deepEqual(createStandardSolutionBlocks("（1）先求导。（2）再讨论。"), [
-  { kind: "ordered", marker: "（1）", text: "先求导。" },
-  { kind: "ordered", marker: "（2）", text: "再讨论。" },
+  { kind: "paragraph", text: "（1）先求导。" },
+  { kind: "paragraph", text: "（2）再讨论。" },
 ]);
 
 assert.deepEqual(
@@ -142,6 +140,17 @@ assert.equal(
     "\\n(2) 由（1）知，当 a\\leq 0 时 f(x) 在 (0,e) 上单调递增。",
   ),
   "\n(2) 由（1）知，当 $a\\leq 0$ 时 $f(x)$ 在 $(0,e)$ 上单调递增。",
+);
+
+assert.deepEqual(
+  createStandardSolutionBlocks(
+    "\\(1) 讨论函数单调性。\\当 a≤0 时，f(x) 单调递增。\\综上，a 的取值范围为 (2/e,1)。",
+  ),
+  [
+    { kind: "paragraph", text: "(1) 讨论函数单调性。" },
+    { kind: "paragraph", text: "当 a≤0 时，f(x) 单调递增。" },
+    { kind: "paragraph", text: "综上，a 的取值范围为 (2/e,1)。" },
+  ],
 );
 
 assert.equal(
