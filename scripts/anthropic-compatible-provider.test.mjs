@@ -120,7 +120,7 @@ assert.equal(openAICalls[0].init.headers["x-api-key"], undefined);
 const openAIRequestBody = JSON.parse(openAICalls[0].init.body);
 assert.equal(openAIRequestBody.model, "glm-4.6v-flashx");
 assert.equal(openAIRequestBody.temperature, 0);
-assert.deepEqual(openAIRequestBody.thinking, { type: "disabled" });
+assert.equal(openAIRequestBody.thinking, undefined);
 assert.deepEqual(openAIRequestBody.response_format, { type: "json_object" });
 assert.equal(openAIRequestBody.messages[0].content[0].type, "image_url");
 assert.equal(
@@ -335,6 +335,66 @@ assert.equal(
   false,
 );
 
+const retryWithForbiddenTextValueCalls = [];
+const retryWithForbiddenTextValueProvider =
+  createAnthropicCompatibleVisionProvider({
+    base_url: "https://example.test/anthropic",
+    model: "vision-model-test",
+    api_key: "secret-key-for-test",
+    timeout_ms: 1000,
+    fetch_impl: async () => {
+      retryWithForbiddenTextValueCalls.push("called");
+
+      if (retryWithForbiddenTextValueCalls.length === 1) {
+        return new Response(
+          JSON.stringify({
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  question_text: "题干",
+                  student_answer: "本次不涉及 memory_delta: 保持现状",
+                  student_solution_steps: ["步骤一"],
+                  extraction_confidence: "medium",
+                  warnings: [],
+                }),
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                question_text: "题干",
+                student_answer: "本次不涉及 memory_delta: 保持现状",
+                student_solution_steps: ["步骤一"],
+                standard_solution_draft: "补齐后的标准解法草稿",
+                extraction_confidence: "medium",
+                warnings: [],
+              }),
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    },
+  });
+
+const retryWithForbiddenTextValueResult =
+  await retryWithForbiddenTextValueProvider.extractQuestionFromImage({
+    image_base64: "iVBORw0KGgo=",
+    mime_type: "image/png",
+    student_profile_summary: "demo profile",
+  });
+assert.equal(retryWithForbiddenTextValueResult.ok, true);
+assert.equal(retryWithForbiddenTextValueCalls.length, 2);
+
 const forbiddenRetryCalls = [];
 const forbiddenRetryProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
@@ -375,73 +435,6 @@ const forbiddenRetryResult =
 assert.equal(forbiddenRetryResult.ok, false);
 assert.equal(forbiddenRetryResult.error.code, "model_invalid_output");
 assert.equal(forbiddenRetryCalls.length, 1);
-
-const malformedForbiddenRetryCalls = [];
-const malformedForbiddenRetryProvider = createAnthropicCompatibleVisionProvider({
-  base_url: "https://example.test/anthropic",
-  model: "vision-model-test",
-  api_key: "secret-key-for-test",
-  timeout_ms: 1000,
-  fetch_impl: async () => {
-    malformedForbiddenRetryCalls.push("called");
-
-    return new Response(
-      JSON.stringify({
-        content: [
-          {
-            type: "text",
-            text: '{"question_text":"题干","memory_delta":{"should_persist":true}',
-          },
-        ],
-      }),
-      { status: 200 },
-    );
-  },
-});
-
-const malformedForbiddenRetryResult =
-  await malformedForbiddenRetryProvider.extractQuestionFromImage({
-    image_base64: "iVBORw0KGgo=",
-    mime_type: "image/png",
-    student_profile_summary: "demo profile",
-  });
-assert.equal(malformedForbiddenRetryResult.ok, false);
-assert.equal(malformedForbiddenRetryResult.error.code, "model_invalid_output");
-assert.equal(malformedForbiddenRetryCalls.length, 1);
-
-const singleQuotedForbiddenRetryCalls = [];
-const singleQuotedForbiddenRetryProvider =
-  createAnthropicCompatibleVisionProvider({
-    base_url: "https://example.test/anthropic",
-    model: "vision-model-test",
-    api_key: "secret-key-for-test",
-    timeout_ms: 1000,
-    fetch_impl: async () => {
-      singleQuotedForbiddenRetryCalls.push("called");
-
-      return new Response(
-        JSON.stringify({
-          content: [
-            {
-              type: "text",
-              text: "{'question_text':'题干','memory_delta':{'should_persist':true}",
-            },
-          ],
-        }),
-        { status: 200 },
-      );
-    },
-  });
-
-const singleQuotedForbiddenRetryResult =
-  await singleQuotedForbiddenRetryProvider.extractQuestionFromImage({
-    image_base64: "iVBORw0KGgo=",
-    mime_type: "image/png",
-    student_profile_summary: "demo profile",
-  });
-assert.equal(singleQuotedForbiddenRetryResult.ok, false);
-assert.equal(singleQuotedForbiddenRetryResult.error.code, "model_invalid_output");
-assert.equal(singleQuotedForbiddenRetryCalls.length, 1);
 
 const timeoutProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",

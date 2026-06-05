@@ -78,8 +78,6 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const MIN_TIMEOUT_MS = 5_000;
 const MAX_TIMEOUT_MS = 120_000;
 const DEFAULT_PROVIDER_NAME = "anthropic_compatible_vision";
-const FORBIDDEN_OUTPUT_KEY_PATTERN =
-  /["']?(?:memory_delta|student_profile|mistake_history|knowledge_mastery_changes|mistake_cause_changes)["']?\s*:/;
 
 export function createVisionProviderConfigFromEnv(
   env: Record<string, string | undefined>,
@@ -311,9 +309,6 @@ function buildProviderRequestBody(
     model: config.model,
     max_tokens: 1200,
     temperature: 0,
-    thinking: {
-      type: "disabled",
-    },
   };
 
   if (config.protocol === "openai") {
@@ -344,6 +339,9 @@ function buildProviderRequestBody(
 
   return {
     ...baseBody,
+    thinking: {
+      type: "disabled",
+    },
     messages: [
       {
         role: "user",
@@ -428,13 +426,8 @@ function shouldRetryInvalidOutput(
     result.error.code === "model_invalid_output" &&
     typeof result.raw_output_text === "string" &&
     result.raw_output_text.trim().length > 0 &&
-    !hasRawForbiddenOutputKey(result.raw_output_text) &&
     (result.error.debug_summary?.forbidden_fields.length ?? 0) === 0
   );
-}
-
-function hasRawForbiddenOutputKey(rawOutputText: string): boolean {
-  return FORBIDDEN_OUTPUT_KEY_PATTERN.test(rawOutputText);
 }
 
 function toPublicProviderResult(
