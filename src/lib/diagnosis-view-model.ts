@@ -232,7 +232,10 @@ export function createStandardSolutionBlocks(
     return { kind: "paragraph", text: sentence };
   });
 
-  if (sentenceBlocks.some((block) => block.kind === "ordered")) {
+  if (
+    sentenceBlocks.some((block) => block.kind === "ordered") ||
+    shouldSplitLongStandardSolution(trimmedText, sentences)
+  ) {
     return sentenceBlocks;
   }
 
@@ -273,8 +276,39 @@ function hasMultilineDisplayMath(text: string): boolean {
 function splitStandardSolutionSentences(text: string): string[] {
   return text
     .split(/(?<=[。；])\s*/)
+    .flatMap((sentence) => splitStandardSolutionConditionBranches(sentence))
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence.length > 0);
+}
+
+function splitStandardSolutionConditionBranches(text: string): string[] {
+  const parts: string[] = [];
+  const conditionBranchPattern = /，(?=当[^，。；]{1,50}时)/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = conditionBranchPattern.exec(text)) !== null) {
+    const nextCursor = match.index + 1;
+    parts.push(text.slice(cursor, nextCursor));
+    cursor = nextCursor;
+  }
+
+  if (cursor < text.length) {
+    parts.push(text.slice(cursor));
+  }
+
+  return parts.length > 0 ? parts : [text];
+}
+
+function shouldSplitLongStandardSolution(
+  text: string,
+  sentences: string[],
+): boolean {
+  const hasConditionOrConclusionCue = sentences.some((sentence) => {
+    return /^(当|若|要使|由|故|因此|所以|综上)/.test(sentence);
+  });
+
+  return text.length >= 140 && sentences.length > 1 && hasConditionOrConclusionCue;
 }
 
 function extractLeadingSolutionMarker(

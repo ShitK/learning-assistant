@@ -1176,7 +1176,7 @@ function StandardSolutionContent({
     );
   }
 
-  return <div className="mt-3 grid gap-2">{elements}</div>;
+  return <div className="mt-3 grid gap-3">{elements}</div>;
 }
 
 function isOrderedStandardSolutionBlock(
