@@ -204,7 +204,11 @@ export function createStandardSolutionBlocks(
     return { kind: "paragraph", text: line };
   });
 
-  if (blocks.some((block) => block.kind !== "paragraph")) {
+  const hasInlineOrderedMarkers = lines.some((line) => {
+    return /^\d+\.\s+/.test(line) && /(?<=[。；])\s*\d+\.\s+/.test(line);
+  });
+
+  if (blocks.some((block) => block.kind !== "paragraph") && !hasInlineOrderedMarkers) {
     return blocks;
   }
 
@@ -214,15 +218,25 @@ export function createStandardSolutionBlocks(
     return blocks;
   }
 
-  return sentences.map((sentence, index) => {
+  const sentenceBlocks: StandardSolutionBlock[] = sentences.map((sentence) => {
     const leadingMarker = extractLeadingSolutionMarker(sentence);
 
-    return {
-      kind: "ordered",
-      marker: leadingMarker?.marker ?? String(index + 1),
-      text: leadingMarker?.text ?? sentence,
-    };
+    if (leadingMarker) {
+      return {
+        kind: "ordered",
+        marker: leadingMarker.marker,
+        text: leadingMarker.text,
+      };
+    }
+
+    return { kind: "paragraph", text: sentence };
   });
+
+  if (sentenceBlocks.some((block) => block.kind === "ordered")) {
+    return sentenceBlocks;
+  }
+
+  return blocks;
 }
 
 export function createStandardSolutionDisplayText(text: string): string {
@@ -261,6 +275,15 @@ function splitStandardSolutionSentences(text: string): string[] {
 function extractLeadingSolutionMarker(
   text: string,
 ): { marker: string; text: string } | null {
+  const dotMarkerMatch = /^\s*(\d+)\.\s+(.+)$/.exec(text);
+
+  if (dotMarkerMatch) {
+    return {
+      marker: dotMarkerMatch[1],
+      text: dotMarkerMatch[2].trim(),
+    };
+  }
+
   const numericMarkerMatch = /^\s*([\(（]?\d+[\)）])\s*(.+)$/.exec(text);
 
   if (numericMarkerMatch) {

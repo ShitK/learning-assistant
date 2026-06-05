@@ -192,6 +192,7 @@ export function createVisionExtractionPrompt(input: {
     "只输出一个合法 JSON 对象，不要输出 Markdown、解释文字或代码块。",
     "JSON 字段必须且只能包含 question_text、student_answer、student_solution_steps、standard_solution_draft、extraction_confidence、warnings。",
     "standard_solution_draft 必须始终输出；如果图片里没有标准解法，请根据题干生成一份标准解法草稿，不要省略字段。",
+    "standard_solution_draft 内的数学公式必须使用 $...$ 或 $$...$$ 包裹；不要输出裸公式，例如把 f'(x)>0 写成 $f'(x)>0$。",
     "student_solution_steps 和 warnings 必须输出为字符串数组；没有 warning 时输出空数组 []。",
     "如果没有识别到学生答案，也必须输出 student_answer=\"未识别到学生答案\"，并将 extraction_confidence 设为 \"low\"。",
     "不要输出 memory_delta、student_profile、mistake_history、错因频次或画像更新。",

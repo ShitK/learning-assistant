@@ -50,6 +50,11 @@ assert.deepEqual(createStandardSolutionBlocks("1.先求导。"), [
   { kind: "paragraph", text: "1.先求导。" },
 ]);
 
+assert.deepEqual(createStandardSolutionBlocks("1. 先求导。2. 再讨论。"), [
+  { kind: "ordered", marker: "1", text: "先求导。" },
+  { kind: "ordered", marker: "2", text: "再讨论。" },
+]);
+
 assert.deepEqual(
   createStandardSolutionBlocks("1. $$\nf'(x)=3x^2-3a\n$$"),
   [{ kind: "paragraph", text: "1. $$\nf'(x)=3x^2-3a\n$$" }],
@@ -58,15 +63,9 @@ assert.deepEqual(
 const sampleStandardSolutionBlocks = createStandardSolutionBlocks(
   sample.standard_solution,
 );
-assert.equal(sampleStandardSolutionBlocks.length >= 2, true);
-assert.equal(sampleStandardSolutionBlocks[0].kind, "ordered");
-assert.equal(sampleStandardSolutionBlocks[0].marker, "1");
-assert.equal(
-  sampleStandardSolutionBlocks.some((block) =>
-    block.text.includes("$a>0$"),
-  ),
-  true,
-);
+assert.deepEqual(sampleStandardSolutionBlocks, [
+  { kind: "paragraph", text: sample.standard_solution },
+]);
 
 assert.deepEqual(
   createStandardSolutionBlocks(

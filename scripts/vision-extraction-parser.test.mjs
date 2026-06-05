@@ -317,5 +317,9 @@ assert.equal(prompt.includes("不要输出 memory_delta"), true);
 assert.equal(prompt.includes("合法 JSON"), true);
 assert.equal(prompt.includes("未识别到学生答案"), true);
 assert.equal(prompt.includes("standard_solution_draft 必须始终输出"), true);
+assert.equal(
+  prompt.includes("standard_solution_draft 内的数学公式必须使用 $...$ 或 $$...$$ 包裹"),
+  true,
+);
 
 console.log("vision extraction parser test passed");

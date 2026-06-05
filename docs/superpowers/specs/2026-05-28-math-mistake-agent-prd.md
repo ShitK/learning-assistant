@@ -145,7 +145,7 @@ P0 `sample_diagnosis` 后端实现走确定性的 TypeScript Pipeline Service：
 
 P1 `image_diagnosis` 后端通过 Anthropic-compatible provider adapter 调用 MiMo 多模态接口。模型只负责图片抽取，输出 `question_text`、`student_answer`、`student_solution_steps`、`standard_solution_draft`、`extraction_confidence` 和 `warnings`。模型输出必须先经过 JSON 解析和边界校验，再返回 `extraction_review` 识别草稿；用户确认后才通过 `/api/confirm` 进入确定性 Pipeline。知识点映射、错因诊断、`memory_delta`、练习和复习计划仍由本地规则生成。
 
-模型输出作为不可信外部输入处理。`student_solution_steps` 可以从字符串数组、多行字符串、或含 `text`/`content`/`step`/`value` 文本字段的对象数组规范化为内部字符串数组；空项和无法解释的项会被丢弃并生成 warning；超过上限的步骤会被截断。`standard_solution_draft` 仍为必填字段，缺失时 provider 可以在不包含 forbidden fields 的前提下重试一次；重试失败仍返回 recoverable `model_invalid_output`，不会进入画像持久化。
+模型输出作为不可信外部输入处理。`student_solution_steps` 可以从字符串数组、多行字符串、或含 `text`/`content`/`step`/`value` 文本字段的对象数组规范化为内部字符串数组；空项和无法解释的项会被丢弃并生成 warning；超过上限的步骤会被截断。`standard_solution_draft` 仍为必填字段，缺失时 provider 可以在不包含 forbidden fields 的前提下重试一次；重试失败仍返回 recoverable `model_invalid_output`，不会进入画像持久化。`standard_solution_draft` 内部数学表达式应使用 `$...$` 或 `$$...$$` 包裹，便于前端用 KaTeX 稳定渲染；前端可做有限裸公式兜底，但不得把兜底正则当作完整数学解析器。
 
 P1 图片诊断前端入口包括：图片选择/拖拽、预览、客户端格式校验、提交前压缩到 1MB 内、调用 `/api/diagnose` 的 `image_diagnosis` 获取识别草稿、渲染可编辑确认表单，再由用户确认后调用 `/api/confirm` 生成后续 Agent Pipeline 输出。图片识别失败、模型超时、非法 JSON、未配置 API Key、图片过大等场景必须展示 recoverable error，并提供切回样例题路径。未确认、低置信度或确认令牌与草稿不匹配的图片识别结果不得写入 localStorage 学生画像。
 
@@ -1260,7 +1260,8 @@ System prompt:
 1. 只输出合法 JSON 对象，不要输出 Markdown。
 2. 如果信息不足，用 extraction_confidence 标记为 low，并说明需要学生确认。
 3. 字段必须且只能包含约定的抽取字段。
-4. 不要输出 memory_delta、student_profile、mistake_history、错因频次或画像更新。
+4. standard_solution_draft 内的数学公式必须使用 $...$ 或 $$...$$ 包裹。
+5. 不要输出 memory_delta、student_profile、mistake_history、错因频次或画像更新。
 ```
 
 User prompt template:
