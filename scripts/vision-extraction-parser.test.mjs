@@ -43,6 +43,16 @@ assert.deepEqual(parsedStringList.value.student_solution_steps, [
 ]);
 assert.deepEqual(parsedStringList.value.warnings, []);
 
+const fencedJson = parseVisionExtractionText(`\`\`\`json
+${validModelText}
+\`\`\``);
+assert.equal(fencedJson.ok, true);
+assert.equal(fencedJson.value.question_text.includes("x^3"), true);
+
+const wrappedJson = parseVisionExtractionText(`下面是抽取结果：\n${validModelText}`);
+assert.equal(wrappedJson.ok, true);
+assert.equal(wrappedJson.value.student_answer.includes("f'"), true);
+
 const invalidJson = parseVisionExtractionText("```json\n{}\n```");
 assert.equal(invalidJson.ok, false);
 assert.equal(invalidJson.error.code, "model_invalid_output");
@@ -83,19 +93,20 @@ const missingStandardSolutionDraft = parseVisionExtractionText(
     question_text: "题干",
     student_answer: "答案",
     student_solution_steps: ["步骤"],
-    extraction_confidence: "medium",
-    warnings: [],
   }),
+  { allow_missing_solution_defaults: true },
 );
-assert.equal(missingStandardSolutionDraft.ok, false);
+assert.equal(missingStandardSolutionDraft.ok, true);
 assert.equal(
-  missingStandardSolutionDraft.error.message,
-  "模型输出缺少 standard_solution_draft。",
+  missingStandardSolutionDraft.value.standard_solution_draft,
+  "请根据题干补充标准解法：题干",
 );
-assert.deepEqual(
-  missingStandardSolutionDraft.error.debug_summary.missing_fields,
-  ["standard_solution_draft"],
-);
+assert.equal(missingStandardSolutionDraft.value.extraction_confidence, "low");
+assert.deepEqual(missingStandardSolutionDraft.value.warnings, [
+  "模型未返回标准解法草稿，已生成待确认占位内容。",
+  "模型未返回置信度，已按低置信度处理。",
+  "模型返回的 warnings 格式不完整，已忽略。",
+]);
 
 const missingSteps = parseVisionExtractionText(
   JSON.stringify({
@@ -321,5 +332,7 @@ assert.equal(
   prompt.includes("standard_solution_draft 内的数学公式必须使用 $...$ 或 $$...$$ 包裹"),
   true,
 );
+assert.equal(prompt.includes("\\frac{1}{a}"), true);
+assert.equal(prompt.includes("\\ln a"), true);
 
 console.log("vision extraction parser test passed");

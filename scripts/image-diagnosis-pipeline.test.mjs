@@ -52,6 +52,45 @@ assert.equal(
 assert.equal(response.practice_questions.length, 3);
 assert.equal(response.review_plan.seven_days.length, 7);
 
+const enhancedResponse = runImageMathTraceAgent({
+  request,
+  extraction,
+  is_extraction_confirmed: true,
+  analysis: {
+    expected_diagnosis: "DeepSeek 增强：参数分类讨论缺失。",
+    step_analysis: ["DeepSeek 只增强展示步骤"],
+    solution_highlights: ["DeepSeek 只增强标准解法表达"],
+    standard_solution: "DeepSeek 标准解法：$f'(x)=0$ 后分类讨论。",
+    warnings: ["分析模型结果已纳入报告。"],
+  },
+});
+
+assert.equal(
+  enhancedResponse.mistake_diagnosis.expected_diagnosis,
+  "DeepSeek 增强：参数分类讨论缺失。",
+);
+assert.deepEqual(enhancedResponse.mistake_diagnosis.step_analysis, [
+  "DeepSeek 只增强展示步骤",
+]);
+assert.deepEqual(
+  enhancedResponse.knowledge_mapping,
+  response.knowledge_mapping,
+);
+assert.deepEqual(
+  enhancedResponse.mistake_diagnosis.mistake_causes,
+  response.mistake_diagnosis.mistake_causes,
+);
+assert.equal(
+  enhancedResponse.mistake_diagnosis.severity,
+  response.mistake_diagnosis.severity,
+);
+assert.deepEqual(enhancedResponse.memory_delta, response.memory_delta);
+assert.deepEqual(enhancedResponse.student_profile, response.student_profile);
+assert.equal(
+  enhancedResponse.warnings.includes("分析模型结果已纳入报告。"),
+  true,
+);
+
 const lowConfidenceResponse = runImageMathTraceAgent({
   request,
   extraction: {

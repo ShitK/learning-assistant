@@ -240,25 +240,30 @@ export function createStandardSolutionBlocks(
 }
 
 export function createStandardSolutionDisplayText(text: string): string {
+  const normalizedText = normalizeEscapedNewlines(text);
   const parts: string[] = [];
   const mathPattern = /(?<!\\)(\$\$?)[\s\S]+?(?<!\\)\1/g;
   let cursor = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = mathPattern.exec(text)) !== null) {
+  while ((match = mathPattern.exec(normalizedText)) !== null) {
     if (match.index > cursor) {
-      parts.push(decorateLooseMathText(text.slice(cursor, match.index)));
+      parts.push(decorateLooseMathText(normalizedText.slice(cursor, match.index)));
     }
 
     parts.push(match[0]);
     cursor = match.index + match[0].length;
   }
 
-  if (cursor < text.length) {
-    parts.push(decorateLooseMathText(text.slice(cursor)));
+  if (cursor < normalizedText.length) {
+    parts.push(decorateLooseMathText(normalizedText.slice(cursor)));
   }
 
   return parts.join("");
+}
+
+function normalizeEscapedNewlines(text: string): string {
+  return text.replace(/\\n/g, "\n");
 }
 
 function hasMultilineDisplayMath(text: string): boolean {
@@ -306,6 +311,55 @@ function extractLeadingSolutionMarker(
 }
 
 function decorateLooseMathText(text: string): string {
+  return decorateSimpleLooseMathText(decorateRawLatexText(text));
+}
+
+function decorateRawLatexText(text: string): string {
+  return text.replace(
+    /[A-Za-z0-9'′()+\-*/=<>≤≥∈∞,.\s\\{}]+/g,
+    (candidate) => decorateRawLatexCandidate(candidate),
+  );
+}
+
+function decorateRawLatexCandidate(candidate: string): string {
+  const leadingWhitespace = candidate.match(/^\s*/)?.[0] ?? "";
+  const trailingWhitespace = candidate.match(/\s*$/)?.[0] ?? "";
+  const core = candidate.trim();
+
+  if (core.length === 0 || !hasRawLatexCommand(core)) {
+    return candidate;
+  }
+
+  return `${leadingWhitespace}$${core}$${trailingWhitespace}`;
+}
+
+function hasRawLatexCommand(text: string): boolean {
+  return /\\(?:frac|ln|leq|geq|cdot|infty|sqrt|le|ge|times)\b/.test(text);
+}
+
+function decorateSimpleLooseMathText(text: string): string {
+  const parts: string[] = [];
+  const mathPattern = /(?<!\\)(\$\$?)[\s\S]+?(?<!\\)\1/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = mathPattern.exec(text)) !== null) {
+    if (match.index > cursor) {
+      parts.push(decorateSimpleLooseMathSegment(text.slice(cursor, match.index)));
+    }
+
+    parts.push(match[0]);
+    cursor = match.index + match[0].length;
+  }
+
+  if (cursor < text.length) {
+    parts.push(decorateSimpleLooseMathSegment(text.slice(cursor)));
+  }
+
+  return parts.join("");
+}
+
+function decorateSimpleLooseMathSegment(text: string): string {
   return text.replace(
     /[A-Za-z0-9'′()+\-*/=<>≤≥∈∞,.\s]+/g,
     (candidate) => decorateLooseMathCandidate(candidate),
@@ -329,7 +383,8 @@ function isLikelyLooseMath(text: string): boolean {
     /[=<>≤≥∈∞]/.test(text) ||
     /\b[a-zA-Z][′']?\([^)]*\)/.test(text) ||
     /\bln\([^)]*\)/.test(text) ||
-    /\d+\/[a-zA-Z]/.test(text)
+    /\d+\/[a-zA-Z]/.test(text) ||
+    /\([^)]*,[^)]*(?:[a-zA-Z∞]|\/)[^)]*\)/.test(text)
   );
 }
 

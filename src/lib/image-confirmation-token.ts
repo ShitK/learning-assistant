@@ -86,7 +86,9 @@ function getConfirmationSecret(): string | null {
   }
 
   const configuredSecret =
-    process.env.MATHTRACE_CONFIRM_SECRET ?? process.env.MIMO_API_KEY;
+    process.env.MATHTRACE_CONFIRM_SECRET ??
+    process.env.VISION_PROVIDER_API_KEY ??
+    process.env.MIMO_API_KEY;
 
   if (configuredSecret) {
     return configuredSecret;

@@ -23,12 +23,12 @@
 - `POST /api/diagnose` 接口壳。
 - P0 演示固定走 `sample_diagnosis`，返回内置 `sample_diagnosis`。
 - 前端已经能通过接口触发诊断，并用返回的 `student_profile` 展示画像变化。
-- P1 后端具备 `image_diagnosis` 服务端路径：Anthropic-compatible provider adapter，MiMo first；模型只做图片抽取，`/api/diagnose` 先返回可编辑 `extraction_review` 草稿，用户确认后再由 `/api/confirm` 复用确定性 Pipeline。
+- P1 后端具备 `image_diagnosis` 服务端路径：通用 vision provider adapter，支持通过 `VISION_PROVIDER_*` 切换 Anthropic-compatible 与 OpenAI-compatible provider；模型只做图片抽取，`/api/diagnose` 先返回可编辑 `extraction_review` 草稿，用户确认后再由 `/api/confirm` 复用确定性 Pipeline。
 - P1 前端具备图片上传入口、预览、客户端校验和压缩、识别结果编辑确认表单、可恢复错误态，以及未确认/低置信度/确认令牌不匹配不写入 localStorage 的保护。
 
 当前还没有完成：
 
-- Kimi、DeepSeek 等非 MiMo provider 实现。
+- 非 Anthropic-compatible / OpenAI-compatible provider 的适配器实现。
 - 真正的 Agent 内部编排模块。
 - 数据库持久化。
 - 用户登录、权限、老师端、班级端。
@@ -113,7 +113,7 @@ GET /api/history
 
 接口设计原则：
 
-- P0/P1 只让前端调用后端 API，不让前端直接调用 MiMo、Kimi、OpenAI 或数据库服务密钥。
+- P0/P1 只让前端调用后端 API，不让前端直接调用 Kimi、MiMo、OpenAI 或数据库服务密钥。
 - 请求体使用 Zod 或等价类型守卫做运行时校验。
 - 响应体也使用 Zod 或等价 schema 做内部校验，尤其是模型输出。
 - 错误响应必须稳定，包括 `invalid_request`、`invalid_json`、`missing_image`、`invalid_image`、`image_too_large`、`model_not_configured`、`model_timeout`、`model_request_failed`、`model_invalid_output` 等。
@@ -158,12 +158,22 @@ runMathTraceAgent()
 
 ```text
 P0：不调用模型，只用内置样例。
-P1：Anthropic-compatible 多模态 provider 只负责图片识别和结构化抽取，当前 MiMo first，Kimi/DeepSeek 后续作为 provider 实现扩展。
+P1：多模态 provider 只负责图片识别和结构化抽取，当前通过 `VISION_PROVIDER_*` 配置切换 GLM-4.6V-FlashX、Kimi Code、MiMo 等兼容 provider。
+P1：确认后 text analysis provider 可增强报告表达，当前通过 `ANALYSIS_PROVIDER_*` 配置 DeepSeek `deepseek-v4-flash`。
 P2：模型 adapter 可负责结构化生成练习和计划；是否引入 Vercel AI SDK 需要单独评估。
 P3：根据复杂度评估 OpenAI Agents SDK 或 LangGraph。
 ```
 
-MiMo、Kimi、DeepSeek 都适合放在“题目识别模块”里，由服务端 adapter 包装成统一的 `VisionExtractionProvider`。当前实现优先接 MiMo 的 Anthropic-compatible 接口，并显式关闭 `thinking` 以确保返回可解析 text block；未来新增模型时只新增 provider，不改 route 和确定性 Pipeline。
+GLM、Kimi、MiMo 适合放在“题目识别模块”里，由服务端 adapter 包装成统一的 `VisionExtractionProvider`。当前实现支持 Anthropic-compatible 与 OpenAI-compatible 接口，并显式关闭 `thinking` 以确保返回可解析 text block；切换兼容 provider 时优先改本地 `VISION_PROVIDER_*` 配置，不改 route 和确定性 Pipeline。
+
+DeepSeek `deepseek-v4-flash` 当前放在“确认后文本分析增强模块”里，由 `ANALYSIS_PROVIDER_*` 配置。它只接收用户确认后的文本草稿，增强 `expected_diagnosis`、`step_analysis`、`solution_highlights` 和 `standard_solution`，不参与 `knowledge_mapping`、`mistake_causes`、`severity`、`memory_delta`、`student_profile`、练习和复习计划生成。推荐链路是：
+
+```text
+GLM/Kimi/MiMo vision extraction
+-> 用户检查/编辑/确认
+-> DeepSeek text analysis enhancement
+-> deterministic memory/profile rules
+```
 
 Vercel AI SDK 可能适合 P2 引入，因为它和 Next.js/TypeScript 生态贴近，提供统一模型调用、流式输出、工具调用和结构化输出。但当前阶段只有一个多模态 HTTP 调用，先不引入 SDK，避免扩大依赖和调试面。
 
@@ -178,6 +188,15 @@ interface VisionExtractionProvider {
   }): Promise<RecognizedQuestionDraft>;
 }
 
+interface TextAnalysisEnhancementProvider {
+  enhanceConfirmedDiagnosis(input: {
+    question_text: string;
+    student_answer: string;
+    student_solution_steps: string[];
+    standard_solution_draft: string;
+  }): Promise<DiagnosisEnhancementDraft>;
+}
+
 interface StructuredGenerationProvider {
   generatePractice(input: PracticeGenerationInput): Promise<PracticeQuestion[]>;
   generateReviewPlan(input: ReviewPlanInput): Promise<ReviewPlan>;
@@ -189,6 +208,7 @@ interface StructuredGenerationProvider {
 - 不要把模型返回内容直接写入长期画像。
 - 不要让模型自由创造知识点 ID 或错因标签。
 - 模型输出必须先转成项目内部 schema，再进入后续模块。
+- 文本分析模型失败时回退到本地规则报告，不阻塞确认流程。
 
 ## 5. 长期记忆与数据库技术
 

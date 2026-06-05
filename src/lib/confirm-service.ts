@@ -1,3 +1,7 @@
+import {
+  createAnalysisProvider,
+  createAnalysisProviderConfigFromEnv,
+} from "@/lib/analysis-provider";
 import { createDiagnoseError } from "@/lib/diagnose-api";
 import { parseConfirmedExtractionDraft } from "@/lib/image-confirmation";
 import {
@@ -6,6 +10,10 @@ import {
 } from "@/lib/image-confirmation-token";
 import { runImageMathTraceAgent } from "@/lib/image-diagnosis-pipeline";
 import { isRecord } from "@/lib/utils";
+import type {
+  AnalysisEnhancementDraft,
+  AnalysisProvider,
+} from "@/lib/analysis-provider";
 import type { DiagnoseServiceResult } from "@/lib/diagnose-service";
 import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
 
@@ -16,6 +24,7 @@ interface ConfirmImageDiagnosisRequest {
     mistake_history: unknown[];
   };
   extraction: VisionExtractionDraft;
+  can_use_analysis_provider: boolean;
 }
 
 type ParseConfirmImageDiagnosisResult =
@@ -24,6 +33,9 @@ type ParseConfirmImageDiagnosisResult =
 
 export async function handleConfirmRequest(
   payload: unknown,
+  deps?: {
+    analysis_provider?: AnalysisProvider;
+  },
 ): Promise<DiagnoseServiceResult> {
   const parsed = parseConfirmImageDiagnosisRequest(payload);
   if (!parsed.ok) {
@@ -33,14 +45,48 @@ export async function handleConfirmRequest(
     };
   }
 
+  const analysis = await getAnalysisEnhancement(
+    parsed.value.extraction,
+    parsed.value.can_use_analysis_provider ? deps?.analysis_provider : undefined,
+    parsed.value.can_use_analysis_provider,
+  );
+
   return {
     status: 200,
     body: runImageMathTraceAgent({
       request: parsed.value.request,
       extraction: parsed.value.extraction,
       is_extraction_confirmed: true,
+      analysis,
     }),
   };
+}
+
+async function getAnalysisEnhancement(
+  extraction: VisionExtractionDraft,
+  injectedProvider: AnalysisProvider | undefined,
+  canUseAnalysisProvider: boolean,
+): Promise<AnalysisEnhancementDraft | undefined> {
+  if (!canUseAnalysisProvider) {
+    return undefined;
+  }
+
+  const provider = injectedProvider ?? getConfiguredAnalysisProvider();
+  if (!provider) {
+    return undefined;
+  }
+
+  const result = await provider.analyzeConfirmedExtraction(extraction);
+  return result.ok ? result.value : undefined;
+}
+
+function getConfiguredAnalysisProvider(): AnalysisProvider | undefined {
+  const config = createAnalysisProviderConfigFromEnv(process.env);
+  if (!config.ok) {
+    return undefined;
+  }
+
+  return createAnalysisProvider(config.value);
 }
 
 function parseConfirmImageDiagnosisRequest(
@@ -80,10 +126,11 @@ function parseConfirmImageDiagnosisRequest(
     ...extraction.value,
     extraction_confidence: token.value.extraction_confidence,
   };
-  const finalExtraction = isMatchingDraftFingerprint(
+  const isDraftFingerprintMatched = isMatchingDraftFingerprint(
     tokenScopedExtraction,
     token.value,
-  )
+  );
+  const finalExtraction = isDraftFingerprintMatched
     ? tokenScopedExtraction
     : forceNonPersistForTokenMismatch(tokenScopedExtraction);
 
@@ -98,6 +145,7 @@ function parseConfirmImageDiagnosisRequest(
           : [],
       },
       extraction: finalExtraction,
+      can_use_analysis_provider: isDraftFingerprintMatched,
     },
   };
 }

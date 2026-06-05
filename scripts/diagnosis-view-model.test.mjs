@@ -111,6 +111,20 @@ assert.equal(
   "应讨论 $a\\le 0$ 与 $a > 0$。",
 );
 
+assert.equal(
+  createStandardSolutionDisplayText(
+    "\\n(2) 由（1）知，当 a\\leq 0 时 f(x) 在 (0,e) 上单调递增。",
+  ),
+  "\n(2) 由（1）知，当 $a\\leq 0$ 时 $f(x)$ 在 $(0,e)$ 上单调递增。",
+);
+
+assert.equal(
+  createStandardSolutionDisplayText(
+    "由 f(\\frac{1}{a})=\\ln\\frac{1}{a}-a\\cdot\\frac{1}{a}+1=-\\ln a<0，得 0<a<1。",
+  ),
+  "由 $f(\\frac{1}{a})=\\ln\\frac{1}{a}-a\\cdot\\frac{1}{a}+1=-\\ln a<0$，得 $0<a<1$。",
+);
+
 const imageResponse = {
   diagnosis_id: "diag_image_1",
   student_id: "demo_student_001",

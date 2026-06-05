@@ -101,6 +101,106 @@ assert.equal(confirmResult.status, 200);
 assert.equal(confirmResult.body.source, "image");
 assert.equal(confirmResult.body.memory_delta.should_persist, true);
 
+const enhancedConfirmResult = await handleConfirmRequest(
+  {
+    student_id: "demo_student_001",
+    task_type: "confirmed_image_diagnosis",
+    confirmation_token: result.body.confirmation_token,
+    confirmed_extraction: {
+      question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
+      student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
+      student_solution_steps: ["求导", "只写一个临界点"],
+      standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
+      extraction_confidence: "high",
+      warnings: [],
+    },
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  },
+  {
+    analysis_provider: {
+      async analyzeConfirmedExtraction() {
+        return {
+          ok: true,
+          value: {
+            expected_diagnosis: "DeepSeek 增强：参数分类讨论缺失。",
+            step_analysis: ["DeepSeek 增强步骤 1"],
+            solution_highlights: ["DeepSeek 高亮 1"],
+            standard_solution:
+              "DeepSeek 标准解法：$f'(x)=0$ 后分类讨论。",
+            warnings: ["分析模型结果已纳入报告。"],
+          },
+        };
+      },
+    },
+  },
+);
+
+assert.equal(enhancedConfirmResult.status, 200);
+assert.equal(
+  enhancedConfirmResult.body.mistake_diagnosis.expected_diagnosis,
+  "DeepSeek 增强：参数分类讨论缺失。",
+);
+assert.deepEqual(enhancedConfirmResult.body.mistake_diagnosis.step_analysis, [
+  "DeepSeek 增强步骤 1",
+]);
+assert.equal(
+  enhancedConfirmResult.body.mistake_diagnosis.standard_solution,
+  "DeepSeek 标准解法：$f'(x)=0$ 后分类讨论。",
+);
+assert.equal(enhancedConfirmResult.body.memory_delta.should_persist, true);
+assert.deepEqual(
+  enhancedConfirmResult.body.memory_delta,
+  confirmResult.body.memory_delta,
+);
+assert.equal(
+  enhancedConfirmResult.body.warnings.includes("分析模型结果已纳入报告。"),
+  true,
+);
+
+const failedAnalysisConfirmResult = await handleConfirmRequest(
+  {
+    student_id: "demo_student_001",
+    task_type: "confirmed_image_diagnosis",
+    confirmation_token: result.body.confirmation_token,
+    confirmed_extraction: {
+      question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
+      student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
+      student_solution_steps: ["求导", "只写一个临界点"],
+      standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
+      extraction_confidence: "high",
+      warnings: [],
+    },
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  },
+  {
+    analysis_provider: {
+      async analyzeConfirmedExtraction() {
+        return {
+          ok: false,
+          error: {
+            code: "model_timeout",
+            message: "timeout",
+            recoverable: true,
+            failure_kind: "timeout",
+          },
+        };
+      },
+    },
+  },
+);
+
+assert.equal(failedAnalysisConfirmResult.status, 200);
+assert.equal(
+  failedAnalysisConfirmResult.body.mistake_diagnosis.expected_diagnosis,
+  confirmResult.body.mistake_diagnosis.expected_diagnosis,
+);
+assert.equal(
+  failedAnalysisConfirmResult.body.memory_delta.should_persist,
+  true,
+);
+
 await assertConfirmRouteError(postConfirmRaw("{"), 400, "invalid_json");
 
 const confirmRouteResponse = await postConfirmJson({
@@ -151,6 +251,48 @@ assert.equal(
     "确认草稿与识别令牌不匹配，本次只生成报告，不写入长期画像。",
   ),
   true,
+);
+
+let mismatchAnalysisCallCount = 0;
+const mismatchedAnalysisResult = await handleConfirmRequest(
+  {
+    student_id: "demo_student_001",
+    task_type: "confirmed_image_diagnosis",
+    confirmation_token: result.body.confirmation_token,
+    confirmed_extraction: {
+      question_text: "这是被替换的另一道题。",
+      student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
+      student_solution_steps: ["求导", "只写一个临界点"],
+      standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
+      extraction_confidence: "high",
+      warnings: [],
+    },
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  },
+  {
+    analysis_provider: {
+      async analyzeConfirmedExtraction() {
+        mismatchAnalysisCallCount += 1;
+        return {
+          ok: true,
+          value: {
+            expected_diagnosis: "不应使用",
+            step_analysis: ["不应使用"],
+            solution_highlights: ["不应使用"],
+            standard_solution: "不应使用",
+            warnings: [],
+          },
+        };
+      },
+    },
+  },
+);
+
+assert.equal(mismatchAnalysisCallCount, 0);
+assert.equal(
+  mismatchedAnalysisResult.body.memory_delta.should_persist,
+  false,
 );
 
 const missingTokenResult = await handleConfirmRequest({
@@ -330,10 +472,37 @@ assert.equal(longWarningsResult.value.warnings.length, 5);
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalConfirmSecret = process.env.MATHTRACE_CONFIRM_SECRET;
+const originalVisionProviderApiKey = process.env.VISION_PROVIDER_API_KEY;
 const originalMimoApiKey = process.env.MIMO_API_KEY;
 try {
+  process.env.NODE_ENV = "development";
+  delete process.env.MATHTRACE_CONFIRM_SECRET;
+  process.env.VISION_PROVIDER_API_KEY = "vision-provider-confirm-secret";
+  process.env.MIMO_API_KEY = "legacy-mimo-confirm-secret";
+
+  const visionProviderSignedToken = createImageConfirmationToken({
+    draft_id: "image_draft_test",
+    extraction_confidence: "high",
+    can_persist_after_confirmation: true,
+    draft_fingerprint: "signed-fingerprint",
+  });
+  assert.equal(verifyImageConfirmationToken(visionProviderSignedToken).ok, true);
+
+  process.env.VISION_PROVIDER_API_KEY = "wrong-vision-provider-secret";
+  assert.equal(verifyImageConfirmationToken(visionProviderSignedToken).ok, false);
+
+  delete process.env.VISION_PROVIDER_API_KEY;
+  const legacyProviderSignedToken = createImageConfirmationToken({
+    draft_id: "image_draft_test",
+    extraction_confidence: "high",
+    can_persist_after_confirmation: true,
+    draft_fingerprint: "signed-fingerprint",
+  });
+  assert.equal(verifyImageConfirmationToken(legacyProviderSignedToken).ok, true);
+
   process.env.NODE_ENV = "production";
   delete process.env.MATHTRACE_CONFIRM_SECRET;
+  delete process.env.VISION_PROVIDER_API_KEY;
   delete process.env.MIMO_API_KEY;
 
   assert.throws(() =>
@@ -349,6 +518,8 @@ try {
     false,
   );
 
+  process.env.VISION_PROVIDER_API_KEY =
+    "vision-provider-key-must-not-sign-confirmation-token";
   process.env.MIMO_API_KEY = "mimo-key-must-not-sign-confirmation-token";
 
   assert.throws(() =>
@@ -366,6 +537,7 @@ try {
 } finally {
   restoreEnvValue("NODE_ENV", originalNodeEnv);
   restoreEnvValue("MATHTRACE_CONFIRM_SECRET", originalConfirmSecret);
+  restoreEnvValue("VISION_PROVIDER_API_KEY", originalVisionProviderApiKey);
   restoreEnvValue("MIMO_API_KEY", originalMimoApiKey);
 }
 

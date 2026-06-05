@@ -79,11 +79,15 @@ const FORBIDDEN_KEYS = new Set([
 
 export function parseVisionExtractionText(
   text: string,
+  options?: {
+    allow_missing_solution_defaults?: boolean;
+  },
 ): VisionExtractionParseResult {
   let parsed: unknown;
+  const normalizedText = extractJsonObjectText(text) ?? text;
 
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(normalizedText);
   } catch {
     return invalidOutput(
       "模型输出不是合法 JSON。",
@@ -124,18 +128,31 @@ export function parseVisionExtractionText(
     );
   }
 
-  if (!isNonEmptyString(parsed.standard_solution_draft)) {
+  const parserWarnings: string[] = [];
+  const canFillMissingSolutionDefaults =
+    options?.allow_missing_solution_defaults === true;
+  if (
+    !canFillMissingSolutionDefaults &&
+    !isNonEmptyString(parsed.standard_solution_draft)
+  ) {
     return invalidOutput(
       "模型输出缺少 standard_solution_draft。",
       debugSummary,
     );
   }
 
+  const standardSolutionDraft = isNonEmptyString(parsed.standard_solution_draft)
+    ? parsed.standard_solution_draft.trim()
+    : createFallbackStandardSolutionDraft(parsed.question_text.trim());
+  if (!isNonEmptyString(parsed.standard_solution_draft)) {
+    parserWarnings.push("模型未返回标准解法草稿，已生成待确认占位内容。");
+  }
+
+  const extractionConfidence = isExtractionConfidence(parsed.extraction_confidence)
+    ? parsed.extraction_confidence
+    : "low";
   if (!isExtractionConfidence(parsed.extraction_confidence)) {
-    return invalidOutput(
-      "模型输出的 extraction_confidence 不合法。",
-      debugSummary,
-    );
+    parserWarnings.push("模型未返回置信度，已按低置信度处理。");
   }
 
   const steps = parseStringList(parsed.student_solution_steps, {
@@ -158,16 +175,16 @@ export function parseVisionExtractionText(
     max_length: Number.MAX_SAFE_INTEGER,
   });
   if (!warnings) {
-    return invalidOutput("模型输出的 warnings 不合法。", debugSummary);
+    parserWarnings.push("模型返回的 warnings 格式不完整，已忽略。");
   }
 
   const normalized = normalizeExtractionDraft({
     student_answer: parsed.student_answer.trim(),
     student_solution_steps: steps.items,
     has_partial_student_steps: steps.has_invalid_item,
-    extraction_confidence: parsed.extraction_confidence,
-    model_warnings: warnings.items,
-    parser_warnings: steps.warnings,
+    extraction_confidence: extractionConfidence,
+    model_warnings: warnings?.items ?? [],
+    parser_warnings: [...parserWarnings, ...steps.warnings],
   });
 
   return {
@@ -176,11 +193,80 @@ export function parseVisionExtractionText(
       question_text: parsed.question_text.trim(),
       student_answer: normalized.student_answer,
       student_solution_steps: normalized.student_solution_steps,
-      standard_solution_draft: parsed.standard_solution_draft.trim(),
+      standard_solution_draft: standardSolutionDraft,
       extraction_confidence: normalized.extraction_confidence,
       warnings: normalized.warnings,
     },
   };
+}
+
+function createFallbackStandardSolutionDraft(questionText: string): string {
+  return `请根据题干补充标准解法：${questionText}`;
+}
+
+function extractJsonObjectText(text: string): string | null {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return trimmed;
+  }
+
+  const fencedJson = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(trimmed);
+  if (fencedJson?.[1]) {
+    const candidate = fencedJson[1].trim();
+    return candidate.startsWith("{") && candidate.endsWith("}")
+      ? candidate
+      : null;
+  }
+
+  return extractBalancedJsonObject(trimmed);
+}
+
+function extractBalancedJsonObject(text: string): string | null {
+  const startIndex = text.indexOf("{");
+  if (startIndex === -1) {
+    return null;
+  }
+
+  let depth = 0;
+  let isInsideString = false;
+  let isEscaped = false;
+
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (isEscaped) {
+      isEscaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      isEscaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      isInsideString = !isInsideString;
+      continue;
+    }
+
+    if (isInsideString) {
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(startIndex, index + 1);
+      }
+    }
+  }
+
+  return null;
 }
 
 export function createVisionExtractionPrompt(input: {
@@ -193,6 +279,7 @@ export function createVisionExtractionPrompt(input: {
     "JSON 字段必须且只能包含 question_text、student_answer、student_solution_steps、standard_solution_draft、extraction_confidence、warnings。",
     "standard_solution_draft 必须始终输出；如果图片里没有标准解法，请根据题干生成一份标准解法草稿，不要省略字段。",
     "standard_solution_draft 内的数学公式必须使用 $...$ 或 $$...$$ 包裹；不要输出裸公式，例如把 f'(x)>0 写成 $f'(x)>0$。",
+    "包含 LaTeX 命令的表达式也必须整体包裹，例如把 \\frac{1}{a}、\\ln a、a\\leq 0 写成 $\\frac{1}{a}$、$\\ln a$、$a\\leq 0$。",
     "student_solution_steps 和 warnings 必须输出为字符串数组；没有 warning 时输出空数组 []。",
     "如果没有识别到学生答案，也必须输出 student_answer=\"未识别到学生答案\"，并将 extraction_confidence 设为 \"low\"。",
     "不要输出 memory_delta、student_profile、mistake_history、错因频次或画像更新。",

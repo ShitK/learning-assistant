@@ -1,6 +1,6 @@
 import {
-  createAnthropicCompatibleVisionProvider,
-  createMimoProviderConfigFromEnv,
+  createVisionProvider,
+  createVisionProviderConfigFromEnv,
 } from "@/lib/anthropic-compatible-provider";
 import { createDiagnoseError, parseDiagnoseRequest } from "@/lib/diagnose-api";
 import {
@@ -208,14 +208,14 @@ function getVisionProvider(
     };
   }
 
-  const providerConfig = createMimoProviderConfigFromEnv(process.env);
+  const providerConfig = createVisionProviderConfigFromEnv(process.env);
   if (!providerConfig.ok) {
     return providerConfig;
   }
 
   return {
     ok: true,
-    value: createAnthropicCompatibleVisionProvider(providerConfig.value),
+    value: createVisionProvider(providerConfig.value),
   };
 }
 

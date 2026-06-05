@@ -288,7 +288,7 @@ await assertServiceError(
 );
 
 const providerDebug = {
-  provider_name: "mimo",
+  provider_name: "anthropic_compatible_vision",
   provider_stage: "vision_llm",
   failure_kind: "http_error",
   http_status: 502,

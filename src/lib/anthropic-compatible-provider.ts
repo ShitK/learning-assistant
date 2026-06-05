@@ -42,14 +42,20 @@ export interface VisionExtractionProvider {
   ): Promise<VisionProviderResult>;
 }
 
-export interface MimoProviderConfig {
+export type VisionProviderProtocol = "anthropic" | "openai";
+export type VisionProviderImageFormat = "data_url" | "base64";
+
+export interface VisionProviderConfig {
+  protocol: VisionProviderProtocol;
   base_url: string;
   model: string;
   api_key: string;
+  provider_name?: string;
+  image_format: VisionProviderImageFormat;
   timeout_ms: number;
 }
 
-interface AnthropicCompatibleProviderConfig extends MimoProviderConfig {
+interface VisionProviderRuntimeConfig extends VisionProviderConfig {
   fetch_impl?: typeof fetch;
 }
 
@@ -65,26 +71,31 @@ type InternalVisionProviderResult =
   | { ok: true; value: VisionExtractionDraft }
   | { ok: false; error: VisionProviderError; raw_output_text?: string };
 
-const DEFAULT_MIMO_BASE_URL =
+const DEFAULT_LEGACY_BASE_URL =
   "https://token-plan-cn.xiaomimimo.com/anthropic";
-const DEFAULT_MIMO_MODEL = "mimo-v2.5";
+const DEFAULT_LEGACY_MODEL = "mimo-v2.5";
 const DEFAULT_TIMEOUT_MS = 15_000;
-const MIMO_PROVIDER_NAME = "mimo";
+const MIN_TIMEOUT_MS = 5_000;
+const MAX_TIMEOUT_MS = 120_000;
+const DEFAULT_PROVIDER_NAME = "anthropic_compatible_vision";
 const FORBIDDEN_OUTPUT_KEY_PATTERN =
   /["']?(?:memory_delta|student_profile|mistake_history|knowledge_mastery_changes|mistake_cause_changes)["']?\s*:/;
 
-export function createMimoProviderConfigFromEnv(
+export function createVisionProviderConfigFromEnv(
   env: Record<string, string | undefined>,
 ):
-  | { ok: true; value: MimoProviderConfig }
+  | { ok: true; value: VisionProviderConfig }
   | { ok: false; error: VisionProviderError } {
-  const apiKey = env.MIMO_API_KEY?.trim();
+  const apiKey = readFirstEnv(env, [
+    "VISION_PROVIDER_API_KEY",
+    "MIMO_API_KEY",
+  ]);
   if (!apiKey) {
     return {
       ok: false,
       error: createProviderError(
         "model_not_configured",
-        "服务端未配置 MIMO_API_KEY，无法进行图片诊断。",
+        "服务端未配置 VISION_PROVIDER_API_KEY，无法进行图片诊断。旧的 MIMO_API_KEY 仍可作为本地兼容别名。",
       ),
     };
   }
@@ -92,57 +103,49 @@ export function createMimoProviderConfigFromEnv(
   return {
     ok: true,
     value: {
-      base_url: env.MIMO_BASE_URL?.trim() || DEFAULT_MIMO_BASE_URL,
-      model: env.MIMO_MODEL?.trim() || DEFAULT_MIMO_MODEL,
+      protocol: readProviderProtocol(env),
+      base_url:
+        readFirstEnv(env, ["VISION_PROVIDER_BASE_URL", "MIMO_BASE_URL"]) ||
+        DEFAULT_LEGACY_BASE_URL,
+      model:
+        readFirstEnv(env, ["VISION_PROVIDER_MODEL", "MIMO_MODEL"]) ||
+        DEFAULT_LEGACY_MODEL,
       api_key: apiKey,
-      timeout_ms: DEFAULT_TIMEOUT_MS,
+      provider_name:
+        readFirstEnv(env, ["VISION_PROVIDER_NAME"]) || DEFAULT_PROVIDER_NAME,
+      image_format: readProviderImageFormat(env),
+      timeout_ms: readTimeoutMs(env),
     },
   };
 }
 
 export function createAnthropicCompatibleVisionProvider(
-  config: AnthropicCompatibleProviderConfig,
+  config: Omit<VisionProviderRuntimeConfig, "protocol" | "image_format"> & {
+    protocol?: VisionProviderProtocol;
+    image_format?: VisionProviderImageFormat;
+  },
+): VisionExtractionProvider {
+  return createVisionProvider({
+    ...config,
+    protocol: config.protocol ?? "anthropic",
+    image_format: config.image_format ?? "data_url",
+  });
+}
+
+export function createVisionProvider(
+  config: VisionProviderRuntimeConfig,
 ): VisionExtractionProvider {
   const fetchImpl = config.fetch_impl ?? fetch;
+  const providerName = normalizeProviderName(config.provider_name);
 
   async function requestVisionExtraction(
     context: VisionExtractionRequestContext,
     signal: AbortSignal,
   ): Promise<InternalVisionProviderResult> {
-    const response = await fetchImpl(joinAnthropicMessagesUrl(config.base_url), {
+    const response = await fetchImpl(buildProviderRequestUrl(config), {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": config.api_key,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: config.model,
-        max_tokens: 1200,
-        temperature: 0,
-        thinking: {
-          type: "disabled",
-        },
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: createVisionExtractionPromptText(context),
-              },
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: context.input.mime_type,
-                  data: context.input.image_base64,
-                },
-              },
-            ],
-          },
-        ],
-      }),
+      headers: buildProviderRequestHeaders(config),
+      body: JSON.stringify(buildProviderRequestBody(config, context)),
       signal,
     });
 
@@ -151,9 +154,9 @@ export function createAnthropicCompatibleVisionProvider(
         ok: false,
         error: createProviderError(
           "model_request_failed",
-          `MiMo 图片诊断服务返回 HTTP ${response.status}，请稍后重试。`,
+          `图片诊断模型服务返回 HTTP ${response.status}，请稍后重试。`,
           undefined,
-          createProviderFailureDebug({
+          createProviderFailureDebug(providerName, {
             failure_kind: "http_error",
             http_status: response.status,
           }),
@@ -161,7 +164,7 @@ export function createAnthropicCompatibleVisionProvider(
       };
     }
 
-    const responsePayload = await readJsonResponse(response);
+    const responsePayload = await readJsonResponse(response, providerName);
     if (!responsePayload.ok) {
       return responsePayload;
     }
@@ -177,7 +180,9 @@ export function createAnthropicCompatibleVisionProvider(
       };
     }
 
-    const parsed = parseVisionExtractionText(outputText);
+    const parsed = parseVisionExtractionText(outputText, {
+      allow_missing_solution_defaults: Boolean(context.repair),
+    });
     if (!parsed.ok) {
       return {
         ok: false,
@@ -234,9 +239,11 @@ export function createAnthropicCompatibleVisionProvider(
             ok: false,
             error: createProviderError(
               "model_timeout",
-              "MiMo 图片诊断请求超时，请稍后重试。",
+              "图片诊断模型请求超时，请稍后重试。",
               undefined,
-              createProviderFailureDebug({ failure_kind: "timeout" }),
+              createProviderFailureDebug(providerName, {
+                failure_kind: "timeout",
+              }),
             ),
           };
         }
@@ -245,9 +252,11 @@ export function createAnthropicCompatibleVisionProvider(
           ok: false,
           error: createProviderError(
             "model_request_failed",
-            "MiMo 图片诊断网络请求失败，请稍后重试。",
+            "图片诊断模型网络请求失败，请稍后重试。",
             undefined,
-            createProviderFailureDebug({ failure_kind: "network_failed" }),
+            createProviderFailureDebug(providerName, {
+              failure_kind: "network_failed",
+            }),
           ),
         };
       } finally {
@@ -259,6 +268,102 @@ export function createAnthropicCompatibleVisionProvider(
 
 function joinAnthropicMessagesUrl(baseUrl: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/v1/messages`;
+}
+
+function joinOpenAIChatCompletionsUrl(baseUrl: string): string {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  return normalizedBaseUrl.endsWith("/chat/completions")
+    ? normalizedBaseUrl
+    : `${normalizedBaseUrl}/chat/completions`;
+}
+
+function buildProviderRequestUrl(config: VisionProviderRuntimeConfig): string {
+  if (config.protocol === "openai") {
+    return joinOpenAIChatCompletionsUrl(config.base_url);
+  }
+
+  return joinAnthropicMessagesUrl(config.base_url);
+}
+
+function buildProviderRequestHeaders(
+  config: VisionProviderRuntimeConfig,
+): Record<string, string> {
+  if (config.protocol === "openai") {
+    return {
+      "content-type": "application/json",
+      Authorization: `Bearer ${config.api_key}`,
+    };
+  }
+
+  return {
+    "content-type": "application/json",
+    "x-api-key": config.api_key,
+    "anthropic-version": "2023-06-01",
+  };
+}
+
+function buildProviderRequestBody(
+  config: VisionProviderRuntimeConfig,
+  context: VisionExtractionRequestContext,
+): Record<string, unknown> {
+  const promptText = createVisionExtractionPromptText(context);
+  const baseBody = {
+    model: config.model,
+    max_tokens: 1200,
+    temperature: 0,
+    thinking: {
+      type: "disabled",
+    },
+  };
+
+  if (config.protocol === "openai") {
+    return {
+      ...baseBody,
+      response_format: {
+        type: "json_object",
+      },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image_url",
+              image_url: {
+                url: buildOpenAIImageUrl(config, context.input),
+              },
+            },
+            {
+              type: "text",
+              text: promptText,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  return {
+    ...baseBody,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: promptText,
+          },
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: context.input.mime_type,
+              data: context.input.image_base64,
+            },
+          },
+        ],
+      },
+    ],
+  };
 }
 
 function createVisionExtractionPromptText(
@@ -297,12 +402,15 @@ function createProviderError(
   };
 }
 
-function createProviderFailureDebug(input: {
-  failure_kind: ProviderFailureKind;
-  http_status?: number;
-}): ProviderFailureDebug {
+function createProviderFailureDebug(
+  providerName: string,
+  input: {
+    failure_kind: ProviderFailureKind;
+    http_status?: number;
+  },
+): ProviderFailureDebug {
   const debug: ProviderFailureDebug = {
-    provider_name: MIMO_PROVIDER_NAME,
+    provider_name: providerName,
     provider_stage: "vision_llm",
     failure_kind: input.failure_kind,
   };
@@ -344,6 +452,7 @@ function toPublicProviderResult(
 
 async function readJsonResponse(
   response: Response,
+  providerName: string,
 ): Promise<{ ok: true; value: unknown } | { ok: false; error: VisionProviderError }> {
   try {
     return {
@@ -355,15 +464,86 @@ async function readJsonResponse(
       ok: false,
       error: createProviderError(
         "model_request_failed",
-        "MiMo 图片诊断响应不是合法 JSON，请稍后重试。",
+        "图片诊断模型响应不是合法 JSON，请稍后重试。",
         undefined,
-        createProviderFailureDebug({ failure_kind: "invalid_json" }),
+        createProviderFailureDebug(providerName, {
+          failure_kind: "invalid_json",
+        }),
       ),
     };
   }
 }
 
+function normalizeProviderName(providerName: string | undefined): string {
+  const normalized = providerName?.trim();
+  return normalized || DEFAULT_PROVIDER_NAME;
+}
+
+function readFirstEnv(
+  env: Record<string, string | undefined>,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = env[key]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function readProviderProtocol(
+  env: Record<string, string | undefined>,
+): VisionProviderProtocol {
+  return env.VISION_PROVIDER_PROTOCOL?.trim() === "openai"
+    ? "openai"
+    : "anthropic";
+}
+
+function readProviderImageFormat(
+  env: Record<string, string | undefined>,
+): VisionProviderImageFormat {
+  return env.VISION_PROVIDER_IMAGE_FORMAT?.trim() === "base64"
+    ? "base64"
+    : "data_url";
+}
+
+function buildOpenAIImageUrl(
+  config: VisionProviderRuntimeConfig,
+  input: VisionExtractionInput,
+): string {
+  if (config.image_format === "base64") {
+    return input.image_base64;
+  }
+
+  return `data:${input.mime_type};base64,${input.image_base64}`;
+}
+
+function readTimeoutMs(env: Record<string, string | undefined>): number {
+  const rawTimeoutMs = env.VISION_PROVIDER_TIMEOUT_MS?.trim();
+  if (!rawTimeoutMs) {
+    return DEFAULT_TIMEOUT_MS;
+  }
+
+  const timeoutMs = Number(rawTimeoutMs);
+  if (
+    !Number.isInteger(timeoutMs) ||
+    timeoutMs < MIN_TIMEOUT_MS ||
+    timeoutMs > MAX_TIMEOUT_MS
+  ) {
+    return DEFAULT_TIMEOUT_MS;
+  }
+
+  return timeoutMs;
+}
+
 function extractTextContent(value: unknown): string | null {
+  const openAIText = extractOpenAITextContent(value);
+  if (openAIText) {
+    return openAIText;
+  }
+
   if (!isRecord(value) || !Array.isArray(value.content)) {
     return null;
   }
@@ -383,4 +563,40 @@ function extractTextContent(value: unknown): string | null {
   }
 
   return textBlocks.join("\n").trim();
+}
+
+function extractOpenAITextContent(value: unknown): string | null {
+  if (!isRecord(value) || !Array.isArray(value.choices)) {
+    return null;
+  }
+
+  const textBlocks = value.choices
+    .map((choice) => {
+      if (!isRecord(choice) || !isRecord(choice.message)) {
+        return "";
+      }
+
+      const content = choice.message.content;
+      if (typeof content === "string") {
+        return content;
+      }
+
+      if (!Array.isArray(content)) {
+        return "";
+      }
+
+      return content
+        .map((block) => {
+          if (!isRecord(block) || block.type !== "text") {
+            return "";
+          }
+
+          return typeof block.text === "string" ? block.text : "";
+        })
+        .filter((text) => text.trim().length > 0)
+        .join("\n");
+    })
+    .filter((text) => text.trim().length > 0);
+
+  return textBlocks.length > 0 ? textBlocks.join("\n").trim() : null;
 }

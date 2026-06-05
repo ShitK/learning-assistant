@@ -1,23 +1,12 @@
 import katex from "katex";
+import { parseMathText } from "@/lib/math-text-parser";
 import type { ReactElement, ReactNode } from "react";
+import type { MathTextPart } from "@/lib/math-text-parser";
 
 interface MathTextProps {
   text: string;
   className?: string;
 }
-
-interface TextPart {
-  kind: "text";
-  value: string;
-}
-
-interface MathPart {
-  kind: "math";
-  value: string;
-  displayMode: boolean;
-}
-
-type MathTextPart = TextPart | MathPart;
 
 export function MathText({ text, className = "" }: MathTextProps): ReactElement {
   const parts = parseMathText(text);
@@ -53,39 +42,4 @@ function renderPart(part: MathTextPart, index: number): ReactNode {
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
-}
-
-function parseMathText(text: string): MathTextPart[] {
-  const parts: MathTextPart[] = [];
-  const mathPattern = /(?<!\\)(\$\$?)([\s\S]+?)(?<!\\)\1/g;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = mathPattern.exec(text)) !== null) {
-    if (isLikelyCurrencyAmount(match)) {
-      continue;
-    }
-
-    if (match.index > cursor) {
-      parts.push({ kind: "text", value: text.slice(cursor, match.index) });
-    }
-
-    parts.push({
-      kind: "math",
-      value: match[2],
-      displayMode: match[1] === "$$",
-    });
-
-    cursor = match.index + match[0].length;
-  }
-
-  if (cursor < text.length) {
-    parts.push({ kind: "text", value: text.slice(cursor) });
-  }
-
-  return parts;
-}
-
-function isLikelyCurrencyAmount(match: RegExpExecArray): boolean {
-  return match[1] === "$" && /^\d/.test(match[2]);
 }

@@ -1,4 +1,5 @@
 export const MAX_UPLOAD_IMAGE_BYTES = 1_000_000;
+export const TARGET_DIAGNOSIS_IMAGE_BYTES = 600_000;
 export const MAX_SOURCE_IMAGE_BYTES = 8_500_000;
 
 export type UploadImageMimeType = "image/png" | "image/jpeg" | "image/webp";
@@ -91,16 +92,19 @@ export function getImageUploadErrorMessage(
   }
 
   if (code === "compressed_too_large") {
-    return "图片压缩后仍超过 1MB，请裁剪题目区域后重试。";
+    return "图片压缩后仍超过 600KB，请裁剪题目区域后重试。";
   }
 
   return "图片读取失败，请重新选择一张清晰的错题图片。";
 }
 
-export function selectUploadSizedDataUrl(dataUrls: string[]): string | null {
+export function selectUploadSizedDataUrl(
+  dataUrls: string[],
+  maxBytes = MAX_UPLOAD_IMAGE_BYTES,
+): string | null {
   for (const dataUrl of dataUrls) {
     const parsed = stripDataUrlPrefix(dataUrl);
-    if (parsed.ok && getBase64ByteSize(parsed.base64) <= MAX_UPLOAD_IMAGE_BYTES) {
+    if (parsed.ok && getBase64ByteSize(parsed.base64) <= maxBytes) {
       return dataUrl;
     }
   }
@@ -130,7 +134,7 @@ export async function prepareImageForDiagnosis(
   }
 
   const originalByteSize = getBase64ByteSize(originalParsed.base64);
-  if (originalByteSize <= MAX_UPLOAD_IMAGE_BYTES) {
+  if (originalByteSize <= TARGET_DIAGNOSIS_IMAGE_BYTES) {
     return {
       ok: true,
       value: {
@@ -155,7 +159,7 @@ export async function prepareImageForDiagnosis(
   }
 
   const compressedByteSize = getBase64ByteSize(compressedParsed.base64);
-  if (compressedByteSize > MAX_UPLOAD_IMAGE_BYTES) {
+  if (compressedByteSize > TARGET_DIAGNOSIS_IMAGE_BYTES) {
     return { ok: false, error: "compressed_too_large" };
   }
 
@@ -189,7 +193,7 @@ async function compressImageToJpegDataUrl(file: File): Promise<string | null> {
     return null;
   }
 
-  const scale = Math.min(1, 1800 / Math.max(bitmap.width, bitmap.height));
+  const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
   const width = Math.max(1, Math.round(bitmap.width * scale));
   const height = Math.max(1, Math.round(bitmap.height * scale));
   const canvas = document.createElement("canvas");
@@ -207,8 +211,9 @@ async function compressImageToJpegDataUrl(file: File): Promise<string | null> {
   bitmap.close();
 
   return selectUploadSizedDataUrl(
-    [0.86, 0.78, 0.7, 0.62, 0.56].map((quality) => {
+    [0.78, 0.7, 0.62, 0.54, 0.46].map((quality) => {
       return canvas.toDataURL("image/jpeg", quality);
     }),
+    TARGET_DIAGNOSIS_IMAGE_BYTES,
   );
 }

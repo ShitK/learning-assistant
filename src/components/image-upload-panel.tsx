@@ -164,7 +164,7 @@ export function ImageUploadPanel({
             {isPreparing ? "正在压缩图片" : "选择或拖入错题图片"}
           </span>
           <span className="mt-2 leading-6">
-            PNG / JPEG / WebP，提交前压缩到 1MB 内
+            PNG / JPEG / WebP，提交前压缩到约 600KB
           </span>
         </button>
       )}

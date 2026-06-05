@@ -21,6 +21,7 @@ import type {
   KnowledgeMapping,
   MistakeDiagnosis,
 } from "@/lib/diagnose-api";
+import type { AnalysisEnhancementDraft } from "@/lib/analysis-provider";
 import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
 
 const IMAGE_AGENT_STEPS: AgentStep[] = [
@@ -66,13 +67,14 @@ export function runImageMathTraceAgent(input: {
   request: ImageDiagnosisPipelineRequest;
   extraction: VisionExtractionDraft;
   is_extraction_confirmed: boolean;
+  analysis?: AnalysisEnhancementDraft;
 }): DiagnoseImageSuccessResponse {
   const knowledgeMapping = mapImageKnowledgePoints(input.extraction);
   const recognizedQuestion = recognizeImageQuestion(
     input.extraction,
     knowledgeMapping,
   );
-  const mistakeDiagnosis = diagnoseImageMistake(
+  const localMistakeDiagnosis = diagnoseImageMistake(
     input.extraction,
     knowledgeMapping,
   );
@@ -81,8 +83,12 @@ export function runImageMathTraceAgent(input: {
     extraction: input.extraction,
     is_extraction_confirmed: input.is_extraction_confirmed,
     knowledgeMapping,
-    mistakeDiagnosis,
+    mistakeDiagnosis: localMistakeDiagnosis,
   });
+  const mistakeDiagnosis = applyAnalysisEnhancement(
+    localMistakeDiagnosis,
+    input.analysis,
+  );
   const templateSample = selectTemplateSample(knowledgeMapping.knowledge_points);
   const baseProfile = isStudentProfile(input.request.student_profile)
     ? input.request.student_profile
@@ -105,7 +111,7 @@ export function runImageMathTraceAgent(input: {
     review_plan: templateSample.review_plan,
     sample_diagnosis: null,
     fallback_used: false,
-    warnings: input.extraction.warnings,
+    warnings: mergeWarnings(input.extraction.warnings, input.analysis?.warnings),
   };
 }
 
@@ -218,6 +224,23 @@ function diagnoseImageMistake(
       "最后用标准解法草稿对照关键结论。",
     ],
     standard_solution: extraction.standard_solution_draft,
+  };
+}
+
+function applyAnalysisEnhancement(
+  mistakeDiagnosis: MistakeDiagnosis,
+  analysis: AnalysisEnhancementDraft | undefined,
+): MistakeDiagnosis {
+  if (!analysis) {
+    return mistakeDiagnosis;
+  }
+
+  return {
+    ...mistakeDiagnosis,
+    expected_diagnosis: analysis.expected_diagnosis,
+    step_analysis: analysis.step_analysis,
+    solution_highlights: analysis.solution_highlights,
+    standard_solution: analysis.standard_solution,
   };
 }
 
@@ -383,6 +406,13 @@ function joinExtractionText(extraction: VisionExtractionDraft): string {
 
 function matchesAny(text: string, keywords: string[]): boolean {
   return keywords.some((keyword) => text.includes(keyword));
+}
+
+function mergeWarnings(
+  extractionWarnings: string[],
+  analysisWarnings: string[] | undefined,
+): string[] {
+  return [...new Set([...extractionWarnings, ...(analysisWarnings ?? [])])];
 }
 
 function hashText(text: string): string {

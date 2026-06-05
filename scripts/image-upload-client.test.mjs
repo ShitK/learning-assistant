@@ -4,6 +4,7 @@ import { createJiti } from "jiti";
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 
 const {
+  TARGET_DIAGNOSIS_IMAGE_BYTES,
   MAX_UPLOAD_IMAGE_BYTES,
   getBase64ByteSize,
   getImageUploadErrorMessage,
@@ -14,6 +15,7 @@ const {
 } = jiti("../src/lib/image-upload-client.ts");
 
 assert.equal(MAX_UPLOAD_IMAGE_BYTES, 1_000_000);
+assert.equal(TARGET_DIAGNOSIS_IMAGE_BYTES, 600_000);
 assert.equal(isSupportedUploadMimeType("image/png"), true);
 assert.equal(isSupportedUploadMimeType("image/jpeg"), true);
 assert.equal(isSupportedUploadMimeType("image/webp"), true);
@@ -60,16 +62,26 @@ assert.equal(
 );
 assert.equal(
   getImageUploadErrorMessage("compressed_too_large"),
-  "图片压缩后仍超过 1MB，请裁剪题目区域后重试。",
+  "图片压缩后仍超过 600KB，请裁剪题目区域后重试。",
 );
 
 const smallJpegDataUrl = "data:image/jpeg;base64,YWJjZA==";
+const mediumJpegDataUrl = `data:image/jpeg;base64,${Buffer.alloc(
+  TARGET_DIAGNOSIS_IMAGE_BYTES + 1,
+).toString("base64")}`;
 const oversizedJpegDataUrl = `data:image/jpeg;base64,${Buffer.alloc(
   MAX_UPLOAD_IMAGE_BYTES + 1,
 ).toString("base64")}`;
 
 assert.equal(
   selectUploadSizedDataUrl([oversizedJpegDataUrl, smallJpegDataUrl]),
+  smallJpegDataUrl,
+);
+assert.equal(
+  selectUploadSizedDataUrl(
+    [mediumJpegDataUrl, smallJpegDataUrl],
+    TARGET_DIAGNOSIS_IMAGE_BYTES,
+  ),
   smallJpegDataUrl,
 );
 assert.equal(selectUploadSizedDataUrl([oversizedJpegDataUrl]), null);

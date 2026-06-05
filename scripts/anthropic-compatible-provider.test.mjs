@@ -5,7 +5,8 @@ const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 
 const {
   createAnthropicCompatibleVisionProvider,
-  createMimoProviderConfigFromEnv,
+  createVisionProvider,
+  createVisionProviderConfigFromEnv,
 } = jiti("../src/lib/anthropic-compatible-provider.ts");
 
 const calls = [];
@@ -34,7 +35,7 @@ const okFetch = async (url, init) => {
 
 const provider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
-  model: "mimo-v2.5",
+  model: "vision-model-test",
   api_key: "secret-key-for-test",
   timeout_ms: 1000,
   fetch_impl: okFetch,
@@ -53,7 +54,7 @@ assert.equal(calls[0].init.method, "POST");
 assert.equal(calls[0].init.headers["x-api-key"], "secret-key-for-test");
 
 const requestBody = JSON.parse(calls[0].init.body);
-assert.equal(requestBody.model, "mimo-v2.5");
+assert.equal(requestBody.model, "vision-model-test");
 assert.equal(requestBody.temperature, 0);
 assert.deepEqual(requestBody.thinking, { type: "disabled" });
 assert.equal(requestBody.messages[0].content[0].type, "text");
@@ -64,10 +65,122 @@ assert.equal(
 );
 assert.equal(requestBody.messages[0].content[1].source.data, "iVBORw0KGgo=");
 
+const openAICalls = [];
+const openAIProvider = createVisionProvider({
+  protocol: "openai",
+  base_url: "https://open.bigmodel.cn/api/paas/v4",
+  model: "glm-4.6v-flashx",
+  api_key: "secret-key-for-test",
+  provider_name: "glm_4_6v_flashx",
+  timeout_ms: 1000,
+  fetch_impl: async (url, init) => {
+    openAICalls.push({ url: String(url), init });
+
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                question_text: "题干",
+                student_answer: "学生答案",
+                student_solution_steps: ["步骤一"],
+                standard_solution_draft: "标准解法草稿",
+                extraction_confidence: "medium",
+                warnings: [],
+              }),
+            },
+          },
+        ],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  },
+});
+
+const openAIResult = await openAIProvider.extractQuestionFromImage({
+  image_base64: "iVBORw0KGgo=",
+  mime_type: "image/png",
+  student_profile_summary: "demo profile",
+});
+
+assert.equal(openAIResult.ok, true);
+assert.equal(openAICalls.length, 1);
+assert.equal(
+  openAICalls[0].url,
+  "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+);
+assert.equal(openAICalls[0].init.method, "POST");
+assert.equal(
+  openAICalls[0].init.headers.Authorization,
+  "Bearer secret-key-for-test",
+);
+assert.equal(openAICalls[0].init.headers["x-api-key"], undefined);
+
+const openAIRequestBody = JSON.parse(openAICalls[0].init.body);
+assert.equal(openAIRequestBody.model, "glm-4.6v-flashx");
+assert.equal(openAIRequestBody.temperature, 0);
+assert.deepEqual(openAIRequestBody.thinking, { type: "disabled" });
+assert.deepEqual(openAIRequestBody.response_format, { type: "json_object" });
+assert.equal(openAIRequestBody.messages[0].content[0].type, "image_url");
+assert.equal(
+  openAIRequestBody.messages[0].content[0].image_url.url,
+  "data:image/png;base64,iVBORw0KGgo=",
+);
+assert.equal(openAIRequestBody.messages[0].content[1].type, "text");
+
+const rawBase64ImageCalls = [];
+const rawBase64ImageProvider = createVisionProvider({
+  protocol: "openai",
+  base_url: "https://open.bigmodel.cn/api/paas/v4",
+  model: "glm-4.6v-flashx",
+  api_key: "secret-key-for-test",
+  provider_name: "glm_4_6v_flashx",
+  image_format: "base64",
+  timeout_ms: 1000,
+  fetch_impl: async (url, init) => {
+    rawBase64ImageCalls.push({ url: String(url), init });
+
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                question_text: "题干",
+                student_answer: "学生答案",
+                student_solution_steps: ["步骤一"],
+                standard_solution_draft: "标准解法草稿",
+                extraction_confidence: "medium",
+                warnings: [],
+              }),
+            },
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  },
+});
+
+const rawBase64ImageResult =
+  await rawBase64ImageProvider.extractQuestionFromImage({
+    image_base64: "iVBORw0KGgo=",
+    mime_type: "image/png",
+    student_profile_summary: "demo profile",
+  });
+assert.equal(rawBase64ImageResult.ok, true);
+const rawBase64ImageRequestBody = JSON.parse(rawBase64ImageCalls[0].init.body);
+assert.equal(
+  rawBase64ImageRequestBody.messages[0].content[0].image_url.url,
+  "iVBORw0KGgo=",
+);
+
 const failedProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
-  model: "mimo-v2.5",
+  model: "vision-model-test",
   api_key: "secret-key-for-test",
+  provider_name: "custom_vision_provider",
   timeout_ms: 1000,
   fetch_impl: async () =>
     new Response(JSON.stringify({ error: "bad" }), { status: 500 }),
@@ -83,7 +196,7 @@ assert.equal(failedResult.error.code, "model_request_failed");
 assert.equal(failedResult.error.recoverable, true);
 assert.equal(failedResult.error.message.includes("secret-key-for-test"), false);
 assert.deepEqual(failedResult.error.provider_debug, {
-  provider_name: "mimo",
+  provider_name: "custom_vision_provider",
   provider_stage: "vision_llm",
   failure_kind: "http_error",
   http_status: 500,
@@ -91,7 +204,7 @@ assert.deepEqual(failedResult.error.provider_debug, {
 
 const invalidJsonProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
-  model: "mimo-v2.5",
+  model: "vision-model-test",
   api_key: "secret-key-for-test",
   timeout_ms: 1000,
   fetch_impl: async () => new Response("not json", { status: 200 }),
@@ -105,14 +218,14 @@ const invalidJsonResult = await invalidJsonProvider.extractQuestionFromImage({
 assert.equal(invalidJsonResult.ok, false);
 assert.equal(invalidJsonResult.error.code, "model_request_failed");
 assert.deepEqual(invalidJsonResult.error.provider_debug, {
-  provider_name: "mimo",
+  provider_name: "anthropic_compatible_vision",
   provider_stage: "vision_llm",
   failure_kind: "invalid_json",
 });
 
 const networkFailedProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
-  model: "mimo-v2.5",
+  model: "vision-model-test",
   api_key: "secret-key-for-test",
   timeout_ms: 1000,
   fetch_impl: async () => {
@@ -129,14 +242,14 @@ const networkFailedResult =
 assert.equal(networkFailedResult.ok, false);
 assert.equal(networkFailedResult.error.code, "model_request_failed");
 assert.deepEqual(networkFailedResult.error.provider_debug, {
-  provider_name: "mimo",
+  provider_name: "anthropic_compatible_vision",
   provider_stage: "vision_llm",
   failure_kind: "network_failed",
 });
 
 const invalidOutputProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
-  model: "mimo-v2.5",
+  model: "vision-model-test",
   api_key: "secret-key-for-test",
   timeout_ms: 1000,
   fetch_impl: async () =>
@@ -157,7 +270,7 @@ assert.equal(invalidOutputResult.error.code, "model_invalid_output");
 const retryCalls = [];
 const retryProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
-  model: "mimo-v2.5",
+  model: "vision-model-test",
   api_key: "secret-key-for-test",
   timeout_ms: 1000,
   fetch_impl: async (url, init) => {
@@ -225,7 +338,7 @@ assert.equal(
 const forbiddenRetryCalls = [];
 const forbiddenRetryProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
-  model: "mimo-v2.5",
+  model: "vision-model-test",
   api_key: "secret-key-for-test",
   timeout_ms: 1000,
   fetch_impl: async () => {
@@ -266,7 +379,7 @@ assert.equal(forbiddenRetryCalls.length, 1);
 const malformedForbiddenRetryCalls = [];
 const malformedForbiddenRetryProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
-  model: "mimo-v2.5",
+  model: "vision-model-test",
   api_key: "secret-key-for-test",
   timeout_ms: 1000,
   fetch_impl: async () => {
@@ -300,7 +413,7 @@ const singleQuotedForbiddenRetryCalls = [];
 const singleQuotedForbiddenRetryProvider =
   createAnthropicCompatibleVisionProvider({
     base_url: "https://example.test/anthropic",
-    model: "mimo-v2.5",
+    model: "vision-model-test",
     api_key: "secret-key-for-test",
     timeout_ms: 1000,
     fetch_impl: async () => {
@@ -332,7 +445,7 @@ assert.equal(singleQuotedForbiddenRetryCalls.length, 1);
 
 const timeoutProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
-  model: "mimo-v2.5",
+  model: "vision-model-test",
   api_key: "secret-key-for-test",
   timeout_ms: 1,
   fetch_impl: (_url, init) =>
@@ -349,17 +462,65 @@ const timeoutResult = await timeoutProvider.extractQuestionFromImage({
 assert.equal(timeoutResult.ok, false);
 assert.equal(timeoutResult.error.code, "model_timeout");
 assert.deepEqual(timeoutResult.error.provider_debug, {
-  provider_name: "mimo",
+  provider_name: "anthropic_compatible_vision",
   provider_stage: "vision_llm",
   failure_kind: "timeout",
 });
 
-const missingEnvConfig = createMimoProviderConfigFromEnv({
+const genericEnvConfig = createVisionProviderConfigFromEnv({
+  VISION_PROVIDER_PROTOCOL: "openai",
+  VISION_PROVIDER_BASE_URL: "https://open.bigmodel.cn/api/paas/v4",
+  VISION_PROVIDER_MODEL: "glm-4.6v-flashx",
+  VISION_PROVIDER_API_KEY: "vision-provider-key",
+  VISION_PROVIDER_NAME: "glm_4_6v_flashx",
+  VISION_PROVIDER_IMAGE_FORMAT: "base64",
+  VISION_PROVIDER_TIMEOUT_MS: "60000",
+  MIMO_BASE_URL: "https://legacy.example.test/anthropic",
+  MIMO_MODEL: "legacy-model",
+  MIMO_API_KEY: "legacy-key",
+});
+assert.equal(genericEnvConfig.ok, true);
+assert.deepEqual(genericEnvConfig.value, {
+  protocol: "openai",
+  base_url: "https://open.bigmodel.cn/api/paas/v4",
+  model: "glm-4.6v-flashx",
+  api_key: "vision-provider-key",
+  provider_name: "glm_4_6v_flashx",
+  image_format: "base64",
+  timeout_ms: 60_000,
+});
+
+const invalidTimeoutEnvConfig = createVisionProviderConfigFromEnv({
+  VISION_PROVIDER_API_KEY: "vision-provider-key",
+  VISION_PROVIDER_TIMEOUT_MS: "not-a-number",
+});
+assert.equal(invalidTimeoutEnvConfig.ok, true);
+assert.equal(invalidTimeoutEnvConfig.value.timeout_ms, 15_000);
+
+const legacyEnvConfig = createVisionProviderConfigFromEnv({
+  MIMO_BASE_URL: "https://token-plan-cn.xiaomimimo.com/anthropic",
+  MIMO_MODEL: "mimo-v2.5",
+  MIMO_API_KEY: "legacy-key",
+});
+assert.equal(legacyEnvConfig.ok, true);
+assert.deepEqual(legacyEnvConfig.value, {
+  protocol: "anthropic",
+  base_url: "https://token-plan-cn.xiaomimimo.com/anthropic",
+  model: "mimo-v2.5",
+  api_key: "legacy-key",
+  provider_name: "anthropic_compatible_vision",
+  image_format: "data_url",
+  timeout_ms: 15_000,
+});
+
+const missingEnvConfig = createVisionProviderConfigFromEnv({
   MIMO_BASE_URL: "https://token-plan-cn.xiaomimimo.com/anthropic",
   MIMO_MODEL: "mimo-v2.5",
 });
 assert.equal(missingEnvConfig.ok, false);
 assert.equal(missingEnvConfig.error.code, "model_not_configured");
+assert.equal(missingEnvConfig.error.message.includes("VISION_PROVIDER_API_KEY"), true);
+assert.equal(missingEnvConfig.error.message.includes("MIMO_API_KEY"), true);
 assert.equal(missingEnvConfig.error.provider_debug, undefined);
 
 console.log("anthropic compatible provider test passed");
