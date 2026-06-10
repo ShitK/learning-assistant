@@ -1292,6 +1292,80 @@ P1.5 主要收益是稳定性和回归效率。`problem_only` 追问路径不额
 
 ---
 
+## 12. Demo smoke 稳定性收口
+
+### 当前状态
+
+已完成 P1.6a 本地实现和脚本验证。这个阶段不新增用户功能，而是把样例题主路径、图片识别草稿、`/api/confirm`、低证据追问动作和标准解法展示清洗固化为可复现 smoke。
+
+### 功能价值
+
+P1.5 之后，项目最需要的不是马上堆新功能，而是防止后续错题本、RAG 或知识库扩展破坏现有演示闭环。P1.6a 让项目从“能跑一次”变成“每次合并前都能快速知道核心 Demo 有没有坏”。
+
+### 关键设计
+
+新增 `npm run test:smoke`，由两个脚本组成：`scripts/api-smoke.test.mjs` 覆盖 `/api/diagnose`、`/api/confirm`、图片识别草稿和确认主路径；`scripts/demo-smoke.test.mjs` 覆盖样例题、`problem_only` 追问、跳过、提交草稿、确认写入和标准解法显示残留。
+
+浏览器层没有引入新的测试框架，而是新增 `docs/demo-smoke-checklist.md`，用于演示前人工核对首页、样例题、未配置 provider 错误态和公式展示。低证据追问的细节用 smoke/eval 自动化覆盖，避免为了 Demo 稳定性引入 fake provider UI 开关。
+
+### 技术决策与取舍
+
+我没有立刻引入 Playwright，因为当前最容易回归的是服务契约、画像写入边界和展示文本清洗，Node 脚本能用更低成本覆盖。真实 provider 也没有纳入 smoke，因为它会把稳定性绑定到外部模型、API Key 和网络状态上；这一阶段只验证本地可控契约。
+
+实现过程中 smoke 暴露了一个小的展示层缺口：已闭合的 inline math 如果紧贴中文，例如 `即$\ln a<0$`，会保留贴边显示风险。最终只在 `createStandardSolutionDisplayText()` 中补了公式前边界空格，并用 `scripts/diagnosis-view-model.test.mjs` 固化回归。
+
+### 性能收益
+
+收益主要是回归效率和演示稳定性。`npm run test:smoke` 不依赖 API Key、网络或 dev server，就能快速验证核心演示路径；相比每次手动上传图片、等待真实模型返回，它更快、更稳定，也更适合作为后续功能扩展前的基础护栏。
+
+### 面试官可能怎么问
+
+1. 为什么先做 smoke，而不是继续做新功能？
+2. smoke 和 eval harness 有什么区别？
+3. 为什么不直接上 Playwright？
+4. 为什么 smoke 不接真实 provider？
+5. 这些测试怎么防止模型污染画像？
+6. 未来做 RAG 后这层 smoke 还有用吗？
+
+### 推荐回答
+
+P1.5 做完后，系统的关键风险已经不是“缺一个功能”，而是后续功能很容易改坏证据边界和演示路径。所以我先补了 smoke guard：eval 继续验证策略细节，smoke 验证 Demo 主路径和 API contract 能不能跑通。
+
+我暂时没有引入 Playwright，因为这会增加依赖和维护成本。当前阶段先用 Node 脚本锁 API contract、service contract 和展示文本，再用手动 checklist 做浏览器视觉确认。等 UI 状态和真实图片流程进一步稳定，再把 checklist 升级成 Playwright E2E 会更划算。
+
+### 可能被继续追问
+
+- 如果未来引入数据库，smoke 怎么覆盖写入回放？
+- 如果接入真实 provider，如何设计不脆弱的模型 smoke？
+- `npm test` 越来越长时，如何拆分本地和 CI 测试层级？
+- 为什么展示层修复放在 P1.6a，而不是单独开 bugfix？
+
+### 反思与后续优化
+
+当前 smoke 仍是本地脚本级和人工浏览器 checklist，没有 CI，也没有真实 provider 的可观测 smoke。后续可以在错题本和 RAG 前后继续扩展 fixture，并在引入 CI 时把 `npm run test:smoke` 作为合并前必跑命令。
+
+### 项目中的真实证据
+
+- 代码：
+  - `scripts/api-smoke.test.mjs`
+  - `scripts/demo-smoke.test.mjs`
+  - `src/lib/diagnosis-view-model.ts`
+- 测试：
+  - `scripts/diagnosis-view-model.test.mjs`
+- 文档：
+  - `docs/demo-smoke-checklist.md`
+  - `docs/superpowers/plans/2026-06-10-p16-demo-smoke-stability.md`
+  - `docs/superpowers/specs/2026-05-28-math-mistake-agent-prd.md`
+  - `docs/TECHNICAL_ROADMAP.md`
+- 验证：
+  - `npm run test:smoke`
+  - `npm test`
+  - `npm run test:eval`
+  - `npm run lint`
+  - `npm run build`
+
+---
+
 ## 后续可追加的阶段
 
 这些阶段还没有完全完成，后续实现后可以继续按同一模板追加：
@@ -1308,11 +1382,11 @@ P1.5 主要收益是稳定性和回归效率。`problem_only` 追问路径不额
 
 ### LLM 安全边界
 
-重点阶段：5、7、9、10、11。核心表达：模型只做抽取或确认后文本增强，不直接写画像；所有模型输出先过 JSON parser 和业务边界校验；只有学生步骤或用户确认构成足够证据时才写具体错因。
+重点阶段：5、7、9、10、11、12。核心表达：模型只做抽取或确认后文本增强，不直接写画像；所有模型输出先过 JSON parser 和业务边界校验；只有学生步骤或用户确认构成足够证据时才写具体错因。
 
 ### Demo 稳定性
 
-重点阶段：1、2、6、9、10、11。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像。
+重点阶段：1、2、6、9、10、11、12。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像；P1.6a 用 `npm run test:smoke` 和浏览器 checklist 锁住合并前主路径。
 
 ### Agent 工程化
 
@@ -1320,15 +1394,15 @@ P1.5 主要收益是稳定性和回归效率。`problem_only` 追问路径不额
 
 ### 前端状态管理
 
-重点阶段：2、6、7、11。核心表达：单页工作台用 React state 足够；localStorage 只做 P0/P1 演示状态恢复；前端只在服务端 `memory_delta.should_persist=true` 且响应 guard 通过时持久化。
+重点阶段：2、6、7、11、12。核心表达：单页工作台用 React state 足够；localStorage 只做 P0/P1 演示状态恢复；前端只在服务端 `memory_delta.should_persist=true` 且响应 guard 通过时持久化。
 
 ### 测试策略
 
-重点阶段：3、4、5、6、7、9、10、11。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界。
+重点阶段：3、4、5、6、7、9、10、11、12。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界；P1.6a 用 smoke 测试验证 Demo 主路径和 API contract 是否仍能跑通。
 
 ### 性能收益
 
-重点阶段：1、2、3、4、5、6、7、8、9、10、11。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退和 `npm run test:eval`。
+重点阶段：1、2、3、4、5、6、7、8、9、10、11、12。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退、`npm run test:eval` 和 `npm run test:smoke`。
 
 ### 范围控制
 

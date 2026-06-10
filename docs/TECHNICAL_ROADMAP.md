@@ -579,6 +579,17 @@ npm run test:eval
   -> sample_diagnosis 稳定路径仍可回归
 ```
 
+P1.6a 新增轻量 demo smoke，不评价模型生成质量，只验证演示主路径和 API 契约是否仍能跑通：
+
+```text
+npm run test:smoke
+  -> sample_diagnosis 主演示路径稳定
+  -> /api/diagnose 和 /api/confirm 基础错误响应稳定
+  -> 图片识别草稿不包含画像写入字段
+  -> problem_only 追问、跳过、提交草稿、确认写入四个动作稳定
+  -> 标准解法展示不暴露 Markdown/LaTeX 残留
+```
+
 ## 10. 可观测性与评估
 
 AI 产品需要知道哪里失败，而不是只看“页面能打开”。
@@ -775,6 +786,23 @@ Supabase Storage
 - 用户确认前不会把追问回答写入画像。
 - DeepSeek/text analysis provider 不能影响 `memory_delta`、`student_profile` 或写入策略。
 - `npm test`、`npm run test:eval`、`npm run lint`、`npm run build` 通过。
+
+### Phase 2.6：Demo smoke 稳定性收口
+
+目标：在扩展错题本、RAG 或知识库前，先用脚本和浏览器清单锁住现有演示闭环。
+
+技术：
+
+- `scripts/api-smoke.test.mjs` 覆盖 `/api/diagnose`、`/api/confirm` 和图片识别草稿契约。
+- `scripts/demo-smoke.test.mjs` 覆盖样例题主路径、P1.5 低证据追问动作和标准解法展示残留。
+- `docs/demo-smoke-checklist.md` 沉淀本地浏览器演示前检查清单。
+- 所有 smoke 使用本地 fake provider 或 fixture，不依赖真实 API Key、网络或 dev server。
+
+验收：
+
+- `npm run test:smoke`、`npm test`、`npm run test:eval`、`npm run lint`、`npm run build` 通过。
+- `docs/demo-smoke-checklist.md` 可指导一次 3-5 分钟浏览器检查。
+- 不新增用户功能，不改变画像写入策略，不接入真实 provider smoke。
 
 ### Phase 3：长期记忆与数据库
 

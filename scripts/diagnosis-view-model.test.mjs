@@ -179,6 +179,11 @@ assert.equal(
   "解不等式组：$-\\ln a > 0$ 即 $\\ln a < 0$。",
 );
 
+assert.equal(
+  createStandardSolutionDisplayText("由条件得 0<a<1，即$\\ln a<0$。"),
+  "由条件得 $0<a<1$，即 $\\ln a<0$。",
+);
+
 const imageResponse = {
   diagnosis_id: "diag_image_1",
   student_id: "demo_student_001",

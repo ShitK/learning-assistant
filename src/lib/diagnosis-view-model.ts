@@ -322,6 +322,10 @@ export function createStandardSolutionDisplayText(text: string): string {
       parts.push(decorateLooseMathText(normalizedText.slice(cursor, match.index)));
     }
 
+    if (shouldInsertSpaceBeforeInlineMath(normalizedText, match)) {
+      parts.push(" ");
+    }
+
     parts.push(match[0]);
     cursor = match.index + match[0].length;
   }
@@ -331,6 +335,21 @@ export function createStandardSolutionDisplayText(text: string): string {
   }
 
   return parts.join("");
+}
+
+function shouldInsertSpaceBeforeInlineMath(
+  text: string,
+  match: RegExpExecArray,
+): boolean {
+  if (match[1] !== "$" || match.index === 0) {
+    return false;
+  }
+
+  const previousCharacter = text.at(match.index - 1);
+
+  return previousCharacter !== undefined
+    ? /[\p{Script=Han}A-Za-z0-9）)\]}]/u.test(previousCharacter)
+    : false;
 }
 
 function createDisplayStandardSolution(input: {
