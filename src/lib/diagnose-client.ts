@@ -6,11 +6,13 @@ import {
 import { isProviderFailureDebug } from "@/lib/provider-error";
 import { isRecord } from "@/lib/utils";
 import type {
+  ConfirmationAction,
   DiagnoseApiResponse,
   DiagnoseImageExtractionResponse,
   DiagnoseImageSuccessResponse,
   DiagnoseSuccessResponse,
   DiagnoseErrorResponse,
+  FollowUpAnswerDraft,
 } from "@/lib/diagnose-api";
 import type {
   MistakeHistoryItem,
@@ -42,6 +44,8 @@ export interface ConfirmedImageDiagnosePayload {
   student_id: string;
   task_type: "confirmed_image_diagnosis";
   confirmation_token: string;
+  confirmation_action: ConfirmationAction;
+  follow_up_answer?: FollowUpAnswerDraft;
   confirmed_extraction: VisionExtractionDraft;
   student_profile: StudentProfile;
   mistake_history: MistakeHistoryItem[];
@@ -81,6 +85,8 @@ export function buildImageDiagnosePayload(input: {
 
 export function buildConfirmedImageDiagnosePayload(input: {
   confirmation_token: string;
+  confirmation_action?: ConfirmationAction;
+  follow_up_answer?: FollowUpAnswerDraft;
   confirmed_extraction: VisionExtractionDraft;
   student_profile: StudentProfile;
   mistake_history: MistakeHistoryItem[];
@@ -89,6 +95,9 @@ export function buildConfirmedImageDiagnosePayload(input: {
     student_id: input.student_profile.student_id,
     task_type: "confirmed_image_diagnosis",
     confirmation_token: input.confirmation_token,
+    confirmation_action:
+      input.confirmation_action ?? "diagnose_from_student_work",
+    follow_up_answer: input.follow_up_answer,
     confirmed_extraction: input.confirmed_extraction,
     student_profile: input.student_profile,
     mistake_history: input.mistake_history,
@@ -135,6 +144,8 @@ export async function requestImageExtractionReview(input: {
 export async function requestConfirmedImageDiagnosis(input: {
   fetcher: typeof fetch;
   confirmation_token: string;
+  confirmation_action?: ConfirmationAction;
+  follow_up_answer?: FollowUpAnswerDraft;
   confirmed_extraction: VisionExtractionDraft;
   student_profile: StudentProfile;
   mistake_history: MistakeHistoryItem[];
@@ -167,8 +178,7 @@ export function shouldPersistDiagnoseProfile(
   }
 
   return (
-    response.recognized_question.extraction_confidence !== "low" &&
-    response.memory_delta.should_persist
+    isDiagnoseImageSuccessResponse(response) && response.memory_delta.should_persist
   );
 }
 

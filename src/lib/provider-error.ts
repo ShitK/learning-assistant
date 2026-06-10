@@ -5,6 +5,7 @@ export type ProviderStage = "vision_llm" | "ocr";
 export type ProviderFailureKind =
   | "http_error"
   | "invalid_json"
+  | "empty_text_content"
   | "network_failed"
   | "timeout";
 
@@ -39,6 +40,7 @@ function isProviderFailureKind(value: unknown): value is ProviderFailureKind {
   return (
     value === "http_error" ||
     value === "invalid_json" ||
+    value === "empty_text_content" ||
     value === "network_failed" ||
     value === "timeout"
   );

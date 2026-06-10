@@ -8,6 +8,10 @@ import {
   applyMemoryDeltaToProfile,
   isStudentProfile,
 } from "@/lib/mathtrace-agent-pipeline";
+import {
+  assessExtractionEvidence,
+  createProblemRiskFollowUp,
+} from "@/lib/diagnosis-evidence";
 import { isRecord } from "@/lib/utils";
 import type {
   AgentStep,
@@ -22,6 +26,11 @@ import type {
   MistakeDiagnosis,
 } from "@/lib/diagnose-api";
 import type { AnalysisEnhancementDraft } from "@/lib/analysis-provider";
+import type {
+  ConfirmationAction,
+  EvidenceAssessment,
+  FollowUpAnswerDraft,
+} from "@/lib/diagnosis-evidence";
 import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
 
 const IMAGE_AGENT_STEPS: AgentStep[] = [
@@ -67,21 +76,34 @@ export function runImageMathTraceAgent(input: {
   request: ImageDiagnosisPipelineRequest;
   extraction: VisionExtractionDraft;
   is_extraction_confirmed: boolean;
+  confirmation_action?: ConfirmationAction;
+  follow_up_answer?: FollowUpAnswerDraft;
   analysis?: AnalysisEnhancementDraft;
 }): DiagnoseImageSuccessResponse {
+  const confirmationAction =
+    input.confirmation_action ?? "diagnose_from_student_work";
+  const evidenceAssessment = assessExtractionEvidence(input.extraction);
   const knowledgeMapping = mapImageKnowledgePoints(input.extraction);
   const recognizedQuestion = recognizeImageQuestion(
     input.extraction,
     knowledgeMapping,
   );
-  const localMistakeDiagnosis = diagnoseImageMistake(
+  const riskMistakeDiagnosis = diagnoseImageMistake(
     input.extraction,
     knowledgeMapping,
+  );
+  const localMistakeDiagnosis = applyEvidenceToMistakeDiagnosis(
+    riskMistakeDiagnosis,
+    evidenceAssessment,
+    confirmationAction,
+    input.follow_up_answer,
   );
   const memoryDelta = computeImageMemoryDelta({
     request: input.request,
     extraction: input.extraction,
     is_extraction_confirmed: input.is_extraction_confirmed,
+    confirmation_action: confirmationAction,
+    evidenceAssessment,
     knowledgeMapping,
     mistakeDiagnosis: localMistakeDiagnosis,
   });
@@ -111,6 +133,23 @@ export function runImageMathTraceAgent(input: {
     review_plan: templateSample.review_plan,
     sample_diagnosis: null,
     fallback_used: false,
+    evidence_level: evidenceAssessment.evidence_level,
+    persistence_evidence: getResponsePersistenceEvidence({
+      evidenceAssessment,
+      memoryDelta,
+    }),
+    profile_update_kind: getResponseProfileUpdateKind({
+      evidenceAssessment,
+      memoryDelta,
+    }),
+    risk_follow_up:
+      evidenceAssessment.evidence_level === "problem_only"
+        ? createProblemRiskFollowUp({
+            extraction: input.extraction,
+            knowledge_points: knowledgeMapping.knowledge_points,
+            mistake_causes: riskMistakeDiagnosis.mistake_causes,
+          })
+        : null,
     warnings: mergeWarnings(input.extraction.warnings, input.analysis?.warnings),
   };
 }
@@ -227,6 +266,46 @@ function diagnoseImageMistake(
   };
 }
 
+function applyEvidenceToMistakeDiagnosis(
+  mistakeDiagnosis: MistakeDiagnosis,
+  evidenceAssessment: EvidenceAssessment,
+  confirmationAction: ConfirmationAction,
+  followUpAnswer: FollowUpAnswerDraft | undefined,
+): MistakeDiagnosis {
+  if (evidenceAssessment.can_write_mistake_cause) {
+    return mistakeDiagnosis;
+  }
+
+  if (
+    evidenceAssessment.evidence_level === "problem_only" &&
+    (confirmationAction === "submit_stuck_point" ||
+      confirmationAction === "confirm_stuck_point_analysis")
+  ) {
+    const userConfirmedCauseIds = getFollowUpMistakeCauseIds({
+      riskCauseIds: mistakeDiagnosis.mistake_causes,
+      followUpAnswer,
+    });
+
+    return {
+      ...mistakeDiagnosis,
+      mistake_causes: userConfirmedCauseIds,
+      severity: inferSeverity(userConfirmedCauseIds.length),
+      expected_diagnosis: buildExpectedDiagnosis(userConfirmedCauseIds),
+      step_analysis:
+        followUpAnswer?.custom_text && followUpAnswer.custom_text.length > 0
+          ? [`学生补充卡点：${followUpAnswer.custom_text}`]
+          : mistakeDiagnosis.step_analysis,
+    };
+  }
+
+  return {
+    ...mistakeDiagnosis,
+    mistake_causes: [],
+    severity: "minor",
+    expected_diagnosis: buildExpectedDiagnosis([]),
+  };
+}
+
 function applyAnalysisEnhancement(
   mistakeDiagnosis: MistakeDiagnosis,
   analysis: AnalysisEnhancementDraft | undefined,
@@ -248,9 +327,35 @@ function computeImageMemoryDelta(input: {
   request: ImageDiagnosisPipelineRequest;
   extraction: VisionExtractionDraft;
   is_extraction_confirmed: boolean;
+  confirmation_action: ConfirmationAction;
+  evidenceAssessment: EvidenceAssessment;
   knowledgeMapping: KnowledgeMapping;
   mistakeDiagnosis: MistakeDiagnosis;
 }): MemoryDelta {
+  if (input.evidenceAssessment.evidence_level === "insufficient") {
+    return createEmptyMemoryDelta("图片证据不足，本次不写入长期画像。");
+  }
+
+  if (input.evidenceAssessment.evidence_level === "problem_only") {
+    if (
+      input.is_extraction_confirmed &&
+      input.confirmation_action === "confirm_stuck_point_analysis"
+    ) {
+      return createUserConfirmedMemoryDelta(input);
+    }
+
+    if (
+      input.is_extraction_confirmed &&
+      input.confirmation_action === "skip_follow_up"
+    ) {
+      return createProblemTypeFocusMemoryDelta(input.knowledgeMapping);
+    }
+
+    return createEmptyMemoryDelta(
+      "只识别到题目风险，等待学生补充卡点后再写入画像。",
+    );
+  }
+
   const severityChange = getSeverityChange(input.mistakeDiagnosis.severity);
   const isRepeatedMistake = hasRepeatedMistake(
     input.request.mistake_history,
@@ -290,6 +395,135 @@ function computeImageMemoryDelta(input: {
         ? "图片抽取置信度低，本次只展示诊断建议，不写入长期画像。"
         : "图片识别结果尚未确认，本次不写入长期画像。",
   };
+}
+
+function createProblemTypeFocusMemoryDelta(
+  knowledgeMapping: KnowledgeMapping,
+): MemoryDelta {
+  const knowledgeMasteryChanges: Record<string, number> = {};
+
+  for (const knowledgeId of knowledgeMapping.knowledge_points) {
+    knowledgeMasteryChanges[knowledgeId] = -2;
+  }
+
+  return {
+    knowledge_mastery_changes: knowledgeMasteryChanges,
+    mistake_cause_changes: {},
+    is_repeated_mistake: false,
+    review_priority_changes: knowledgeMapping.knowledge_points,
+    should_persist: true,
+    rationale:
+      "用户跳过题目风险追问，本次只按题型风险轻微下调相关知识点掌握度，不写具体错因。",
+  };
+}
+
+function createUserConfirmedMemoryDelta(input: {
+  request: ImageDiagnosisPipelineRequest;
+  knowledgeMapping: KnowledgeMapping;
+  mistakeDiagnosis: MistakeDiagnosis;
+}): MemoryDelta {
+  if (input.mistakeDiagnosis.mistake_causes.length === 0) {
+    return createEmptyMemoryDelta(
+      "学生追问回答未能映射到有效错因，本次不写入长期画像。",
+    );
+  }
+
+  const severityChange = getSeverityChange(input.mistakeDiagnosis.severity);
+  const isRepeatedMistake = hasRepeatedMistake(
+    input.request.mistake_history,
+    input.mistakeDiagnosis.mistake_causes,
+  );
+  const knowledgeMasteryChanges: Record<string, number> = {};
+
+  for (const knowledgeId of input.knowledgeMapping.knowledge_points) {
+    knowledgeMasteryChanges[knowledgeId] = severityChange;
+  }
+
+  const mistakeCauseChanges: Record<string, number> = {};
+  for (const causeId of input.mistakeDiagnosis.mistake_causes) {
+    mistakeCauseChanges[causeId] = 1;
+  }
+
+  return {
+    knowledge_mastery_changes: knowledgeMasteryChanges,
+    mistake_cause_changes: mistakeCauseChanges,
+    is_repeated_mistake: isRepeatedMistake,
+    review_priority_changes: input.knowledgeMapping.knowledge_points,
+    should_persist: true,
+    rationale:
+      "学生已确认追问卡点，本次按用户确认信息写入具体错因画像。",
+  };
+}
+
+function createEmptyMemoryDelta(rationale: string): MemoryDelta {
+  return {
+    knowledge_mastery_changes: {},
+    mistake_cause_changes: {},
+    is_repeated_mistake: false,
+    review_priority_changes: [],
+    should_persist: false,
+    rationale,
+  };
+}
+
+function getResponseProfileUpdateKind(input: {
+  evidenceAssessment: EvidenceAssessment;
+  memoryDelta: MemoryDelta;
+}): DiagnoseImageSuccessResponse["profile_update_kind"] {
+  if (!input.memoryDelta.should_persist) {
+    return "none";
+  }
+
+  if (
+    input.evidenceAssessment.evidence_level === "problem_only" &&
+    Object.keys(input.memoryDelta.mistake_cause_changes).length > 0
+  ) {
+    return "mistake_cause";
+  }
+
+  return input.evidenceAssessment.profile_update_kind;
+}
+
+function getResponsePersistenceEvidence(input: {
+  evidenceAssessment: EvidenceAssessment;
+  memoryDelta: MemoryDelta;
+}): DiagnoseImageSuccessResponse["persistence_evidence"] {
+  if (!input.memoryDelta.should_persist) {
+    return "none";
+  }
+
+  if (
+    input.evidenceAssessment.evidence_level === "problem_only" &&
+    Object.keys(input.memoryDelta.mistake_cause_changes).length > 0
+  ) {
+    return "user_confirmed";
+  }
+
+  return input.evidenceAssessment.persistence_evidence;
+}
+
+function getFollowUpMistakeCauseIds(input: {
+  riskCauseIds: string[];
+  followUpAnswer: FollowUpAnswerDraft | undefined;
+}): string[] {
+  const selectedCauseId = input.followUpAnswer?.selected_stuck_point_id;
+  if (
+    selectedCauseId &&
+    mistakeCauses[selectedCauseId] !== undefined &&
+    !input.riskCauseIds.includes(selectedCauseId)
+  ) {
+    return [selectedCauseId];
+  }
+
+  if (selectedCauseId && mistakeCauses[selectedCauseId] !== undefined) {
+    return [selectedCauseId];
+  }
+
+  const fallbackCauseId = input.riskCauseIds.find((causeId) => {
+    return mistakeCauses[causeId] !== undefined;
+  });
+
+  return fallbackCauseId ? [fallbackCauseId] : [];
 }
 
 function selectTemplateSample(knowledgeIds: string[]): SampleDiagnosis {

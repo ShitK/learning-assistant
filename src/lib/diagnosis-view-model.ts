@@ -9,6 +9,11 @@ import type {
 import type {
   DiagnoseImageExtractionResponse,
   DiagnoseImageSuccessResponse,
+  EvidenceLevel,
+  FollowUpAnswerDraft,
+  PersistenceEvidence,
+  ProblemRiskFollowUp,
+  ProfileUpdateKind,
 } from "@/lib/diagnose-api";
 import {
   joinEditableStepsText,
@@ -38,6 +43,10 @@ export interface DiagnosisViewModel {
   review_plan: ReviewPlan;
   steps: AgentStep[];
   should_persist_profile: boolean;
+  evidence_level: EvidenceLevel | null;
+  persistence_evidence: PersistenceEvidence | null;
+  profile_update_kind: ProfileUpdateKind;
+  risk_follow_up: ProblemRiskFollowUp | null;
   warnings: string[];
 }
 
@@ -93,6 +102,10 @@ export function createSampleDiagnosisViewModel(
     review_plan: sample.review_plan,
     steps: sample.steps,
     should_persist_profile: true,
+    evidence_level: null,
+    persistence_evidence: null,
+    profile_update_kind: "mistake_cause",
+    risk_follow_up: null,
     warnings: [],
   };
 }
@@ -116,13 +129,21 @@ export function createImageDiagnosisViewModel(
     expected_diagnosis: response.mistake_diagnosis.expected_diagnosis,
     step_analysis: response.mistake_diagnosis.step_analysis,
     solution_highlights: response.mistake_diagnosis.solution_highlights,
-    standard_solution: response.mistake_diagnosis.standard_solution,
+    standard_solution: createDisplayStandardSolution({
+      standardSolution: response.mistake_diagnosis.standard_solution,
+      questionText: response.recognized_question.question_text,
+      knowledgePoints: response.knowledge_mapping.knowledge_points,
+    }),
     memory_delta: response.memory_delta,
     practice_questions: response.practice_questions,
     review_plan: response.review_plan,
     steps: response.steps,
     should_persist_profile: response.memory_delta.should_persist,
-    warnings: response.warnings,
+    evidence_level: response.evidence_level,
+    persistence_evidence: response.persistence_evidence,
+    profile_update_kind: response.profile_update_kind,
+    risk_follow_up: response.risk_follow_up,
+    warnings: getUserFacingWarnings(response.warnings),
   };
 }
 
@@ -139,7 +160,7 @@ export function createEditableExtractionDraft(
     standard_solution_draft:
       response.recognized_question.standard_solution_draft,
     extraction_confidence: response.recognized_question.extraction_confidence,
-    warnings: [...response.warnings],
+    warnings: getUserFacingWarnings(response.warnings),
     can_persist_after_confirmation: response.can_persist_after_confirmation,
   };
 }
@@ -168,6 +189,27 @@ export function canConfirmEditableExtractionDraft(
   );
 }
 
+export function canShowRiskFollowUp(view: DiagnosisViewModel): boolean {
+  return view.source === "image" && view.risk_follow_up !== null;
+}
+
+export function createFollowUpDraftFromChoice(
+  selectedId: string,
+  customText = "",
+): FollowUpAnswerDraft {
+  if (selectedId === "custom") {
+    return {
+      selected_stuck_point_id: null,
+      custom_text: customText.trim(),
+    };
+  }
+
+  return {
+    selected_stuck_point_id: selectedId,
+    custom_text: null,
+  };
+}
+
 export function createStandardSolutionBlocks(
   text: string,
 ): StandardSolutionBlock[] {
@@ -182,6 +224,7 @@ export function createStandardSolutionBlocks(
   const lines = trimmedText
     .split("\n")
     .map((line) => line.trim())
+    .map(stripStandardSolutionMarkdownPrefix)
     .filter((line) => line.length > 0);
 
   const blocks: StandardSolutionBlock[] = lines.map((line) => {
@@ -212,7 +255,9 @@ export function createStandardSolutionBlocks(
     return blocks;
   }
 
-  const sentences = splitStandardSolutionSentences(trimmedText);
+  const sentences = splitStandardSolutionSentences(trimmedText).map(
+    stripStandardSolutionMarkdownPrefix,
+  );
 
   if (sentences.length <= 1) {
     return blocks;
@@ -243,6 +288,28 @@ export function createStandardSolutionBlocks(
   return blocks;
 }
 
+function stripStandardSolutionMarkdownPrefix(text: string): string {
+  let strippedText = text.trim();
+
+  for (let index = 0; index < 3; index += 1) {
+    const nextText = strippedText
+      .replace(
+        /^\*\*\s*([（(]\d+[）)]|\d+[.、]?)\s*\*\*\s*/,
+        (_match, marker: string) => `${marker} `,
+      )
+      .replace(/^[-–—•]\s+/, "")
+      .trim();
+
+    if (nextText === strippedText) {
+      return strippedText;
+    }
+
+    strippedText = nextText;
+  }
+
+  return strippedText;
+}
+
 export function createStandardSolutionDisplayText(text: string): string {
   const normalizedText = normalizeEscapedNewlines(text);
   const parts: string[] = [];
@@ -264,6 +331,99 @@ export function createStandardSolutionDisplayText(text: string): string {
   }
 
   return parts.join("");
+}
+
+function createDisplayStandardSolution(input: {
+  standardSolution: string;
+  questionText: string;
+  knowledgePoints: string[];
+}): string {
+  const normalizedSolution = normalizeEscapedNewlines(
+    input.standardSolution,
+  ).trim();
+
+  if (!isLikelyIncompleteStandardSolution(normalizedSolution)) {
+    return input.standardSolution;
+  }
+
+  const stablePrefix = removeDanglingStandardSolutionLines(normalizedSolution);
+  const fallback = createStandardSolutionFallback(input);
+
+  return stablePrefix.length > 0 ? `${stablePrefix}\n${fallback}` : fallback;
+}
+
+function isLikelyIncompleteStandardSolution(text: string): boolean {
+  if (text.length === 0) {
+    return true;
+  }
+
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const lastLine = lines[lines.length - 1] ?? "";
+
+  return (
+    isDanglingStandardSolutionLine(lastLine) ||
+    /[，、：:]$/.test(text.trim())
+  );
+}
+
+function removeDanglingStandardSolutionLines(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !isDanglingStandardSolutionLine(line))
+    .join("\n");
+}
+
+function isDanglingStandardSolutionLine(line: string): boolean {
+  return /^[-–—•]?\s*(?:当|若|由|故|因此|所以|综上|则|分类|分情况)?\s*[：:]?$/.test(
+    line,
+  );
+}
+
+function createStandardSolutionFallback(input: {
+  questionText: string;
+  knowledgePoints: string[];
+}): string {
+  const text = input.questionText;
+  const hasDerivative =
+    input.knowledgePoints.includes("derivative_monotonicity") ||
+    /导数|单调|极值|f'/.test(text);
+  const hasParameter =
+    input.knowledgePoints.includes("parameter_classification") ||
+    /参数|取值范围|讨论/.test(text);
+
+  if (hasDerivative && hasParameter) {
+    return [
+      "2. 按 $a\\le 0$ 与 $a>0$ 分类讨论导数符号。",
+      "3. 若 $a>0$，先由 $f'(x)=0$ 找临界点，再判断极值点位置。",
+      "4. 结合题目条件和定义域限制，整理参数范围。",
+    ].join("\n");
+  }
+
+  if (hasDerivative) {
+    return [
+      "2. 根据 $f'(x)$ 的符号判断函数单调区间。",
+      "3. 再结合题目条件检查极值、端点或零点约束。",
+    ].join("\n");
+  }
+
+  return [
+    "2. 补全题目隐含条件，再按知识点逐步推导。",
+    "3. 用题目条件校验关键结论，整理最终答案。",
+  ].join("\n");
+}
+
+function getUserFacingWarnings(warnings: string[]): string[] {
+  return warnings.filter((warning) => !isTechnicalWarning(warning));
+}
+
+function isTechnicalWarning(warning: string): boolean {
+  return /置信度|低置信度|warnings|JSON|字段|格式|模型未返回|模型返回|extraction_confidence|student_solution_steps|开发诊断/.test(
+    warning,
+  );
 }
 
 function normalizeEscapedNewlines(text: string): string {
@@ -363,7 +523,22 @@ function hasParagraphLeadingSolutionMarker(
 }
 
 function decorateLooseMathText(text: string): string {
-  return decorateSimpleLooseMathText(decorateRawLatexText(text));
+  return decorateSimpleLooseMathText(
+    decorateRawLatexText(removeDanglingInlineMathOpeners(text)),
+  );
+}
+
+function removeDanglingInlineMathOpeners(text: string): string {
+  return text.replace(
+    /(^|[^\\])\$\s*(?=\\(?:frac|ln|leq|geq|cdot|infty|sqrt|le|ge|times)\b)/g,
+    (_match, prefix: string) => {
+      if (prefix.length === 0 || /\s/.test(prefix)) {
+        return prefix;
+      }
+
+      return `${prefix} `;
+    },
+  );
 }
 
 function decorateRawLatexText(text: string): string {

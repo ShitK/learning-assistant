@@ -1,5 +1,9 @@
 import { isRecord } from "@/lib/utils";
 import type { DiagnoseErrorCode } from "@/lib/diagnose-api";
+import type {
+  ConfirmationAction,
+  FollowUpAnswerDraft,
+} from "@/lib/diagnosis-evidence";
 import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
 
 export interface AnalysisProviderConfig {
@@ -23,7 +27,13 @@ export interface AnalysisEnhancementDraft {
 export interface AnalysisProvider {
   analyzeConfirmedExtraction(
     extraction: VisionExtractionDraft,
+    context?: AnalysisProviderContext,
   ): Promise<AnalysisProviderResult>;
+}
+
+export interface AnalysisProviderContext {
+  confirmation_action: ConfirmationAction;
+  follow_up_answer?: FollowUpAnswerDraft;
 }
 
 export type AnalysisProviderResult =
@@ -116,6 +126,7 @@ export function createAnalysisProvider(
   return {
     async analyzeConfirmedExtraction(
       extraction: VisionExtractionDraft,
+      context?: AnalysisProviderContext,
     ): Promise<AnalysisProviderResult> {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), config.timeout_ms);
@@ -127,7 +138,7 @@ export function createAnalysisProvider(
             "Content-Type": "application/json",
             Authorization: `Bearer ${config.api_key}`,
           },
-          body: JSON.stringify(buildOpenAiRequestBody(config, extraction)),
+          body: JSON.stringify(buildOpenAiRequestBody(config, extraction, context)),
           signal: controller.signal,
         });
 
@@ -242,6 +253,7 @@ export function parseAnalysisProviderOutput(text: string): AnalysisProviderResul
 function buildOpenAiRequestBody(
   config: AnalysisProviderConfig,
   extraction: VisionExtractionDraft,
+  context: AnalysisProviderContext | undefined,
 ): Record<string, unknown> {
   return {
     model: config.model,
@@ -252,7 +264,7 @@ function buildOpenAiRequestBody(
       },
       {
         role: "user",
-        content: buildAnalysisUserPrompt(extraction),
+        content: buildAnalysisUserPrompt(extraction, context),
       },
     ],
     response_format: { type: "json_object" },
@@ -274,8 +286,11 @@ function buildAnalysisSystemPrompt(): string {
   ].join("\n");
 }
 
-function buildAnalysisUserPrompt(extraction: VisionExtractionDraft): string {
-  return [
+function buildAnalysisUserPrompt(
+  extraction: VisionExtractionDraft,
+  context: AnalysisProviderContext | undefined,
+): string {
+  const promptLines = [
     "请根据以下已确认错题信息输出 json：",
     `题干：${extraction.question_text}`,
     `学生答案：${extraction.student_answer}`,
@@ -283,8 +298,34 @@ function buildAnalysisUserPrompt(extraction: VisionExtractionDraft): string {
     `标准解法草稿：${extraction.standard_solution_draft}`,
     `识别置信度：${extraction.extraction_confidence}`,
     `已有提醒：${extraction.warnings.join("；") || "无"}`,
+  ];
+
+  if (context) {
+    promptLines.push(`确认动作：${context.confirmation_action}`);
+  }
+
+  if (context?.follow_up_answer) {
+    promptLines.push(
+      `学生追问回答：${formatFollowUpAnswer(context.follow_up_answer)}`,
+    );
+  }
+
+  promptLines.push(
     'JSON 示例：{"expected_diagnosis":"...","step_analysis":["..."],"solution_highlights":["..."],"standard_solution":"...","warnings":[]}',
-  ].join("\n");
+  );
+
+  return promptLines.join("\n");
+}
+
+function formatFollowUpAnswer(answer: FollowUpAnswerDraft): string {
+  const selectedText = answer.selected_stuck_point_id
+    ? `选择卡点 ${answer.selected_stuck_point_id}`
+    : "";
+  const customText = answer.custom_text ? `补充说明：${answer.custom_text}` : "";
+
+  return [selectedText, customText]
+    .filter((item) => item.length > 0)
+    .join("；") || "无";
 }
 
 function readOpenAiMessageContent(

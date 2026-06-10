@@ -223,6 +223,28 @@ assert.deepEqual(invalidJsonResult.error.provider_debug, {
   failure_kind: "invalid_json",
 });
 
+const emptyTextProvider = createAnthropicCompatibleVisionProvider({
+  base_url: "https://example.test/anthropic",
+  model: "vision-model-test",
+  api_key: "secret-key-for-test",
+  timeout_ms: 1000,
+  fetch_impl: async () =>
+    new Response(JSON.stringify({ content: [] }), { status: 200 }),
+});
+
+const emptyTextResult = await emptyTextProvider.extractQuestionFromImage({
+  image_base64: "iVBORw0KGgo=",
+  mime_type: "image/png",
+  student_profile_summary: "demo profile",
+});
+assert.equal(emptyTextResult.ok, false);
+assert.equal(emptyTextResult.error.code, "model_invalid_output");
+assert.deepEqual(emptyTextResult.error.provider_debug, {
+  provider_name: "anthropic_compatible_vision",
+  provider_stage: "vision_llm",
+  failure_kind: "empty_text_content",
+});
+
 const networkFailedProvider = createAnthropicCompatibleVisionProvider({
   base_url: "https://example.test/anthropic",
   model: "vision-model-test",

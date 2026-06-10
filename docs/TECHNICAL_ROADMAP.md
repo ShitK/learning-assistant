@@ -117,7 +117,7 @@ GET /api/history
 - 请求体使用 Zod 或等价类型守卫做运行时校验。
 - 响应体也使用 Zod 或等价 schema 做内部校验，尤其是模型输出。
 - 错误响应必须稳定，包括 `invalid_request`、`invalid_json`、`missing_image`、`invalid_image`、`image_too_large`、`model_not_configured`、`model_timeout`、`model_request_failed`、`model_invalid_output` 等。
-- Provider/OCR 可观测性边界：P1 不保存原始 provider 响应，也不记录图片内容。请求失败只暴露安全元数据 `provider_debug`，用于区分 `http_error`、`invalid_json`、`network_failed` 和 `timeout`。未来 OCR provider 接入时应复用这一错误结构，而不是新增一套前端不可识别的错误通道。
+- Provider/OCR 可观测性边界：P1 不保存原始 provider 响应，也不记录图片内容。请求失败只暴露安全元数据 `provider_debug`，用于区分 `http_error`、`invalid_json`、`empty_text_content`、`network_failed` 和 `timeout`。其中 `empty_text_content` 表示 provider HTTP/JSON 响应成功，但响应体没有可解析的文本内容。未来 OCR provider 接入时应复用这一错误结构，而不是新增一套前端不可识别的错误通道。
 - 图片确认边界：`/api/diagnose` 的 `image_diagnosis` 成功响应只包含 `extraction_review` 草稿和 `confirmation_token`；`/api/confirm` 接收用户确认后的草稿并返回完整图片诊断。生产环境需要 `MATHTRACE_CONFIRM_SECRET` 签名确认令牌；未确认、低置信度或令牌指纹不匹配的结果不能写入长期画像。
 
 Zod 是 TypeScript-first 的 schema validation 工具，适合在 TypeScript 项目里同时获得运行时校验和静态类型推导。参考：[Zod](https://zod.dev/)。
@@ -561,8 +561,22 @@ UI
   -> 画像变化显示正确
   -> image_diagnosis 上传、预览、识别草稿确认
   -> confirmed_image_diagnosis 成功渲染
+  -> problem_only 图片显示快速追问、跳过和确认写入
   -> image_diagnosis recoverable error
-  -> 未确认/低置信度/确认令牌不匹配的图片结果不写入 localStorage
+  -> 未确认/确认令牌不匹配/insufficient 的图片结果不写入 localStorage
+```
+
+P1.5 新增轻量 eval harness，不评价文案“好不好看”，只评价证据策略是否正确：
+
+```text
+npm run test:eval
+  -> 学生步骤充分时可写 mistake_cause
+  -> 低置信度或只有题干时先进入 problem_only
+  -> 跳过追问只写 problem_type_focus，不写 mistake_cause_changes
+  -> 提交卡点只生成草稿，不写画像
+  -> 确认卡点分析后才写 user_confirmed mistake_cause
+  -> 模型夹带 memory_delta/student_profile 等 forbidden fields 会被 parser 拒绝
+  -> sample_diagnosis 稳定路径仍可回归
 ```
 
 ## 10. 可观测性与评估
@@ -582,6 +596,7 @@ AI 产品需要知道哪里失败，而不是只看“页面能打开”。
 - OpenTelemetry 或平台日志做请求链路追踪。
 - Agent trace 保存关键步骤，但不要保存敏感图片和完整学生隐私内容。
 - 为模型输出建立 eval 集，例如 30 道手工标注错题，验证知识点和错因标签是否命中。
+- P1.5 的本地 eval fixture 先覆盖“证据是否足以写画像”，为后续真实标注集提供最小安全基线。
 
 Agent 质量评估不要只看文本好不好看，要看结构化指标：
 
@@ -732,6 +747,34 @@ Supabase Storage
 - 图片路径失败不会污染长期画像。
 - 模型不得直接写入 `memory_delta` 或覆盖 `student_profile`。
 - 图片抽取草稿未确认时不会进入后续诊断；确认令牌不匹配时只生成报告，不写画像。
+
+### Phase 2.5：可信诊断降级与快速追问
+
+目标：避免题干-only 或学生步骤不清的图片被误写成学生具体错因。
+
+技术：
+
+- `assessExtractionEvidence()` 证据评估层。
+- `/api/confirm` 复用 `confirmation_action` 表达跳过追问、提交卡点和确认卡点分析。
+- `profile_update_kind="problem_type_focus"` 复用现有 `MemoryDelta.knowledge_mastery_changes` 和 `review_priority_changes`，不改 localStorage profile schema。
+- 前端在图片确认面板内展示一屏快速追问，不新增接口或页面。
+- `scripts/eval-harness.test.mjs` 和 fixture 固化可信写入边界。
+
+交付：
+
+- `student_work_sufficient` 继续走现有具体错因诊断。
+- `problem_only + skip_follow_up` 只轻微下调相关知识点掌握度并记录复习关注，不写具体错因。
+- `problem_only + submit_stuck_point` 只生成分析草稿，不持久化。
+- `problem_only + confirm_stuck_point_analysis` 才以 `user_confirmed` 写入具体错因。
+- `insufficient` 不写画像，提示重新上传或改用样例题。
+
+验收：
+
+- 没有学生作答证据时不会写 `mistake_cause_changes`。
+- 跳过追问不会增加 `frequent_mistake_causes`。
+- 用户确认前不会把追问回答写入画像。
+- DeepSeek/text analysis provider 不能影响 `memory_delta`、`student_profile` 或写入策略。
+- `npm test`、`npm run test:eval`、`npm run lint`、`npm run build` 通过。
 
 ### Phase 3：长期记忆与数据库
 

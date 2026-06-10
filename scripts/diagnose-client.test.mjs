@@ -225,6 +225,10 @@ const highConfidenceImageResponse = {
   },
   sample_diagnosis: null,
   fallback_used: false,
+  evidence_level: "student_work_sufficient",
+  persistence_evidence: "student_work",
+  profile_update_kind: "mistake_cause",
+  risk_follow_up: null,
   warnings: [],
 };
 
@@ -237,6 +241,8 @@ const lowConfidenceImageResponse = {
     ...highConfidenceImageResponse.recognized_question,
     extraction_confidence: "low",
   },
+  persistence_evidence: "none",
+  profile_update_kind: "none",
   memory_delta: {
     ...highConfidenceImageResponse.memory_delta,
     should_persist: false,
@@ -262,6 +268,64 @@ assert.equal(
   shouldPersistDiagnoseProfile(inconsistentLowConfidenceImageResponse),
   false,
 );
+
+const inconsistentEvidenceImageResponse = {
+  ...highConfidenceImageResponse,
+  evidence_level: "insufficient",
+  persistence_evidence: "student_work",
+  profile_update_kind: "mistake_cause",
+  memory_delta: {
+    ...highConfidenceImageResponse.memory_delta,
+    should_persist: true,
+  },
+};
+
+assert.equal(
+  isDiagnoseImageSuccessResponse(inconsistentEvidenceImageResponse),
+  false,
+);
+
+const skipFollowUpImageResponse = {
+  ...highConfidenceImageResponse,
+  recognized_question: {
+    ...highConfidenceImageResponse.recognized_question,
+    student_answer: "未识别到学生答案",
+    student_solution_steps: [],
+    extraction_confidence: "low",
+  },
+  mistake_diagnosis: {
+    ...highConfidenceImageResponse.mistake_diagnosis,
+    mistake_causes: [],
+  },
+  memory_delta: {
+    knowledge_mastery_changes: { derivative_monotonicity: -2 },
+    mistake_cause_changes: {},
+    is_repeated_mistake: false,
+    review_priority_changes: ["derivative_monotonicity"],
+    should_persist: true,
+    rationale:
+      "用户跳过题目风险追问，本次只按题型风险轻微下调相关知识点掌握度，不写具体错因。",
+  },
+  evidence_level: "problem_only",
+  persistence_evidence: "uploaded_problem_only",
+  profile_update_kind: "problem_type_focus",
+  risk_follow_up: {
+    problem_type: "函数与导数问题",
+    knowledge_points: ["derivative_monotonicity"],
+    common_stuck_points: [
+      {
+        id: "classification_missing",
+        label: "classification_missing",
+        related_mistake_cause: "classification_missing",
+      },
+    ],
+    standard_solution_summary: "先求导，再分类讨论。",
+    prompt: "你主要卡在哪里？",
+  },
+};
+
+assert.equal(isDiagnoseImageSuccessResponse(skipFollowUpImageResponse), true);
+assert.equal(shouldPersistDiagnoseProfile(skipFollowUpImageResponse), true);
 
 const extractionReviewResponse = {
   diagnosis_id: "diag_image_draft_1",
@@ -320,6 +384,27 @@ assert.equal(
   "先求导，再分类讨论。",
 );
 assert.deepEqual(confirmPayload.confirmed_extraction.warnings, []);
+
+const followUpConfirmPayload = buildConfirmedImageDiagnosePayload({
+  confirmed_extraction: confirmedExtractionDraft,
+  confirmation_token: extractionReviewResponse.confirmation_token,
+  confirmation_action: "confirm_stuck_point_analysis",
+  follow_up_answer: {
+    selected_stuck_point_id: "classification_missing",
+    custom_text: null,
+  },
+  student_profile: demoStudentProfile,
+  mistake_history: mistakeHistory,
+});
+
+assert.equal(
+  followUpConfirmPayload.confirmation_action,
+  "confirm_stuck_point_analysis",
+);
+assert.deepEqual(followUpConfirmPayload.follow_up_answer, {
+  selected_stuck_point_id: "classification_missing",
+  custom_text: null,
+});
 
 const imageExtractionRequests = [];
 const imageExtractionResult = await requestImageExtractionReview({

@@ -1,6 +1,12 @@
 import { sampleDiagnoses } from "@/data/mathtrace-demo";
 import { isRecord } from "@/lib/utils";
 import type {
+  EvidenceLevel,
+  PersistenceEvidence,
+  ProblemRiskFollowUp,
+  ProfileUpdateKind,
+} from "@/lib/diagnosis-evidence";
+import type {
   AgentStep,
   MemoryDelta,
   PracticeQuestion,
@@ -12,6 +18,15 @@ import type {
 } from "@/data/mathtrace-demo";
 import type { ProviderFailureDebug } from "@/lib/provider-error";
 import type { VisionExtractionDebugSummary } from "@/lib/vision-extraction-parser";
+
+export type {
+  ConfirmationAction,
+  EvidenceLevel,
+  FollowUpAnswerDraft,
+  PersistenceEvidence,
+  ProblemRiskFollowUp,
+  ProfileUpdateKind,
+} from "@/lib/diagnosis-evidence";
 
 export type DiagnoseTaskType = "sample_diagnosis" | "image_diagnosis";
 
@@ -112,6 +127,10 @@ export interface DiagnoseImageSuccessResponse {
   review_plan: ReviewPlan;
   sample_diagnosis: null;
   fallback_used: false;
+  evidence_level: EvidenceLevel;
+  persistence_evidence: PersistenceEvidence;
+  profile_update_kind: ProfileUpdateKind;
+  risk_follow_up: ProblemRiskFollowUp | null;
   warnings: string[];
 }
 
@@ -318,9 +337,42 @@ export function isDiagnoseImageSuccessResponse(
     return false;
   }
 
+  if (!isEvidenceLevel(value.evidence_level)) {
+    return false;
+  }
+
+  if (!isPersistenceEvidence(value.persistence_evidence)) {
+    return false;
+  }
+
+  if (!isProfileUpdateKind(value.profile_update_kind)) {
+    return false;
+  }
+
+  if (
+    value.risk_follow_up !== null &&
+    !isProblemRiskFollowUp(value.risk_follow_up)
+  ) {
+    return false;
+  }
+
+  if (
+    !isImageEvidencePolicyConsistent({
+      evidence_level: value.evidence_level,
+      persistence_evidence: value.persistence_evidence,
+      profile_update_kind: value.profile_update_kind,
+      risk_follow_up: value.risk_follow_up,
+      memory_delta: value.memory_delta,
+      mistake_diagnosis: value.mistake_diagnosis,
+    })
+  ) {
+    return false;
+  }
+
   if (
     value.recognized_question.extraction_confidence === "low" &&
-    value.memory_delta.should_persist
+    value.memory_delta.should_persist &&
+    value.profile_update_kind === "mistake_cause"
   ) {
     return false;
   }
@@ -545,6 +597,108 @@ function isReviewPlanDay(value: unknown): value is ReviewPlan["seven_days"][numb
     typeof value.topic === "string" &&
     typeof value.task === "string" &&
     typeof value.estimated_minutes === "number"
+  );
+}
+
+function isEvidenceLevel(value: unknown): value is EvidenceLevel {
+  return (
+    value === "student_work_sufficient" ||
+    value === "problem_only" ||
+    value === "insufficient"
+  );
+}
+
+function isPersistenceEvidence(value: unknown): value is PersistenceEvidence {
+  return (
+    value === "student_work" ||
+    value === "user_confirmed" ||
+    value === "uploaded_problem_only" ||
+    value === "none"
+  );
+}
+
+function isProfileUpdateKind(value: unknown): value is ProfileUpdateKind {
+  return (
+    value === "mistake_cause" ||
+    value === "problem_type_focus" ||
+    value === "none"
+  );
+}
+
+function isProblemRiskFollowUp(value: unknown): value is ProblemRiskFollowUp {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.problem_type === "string" &&
+    Array.isArray(value.knowledge_points) &&
+    value.knowledge_points.every(isString) &&
+    Array.isArray(value.common_stuck_points) &&
+    value.common_stuck_points.every(isCommonStuckPoint) &&
+    typeof value.standard_solution_summary === "string" &&
+    typeof value.prompt === "string"
+  );
+}
+
+function isCommonStuckPoint(value: unknown): value is ProblemRiskFollowUp["common_stuck_points"][number] {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.label === "string" &&
+    typeof value.related_mistake_cause === "string"
+  );
+}
+
+function isImageEvidencePolicyConsistent(value: {
+  evidence_level: EvidenceLevel;
+  persistence_evidence: PersistenceEvidence;
+  profile_update_kind: ProfileUpdateKind;
+  risk_follow_up: ProblemRiskFollowUp | null;
+  memory_delta: MemoryDelta;
+  mistake_diagnosis: MistakeDiagnosis;
+}): boolean {
+  if (!value.memory_delta.should_persist) {
+    return (
+      value.persistence_evidence === "none" &&
+      value.profile_update_kind === "none"
+    );
+  }
+
+  if (value.evidence_level === "insufficient") {
+    return false;
+  }
+
+  if (value.evidence_level === "student_work_sufficient") {
+    return (
+      value.persistence_evidence === "student_work" &&
+      value.profile_update_kind === "mistake_cause" &&
+      value.risk_follow_up === null
+    );
+  }
+
+  if (value.evidence_level !== "problem_only") {
+    return false;
+  }
+
+  if (value.risk_follow_up === null) {
+    return false;
+  }
+
+  if (value.profile_update_kind === "problem_type_focus") {
+    return (
+      value.persistence_evidence === "uploaded_problem_only" &&
+      Object.keys(value.memory_delta.mistake_cause_changes).length === 0 &&
+      value.mistake_diagnosis.mistake_causes.length === 0
+    );
+  }
+
+  return (
+    value.profile_update_kind === "mistake_cause" &&
+    value.persistence_evidence === "user_confirmed"
   );
 }
 

@@ -29,6 +29,7 @@ import {
   createDiagnosisResultVisibility,
   createEditableExtractionDraft,
   createExtractionReviewRetainedReportNotice,
+  createFollowUpDraftFromChoice,
   createImageDiagnosisViewModel,
   createRetainedReportNotice,
   createSampleDiagnosisViewModel,
@@ -51,6 +52,11 @@ import type {
   EditableExtractionDraft,
   StandardSolutionBlock,
 } from "@/lib/diagnosis-view-model";
+import type {
+  ConfirmationAction,
+  FollowUpAnswerDraft,
+  ProblemRiskFollowUp,
+} from "@/lib/diagnose-api";
 import type { PreparedImageUpload } from "@/lib/image-upload-client";
 import { clampScore } from "@/lib/utils";
 
@@ -89,6 +95,11 @@ interface ProfilePreview {
   afterProfile: StudentProfile | null;
 }
 
+interface ConfirmedDiagnosisOptions {
+  confirmation_action?: ConfirmationAction;
+  follow_up_answer?: FollowUpAnswerDraft;
+}
+
 export function MathTraceWorkbench(): ReactElement {
   const hasHydrated = useHasHydrated();
   const restoredStudentProfile = hasHydrated
@@ -107,6 +118,12 @@ export function MathTraceWorkbench(): ReactElement {
   >(null);
   const [editableExtractionDraft, setEditableExtractionDraft] =
     useState<EditableExtractionDraft | null>(null);
+  const [selectedFollowUpChoiceId, setSelectedFollowUpChoiceId] = useState<
+    string | null
+  >(null);
+  const [followUpCustomText, setFollowUpCustomText] = useState("");
+  const [pendingFollowUpAnswer, setPendingFollowUpAnswer] =
+    useState<FollowUpAnswerDraft | null>(null);
   const [diagnosisView, setDiagnosisView] = useState<DiagnosisViewModel>(() =>
     createSampleDiagnosisViewModel(selectedSample),
   );
@@ -161,6 +178,7 @@ export function MathTraceWorkbench(): ReactElement {
     setDiagnosisView(createSampleDiagnosisViewModel(nextSample));
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
+    resetFollowUpState();
     setApiErrorMessage(null);
     setRetainedReportNotice(null);
     setImageUploadErrorMessage(null);
@@ -176,6 +194,7 @@ export function MathTraceWorkbench(): ReactElement {
 
     setDiagnosisMode(nextMode);
     setEditableExtractionDraft(null);
+    resetFollowUpState();
     setApiErrorMessage(null);
     setRetainedReportNotice(null);
     setImageUploadErrorMessage(null);
@@ -194,6 +213,7 @@ export function MathTraceWorkbench(): ReactElement {
     setIsImagePreparing(true);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
+    resetFollowUpState();
     setImageUploadErrorMessage(null);
     setApiErrorMessage(null);
     setRetainedReportNotice(null);
@@ -203,6 +223,7 @@ export function MathTraceWorkbench(): ReactElement {
     setSelectedImage(image);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
+    resetFollowUpState();
     setIsImagePreparing(false);
     setImageUploadErrorMessage(null);
   }
@@ -211,6 +232,7 @@ export function MathTraceWorkbench(): ReactElement {
     setSelectedImage(null);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
+    resetFollowUpState();
     setIsImagePreparing(false);
     setImageUploadErrorMessage(message);
   }
@@ -238,6 +260,7 @@ export function MathTraceWorkbench(): ReactElement {
     draft: EditableExtractionDraft,
   ): void {
     setEditableExtractionDraft(draft);
+    setPendingFollowUpAnswer(null);
     setApiErrorMessage(null);
   }
 
@@ -253,6 +276,85 @@ export function MathTraceWorkbench(): ReactElement {
     }
 
     void requestConfirmedDiagnosis(editableExtractionDraft);
+  }
+
+  function handleSelectFollowUpChoice(choiceId: string): void {
+    setSelectedFollowUpChoiceId(choiceId);
+    setPendingFollowUpAnswer(null);
+    setApiErrorMessage(null);
+  }
+
+  function handleUpdateFollowUpCustomText(text: string): void {
+    setFollowUpCustomText(text);
+    setPendingFollowUpAnswer(null);
+    setApiErrorMessage(null);
+  }
+
+  function handleSkipFollowUp(): void {
+    if (
+      isDiagnosing ||
+      isImagePreparing ||
+      isDiagnosisRequestLockedRef.current ||
+      editableExtractionDraft === null
+    ) {
+      return;
+    }
+
+    void requestConfirmedDiagnosis(editableExtractionDraft, {
+      confirmation_action: "skip_follow_up",
+    });
+  }
+
+  function handleSubmitFollowUp(): void {
+    if (
+      isDiagnosing ||
+      isImagePreparing ||
+      isDiagnosisRequestLockedRef.current ||
+      editableExtractionDraft === null ||
+      selectedFollowUpChoiceId === null
+    ) {
+      return;
+    }
+
+    const followUpAnswer = createFollowUpDraftFromChoice(
+      selectedFollowUpChoiceId,
+      followUpCustomText,
+    );
+    if (
+      followUpAnswer.selected_stuck_point_id === null &&
+      followUpAnswer.custom_text === null
+    ) {
+      setApiErrorMessage("请选择卡点或输入一句话。");
+      return;
+    }
+
+    void requestConfirmedDiagnosis(editableExtractionDraft, {
+      confirmation_action: "submit_stuck_point",
+      follow_up_answer: followUpAnswer,
+    });
+  }
+
+  function handleConfirmFollowUpAnalysis(): void {
+    if (
+      isDiagnosing ||
+      isImagePreparing ||
+      isDiagnosisRequestLockedRef.current ||
+      editableExtractionDraft === null ||
+      pendingFollowUpAnswer === null
+    ) {
+      return;
+    }
+
+    void requestConfirmedDiagnosis(editableExtractionDraft, {
+      confirmation_action: "confirm_stuck_point_analysis",
+      follow_up_answer: pendingFollowUpAnswer,
+    });
+  }
+
+  function resetFollowUpState(): void {
+    setSelectedFollowUpChoiceId(null);
+    setFollowUpCustomText("");
+    setPendingFollowUpAnswer(null);
   }
 
   function handleResetProfile(): void {
@@ -369,14 +471,20 @@ export function MathTraceWorkbench(): ReactElement {
 
   async function requestConfirmedDiagnosis(
     draft: EditableExtractionDraft,
+    options: ConfirmedDiagnosisOptions = {},
   ): Promise<void> {
     if (isDiagnosisRequestLockedRef.current) {
       return;
     }
 
+    const confirmationAction =
+      options.confirmation_action ?? "diagnose_from_student_work";
     const confirmedExtractionDraft =
       createVisionExtractionDraftFromEditableDraft(draft);
-    const parsedDraft = parseConfirmedExtractionDraft(confirmedExtractionDraft);
+    const parsedDraft =
+      confirmationAction === "diagnose_from_student_work"
+        ? parseConfirmedExtractionDraft(confirmedExtractionDraft)
+        : { ok: true as const, value: confirmedExtractionDraft };
 
     if (!parsedDraft.ok) {
       setApiErrorMessage(parsedDraft.message);
@@ -402,6 +510,8 @@ export function MathTraceWorkbench(): ReactElement {
       const diagnosis = await requestConfirmedImageDiagnosis({
         fetcher: window.fetch.bind(window),
         confirmation_token: draft.confirmation_token,
+        confirmation_action: confirmationAction,
+        follow_up_answer: options.follow_up_answer,
         confirmed_extraction: parsedDraft.value,
         student_profile: profileBeforeDiagnosis,
         mistake_history: mistakeHistory,
@@ -409,7 +519,12 @@ export function MathTraceWorkbench(): ReactElement {
       const nextView = createImageDiagnosisViewModel(diagnosis);
       setDiagnosisView(nextView);
       setIsCurrentConfirmedImageReport(true);
-      setEditableExtractionDraft(null);
+      if (confirmationAction === "submit_stuck_point") {
+        setPendingFollowUpAnswer(options.follow_up_answer ?? null);
+      } else {
+        setEditableExtractionDraft(null);
+        resetFollowUpState();
+      }
       setRetainedReportNotice(null);
 
       if (shouldPersistDiagnoseProfile(diagnosis)) {
@@ -488,6 +603,9 @@ export function MathTraceWorkbench(): ReactElement {
               selectedSampleId={selectedSampleId}
               selectedImage={selectedImage}
               editableExtractionDraft={editableExtractionDraft}
+              selectedFollowUpChoiceId={selectedFollowUpChoiceId}
+              followUpCustomText={followUpCustomText}
+              pendingFollowUpAnswer={pendingFollowUpAnswer}
               isDiagnosing={isDiagnosing}
               isImagePreparing={isImagePreparing}
               apiErrorMessage={apiErrorMessage}
@@ -497,6 +615,11 @@ export function MathTraceWorkbench(): ReactElement {
               onStartDiagnosis={handleStartDiagnosis}
               onUpdateEditableExtractionDraft={handleUpdateEditableExtractionDraft}
               onConfirmExtraction={handleConfirmExtraction}
+              onSelectFollowUpChoice={handleSelectFollowUpChoice}
+              onUpdateFollowUpCustomText={handleUpdateFollowUpCustomText}
+              onSkipFollowUp={handleSkipFollowUp}
+              onSubmitFollowUp={handleSubmitFollowUp}
+              onConfirmFollowUpAnalysis={handleConfirmFollowUpAnalysis}
               onImagePrepareStart={handleImagePrepareStart}
               onImagePrepared={handleImagePrepared}
               onImagePrepareError={handleImagePrepareError}
@@ -565,6 +688,9 @@ function MistakeInputCard({
   selectedSampleId,
   selectedImage,
   editableExtractionDraft,
+  selectedFollowUpChoiceId,
+  followUpCustomText,
+  pendingFollowUpAnswer,
   isDiagnosing,
   isImagePreparing,
   apiErrorMessage,
@@ -574,6 +700,11 @@ function MistakeInputCard({
   onStartDiagnosis,
   onUpdateEditableExtractionDraft,
   onConfirmExtraction,
+  onSelectFollowUpChoice,
+  onUpdateFollowUpCustomText,
+  onSkipFollowUp,
+  onSubmitFollowUp,
+  onConfirmFollowUpAnalysis,
   onImagePrepareStart,
   onImagePrepared,
   onImagePrepareError,
@@ -584,6 +715,9 @@ function MistakeInputCard({
   selectedSampleId: SampleQuestionId;
   selectedImage: PreparedImageUpload | null;
   editableExtractionDraft: EditableExtractionDraft | null;
+  selectedFollowUpChoiceId: string | null;
+  followUpCustomText: string;
+  pendingFollowUpAnswer: FollowUpAnswerDraft | null;
   isDiagnosing: boolean;
   isImagePreparing: boolean;
   apiErrorMessage: string | null;
@@ -593,6 +727,11 @@ function MistakeInputCard({
   onStartDiagnosis: () => void;
   onUpdateEditableExtractionDraft: (draft: EditableExtractionDraft) => void;
   onConfirmExtraction: () => void;
+  onSelectFollowUpChoice: (choiceId: string) => void;
+  onUpdateFollowUpCustomText: (text: string) => void;
+  onSkipFollowUp: () => void;
+  onSubmitFollowUp: () => void;
+  onConfirmFollowUpAnalysis: () => void;
   onImagePrepareStart: () => void;
   onImagePrepared: (image: PreparedImageUpload) => void;
   onImagePrepareError: (message: string) => void;
@@ -606,11 +745,14 @@ function MistakeInputCard({
     canConfirmEditableExtractionDraft(editableExtractionDraft) &&
     !isDiagnosing &&
     !isImagePreparing;
+  const riskFollowUp =
+    editableExtractionDraft === null
+      ? null
+      : createEditableDraftRiskFollowUp(editableExtractionDraft);
 
   function handleEditableDraftChange(
     field:
       | "question_text"
-      | "student_answer"
       | "steps_text"
       | "standard_solution_draft",
     event: ChangeEvent<HTMLTextAreaElement>,
@@ -717,22 +859,7 @@ function MistakeInputCard({
                 <p className="text-sm font-semibold text-[var(--charcoal)]">
                   识别结果确认
                 </p>
-                <Tag
-                  tone={
-                    editableExtractionDraft.extraction_confidence === "low"
-                      ? "amber"
-                      : "green"
-                  }
-                >
-                  置信度：{editableExtractionDraft.extraction_confidence}
-                </Tag>
               </div>
-
-              {editableExtractionDraft.extraction_confidence === "low" ? (
-                <p className="mt-3 rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]">
-                  模型置信度为 low。你仍可确认生成报告，但本次不会写入长期画像。
-                </p>
-              ) : null}
 
               {editableExtractionDraft.warnings.length > 0 ? (
                 <ul className="mt-3 grid gap-2">
@@ -765,22 +892,7 @@ function MistakeInputCard({
 
                 <label className="grid gap-1.5">
                   <span className="text-xs font-semibold text-[var(--mocha)]">
-                    学生答案
-                  </span>
-                  <textarea
-                    value={editableExtractionDraft.student_answer}
-                    rows={3}
-                    disabled={isDiagnosing || isImagePreparing}
-                    onChange={(event) =>
-                      handleEditableDraftChange("student_answer", event)
-                    }
-                    className="min-h-20 resize-y rounded-[16px] border border-[var(--light-gray)] bg-white px-3 py-2 text-sm leading-6 text-[var(--charcoal)] outline-none focus:border-[var(--mocha)] disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-                </label>
-
-                <label className="grid gap-1.5">
-                  <span className="text-xs font-semibold text-[var(--mocha)]">
-                    解题步骤
+                    学生解题步骤
                   </span>
                   <textarea
                     value={editableExtractionDraft.steps_text}
@@ -812,19 +924,36 @@ function MistakeInputCard({
                 </label>
               </div>
 
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs leading-5 text-[var(--warm-gray)]">
-                  编辑后可生成报告；画像写入以服务端确认结果为准。
-                </p>
-                <button
-                  type="button"
-                  disabled={!canConfirmExtraction}
-                  onClick={onConfirmExtraction}
-                  className="min-h-10 rounded-full bg-[var(--deep-green)] px-5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(45,95,77,0.16)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--deep-green)] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isDiagnosing ? "生成报告中" : "确认生成报告"}
-                </button>
-              </div>
+              {riskFollowUp ? (
+                <RiskFollowUpPanel
+                  followUp={riskFollowUp}
+                  selectedChoiceId={selectedFollowUpChoiceId}
+                  customText={followUpCustomText}
+                  pendingFollowUpAnswer={pendingFollowUpAnswer}
+                  isDisabled={isDiagnosing || isImagePreparing}
+                  onSelectChoice={onSelectFollowUpChoice}
+                  onUpdateCustomText={onUpdateFollowUpCustomText}
+                  onSkip={onSkipFollowUp}
+                  onSubmit={onSubmitFollowUp}
+                  onConfirm={onConfirmFollowUpAnalysis}
+                />
+              ) : null}
+
+              {riskFollowUp ? null : (
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs leading-5 text-[var(--warm-gray)]">
+                    编辑后可生成报告；画像写入以服务端确认结果为准。
+                  </p>
+                  <button
+                    type="button"
+                    disabled={!canConfirmExtraction}
+                    onClick={onConfirmExtraction}
+                    className="min-h-10 rounded-full bg-[var(--deep-green)] px-5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(45,95,77,0.16)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--deep-green)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isDiagnosing ? "生成报告中" : "确认生成报告"}
+                  </button>
+                </div>
+              )}
             </div>
           ) : null}
         </div>
@@ -876,6 +1005,214 @@ function MistakeInputCard({
   );
 }
 
+function RiskFollowUpPanel({
+  followUp,
+  selectedChoiceId,
+  customText,
+  pendingFollowUpAnswer,
+  isDisabled,
+  onSelectChoice,
+  onUpdateCustomText,
+  onSkip,
+  onSubmit,
+  onConfirm,
+}: {
+  followUp: ProblemRiskFollowUp;
+  selectedChoiceId: string | null;
+  customText: string;
+  pendingFollowUpAnswer: FollowUpAnswerDraft | null;
+  isDisabled: boolean;
+  onSelectChoice: (choiceId: string) => void;
+  onUpdateCustomText: (text: string) => void;
+  onSkip: () => void;
+  onSubmit: () => void;
+  onConfirm: () => void;
+}): ReactElement {
+  const isCustomSelected = selectedChoiceId === "custom";
+  const hasPendingFollowUpAnswer = pendingFollowUpAnswer !== null;
+  const canSubmit =
+    !isDisabled &&
+    selectedChoiceId !== null &&
+    (!isCustomSelected || customText.trim().length > 0);
+  const canUsePrimaryAction = hasPendingFollowUpAnswer ? !isDisabled : canSubmit;
+
+  return (
+    <div className="mt-4 rounded-[16px] border border-[var(--mocha-light)] bg-white p-4">
+      <p className="text-sm font-semibold text-[var(--charcoal)]">
+        学生步骤不清，暂不能直接判断具体错因。
+      </p>
+      <p className="mt-2 text-sm leading-6 text-[var(--warm-gray)]">
+        本题题型：{followUp.problem_type}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {followUp.common_stuck_points.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            disabled={isDisabled}
+            onClick={() => onSelectChoice(item.id)}
+            className={`min-h-9 rounded-full border px-3 text-sm font-medium ${
+              selectedChoiceId === item.id
+                ? "border-[var(--mocha)] bg-[var(--mocha-muted)] text-[var(--mocha)]"
+                : "border-[var(--light-gray)] bg-[var(--oat)] text-[var(--warm-gray)]"
+            } disabled:cursor-not-allowed disabled:opacity-60`}
+          >
+            {item.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          disabled={isDisabled}
+          onClick={() => onSelectChoice("custom")}
+          className={`min-h-9 rounded-full border px-3 text-sm font-medium ${
+            isCustomSelected
+              ? "border-[var(--mocha)] bg-[var(--mocha-muted)] text-[var(--mocha)]"
+              : "border-[var(--light-gray)] bg-[var(--oat)] text-[var(--warm-gray)]"
+          } disabled:cursor-not-allowed disabled:opacity-60`}
+        >
+          我自己说
+        </button>
+      </div>
+
+      {isCustomSelected ? (
+        <textarea
+          value={customText}
+          rows={2}
+          disabled={isDisabled}
+          onChange={(event) => onUpdateCustomText(event.target.value)}
+          placeholder="用一句话说说你卡在哪里"
+          className="mt-3 min-h-16 w-full resize-y rounded-[14px] border border-[var(--light-gray)] bg-[var(--oat)] px-3 py-2 text-sm leading-6 text-[var(--charcoal)] outline-none focus:border-[var(--mocha)] disabled:cursor-not-allowed disabled:opacity-60"
+        />
+      ) : null}
+
+      <p className="mt-3 text-xs leading-5 text-[var(--warm-gray)]">
+        跳过后只轻微下调相关考点掌握度并记录复习关注，不记录具体错因。
+      </p>
+
+      {pendingFollowUpAnswer ? (
+        <p className="mt-3 rounded-[14px] bg-[var(--amber-bg)] px-3 py-2 text-sm leading-6 text-[var(--amber-text)]">
+          已生成分析草稿，请核对下方草稿后确认写入画像。
+        </p>
+      ) : null}
+
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <button
+          type="button"
+          disabled={isDisabled}
+          onClick={onSkip}
+          className="min-h-10 rounded-full border border-[var(--light-gray)] bg-white px-4 text-sm font-semibold text-[var(--warm-gray)] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          跳过，只记复习关注
+        </button>
+        <button
+          type="button"
+          disabled={!canUsePrimaryAction}
+          onClick={hasPendingFollowUpAnswer ? onConfirm : onSubmit}
+          className={`min-h-10 rounded-full px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 ${
+            hasPendingFollowUpAnswer
+              ? "bg-[var(--deep-green)]"
+              : "bg-[var(--mocha)]"
+          }`}
+        >
+          {pendingFollowUpAnswer ? "确认写入画像" : "生成分析草稿"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function createEditableDraftRiskFollowUp(
+  draft: EditableExtractionDraft,
+): ProblemRiskFollowUp | null {
+  const questionText = draft.question_text.trim();
+  const standardSolution = draft.standard_solution_draft.trim();
+  const hasRecognizedStudentAnswer =
+    draft.student_answer.trim().length > 0 &&
+    !isUnrecognizedStudentAnswer(draft.student_answer);
+  const hasStudentSteps = draft.steps_text.trim().length > 0;
+
+  if (
+    questionText.length === 0 ||
+    standardSolution.length === 0 ||
+    (hasRecognizedStudentAnswer &&
+      hasStudentSteps &&
+      draft.extraction_confidence !== "low")
+  ) {
+    return null;
+  }
+
+  const text = `${questionText}\n${standardSolution}`;
+  const knowledgeIds = inferDraftKnowledgeIds(text);
+
+  return {
+    problem_type: inferDraftProblemType(text),
+    knowledge_points: knowledgeIds,
+    common_stuck_points: [
+      {
+        id: "calculation_error",
+        label: "求导",
+        related_mistake_cause: "calculation_error",
+      },
+      {
+        id: "classification_missing",
+        label: "分类讨论",
+        related_mistake_cause: "classification_missing",
+      },
+      {
+        id: "domain_missing",
+        label: "端点条件",
+        related_mistake_cause: "domain_missing",
+      },
+      {
+        id: "method_error",
+        label: "参数范围",
+        related_mistake_cause: "method_error",
+      },
+    ],
+    standard_solution_summary:
+      standardSolution.length > 80
+        ? `${standardSolution.slice(0, 80)}...`
+        : standardSolution,
+    prompt: "你主要卡在哪里？",
+  };
+}
+
+function inferDraftKnowledgeIds(text: string): string[] {
+  const knowledgeIds: string[] = [];
+
+  if (/导数|f'|单调/.test(text)) {
+    knowledgeIds.push("derivative_monotonicity");
+  }
+
+  if (/参数|讨论|取值范围|a\\le|a>/.test(text)) {
+    knowledgeIds.push("parameter_classification");
+  }
+
+  if (/定义域|ln|log/.test(text)) {
+    knowledgeIds.push("function_domain");
+  }
+
+  return knowledgeIds.length > 0 ? knowledgeIds : ["derivative_monotonicity"];
+}
+
+function inferDraftProblemType(text: string): string {
+  if (/导数/.test(text) && /参数|讨论|取值范围/.test(text)) {
+    return "导数中的极值点与参数范围";
+  }
+
+  if (/导数|单调/.test(text)) {
+    return "导数与函数单调性";
+  }
+
+  return "数学综合题";
+}
+
+function isUnrecognizedStudentAnswer(value: string): boolean {
+  return /(未识别到|未找到|无法识别|没有识别到|没有检测到).*学生.*(答案|作答)/.test(
+    value,
+  );
+}
+
 function DiagnosisResultCard({
   diagnosis,
   retainedReportNotice,
@@ -899,7 +1236,7 @@ function DiagnosisResultCard({
         <SectionHeader
           kicker="Diagnosis result"
           title="标准解法与错因"
-          description="先看正确解题路径，再对照学生答案定位偏离点。"
+          description="先看正确解题路径，再对照关键步骤检查解题过程。"
         />
       </div>
 
@@ -925,20 +1262,7 @@ function DiagnosisResultCard({
               <p className="text-sm font-semibold text-[var(--charcoal)]">
                 模型识别结果
               </p>
-              <Tag
-                tone={
-                  diagnosis.extraction_confidence === "low" ? "amber" : "green"
-                }
-              >
-                置信度：{getConfidenceLabel(diagnosis.extraction_confidence)}
-              </Tag>
             </div>
-
-            {diagnosis.extraction_confidence === "low" ? (
-              <p className="mt-3 rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]">
-                识别置信度较低，本次报告不会写入长期画像。请检查题干和学生步骤后再决定是否重试。
-              </p>
-            ) : null}
 
             {diagnosis.warnings.length > 0 ? (
               <div className="mt-3 grid gap-2">
@@ -1011,62 +1335,6 @@ function DiagnosisResultCard({
           </div>
         </div>
 
-        <div className="rounded-[20px] border border-[var(--oat)] bg-white p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-[var(--charcoal)]">
-              学生答案与偏离点
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {diagnosis.mistake_causes.map((id) => (
-                <Tag key={id} tone="rust">
-                  {getMistakeName(id)}
-                </Tag>
-              ))}
-            </div>
-          </div>
-
-          <div
-            className={
-              visibility.show_student_answer_text
-                ? "mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]"
-                : "mt-4 grid gap-4"
-            }
-          >
-            {visibility.show_student_answer_text ? (
-              <div className="rounded-[16px] bg-[var(--oat)] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--mocha)]">
-                  student answer
-                </p>
-                <p className="mt-3 text-sm leading-7 text-[var(--warm-gray)]">
-                  <MathText text={diagnosis.student_answer} />
-                </p>
-              </div>
-            ) : null}
-
-            <div className="rounded-[16px] bg-[var(--oat)] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--mocha)]">
-                diagnosis conclusion
-              </p>
-              <p className="mt-3 text-sm leading-7 text-[var(--warm-gray)]">
-                <MathText text={getConciseDiagnosis(diagnosis)} />
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-[20px] bg-[var(--oat)] p-4">
-          <p className="text-sm font-semibold text-[var(--charcoal)]">错误发生步骤</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {diagnosis.step_analysis.map((item) => (
-              <span
-                key={item}
-                className="rounded-full bg-white px-3 py-1.5 text-sm text-[var(--warm-gray)]"
-              >
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
       </div>
     </section>
   );
@@ -1415,7 +1683,7 @@ function ProfileInsights({
       <div className="p-5 sm:p-6">
         {!diagnosis.should_persist_profile ? (
           <p className="mb-5 rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]">
-            本次图片识别置信度不足，诊断建议仅展示，不写入本地学生画像。
+            本次仅展示诊断建议，未写入本地学生画像。
           </p>
         ) : null}
         <p className="text-sm font-semibold text-[var(--charcoal)]">掌握度变化</p>
@@ -1637,36 +1905,6 @@ function getKnowledgeName(id: string): string {
   return `${knowledgePoint.display_name} · ${frequency}`;
 }
 
-function getMistakeName(id: string): string {
-  return mistakeCauses[id]?.display_name ?? id;
-}
-
 function getMistakeShortName(id: string): string {
   return mistakeCauses[id]?.short_name ?? id;
-}
-
-function getConfidenceLabel(
-  confidence: DiagnosisViewModel["extraction_confidence"],
-): string {
-  if (confidence === "high") {
-    return "高";
-  }
-
-  if (confidence === "medium") {
-    return "中";
-  }
-
-  if (confidence === "low") {
-    return "低";
-  }
-
-  return "样例";
-}
-
-function getConciseDiagnosis(diagnosis: DiagnosisViewModel): string {
-  if (diagnosis.mistake_causes.length === 0) {
-    return diagnosis.expected_diagnosis;
-  }
-
-  return `偏离点：${diagnosis.mistake_causes.map(getMistakeName).join("、")}。`;
 }

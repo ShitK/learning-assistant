@@ -179,6 +179,10 @@ export function createVisionProvider(
         error: createProviderError(
           "model_invalid_output",
           "模型响应中没有可解析的文本内容。",
+          undefined,
+          createProviderFailureDebug(providerName, {
+            failure_kind: "empty_text_content",
+          }),
         ),
       };
     }

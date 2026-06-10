@@ -13,6 +13,7 @@ const { parseConfirmedExtractionDraft } = jiti(
   "../src/lib/image-confirmation.ts",
 );
 const {
+  createImageConfirmationFingerprint,
   createImageConfirmationToken,
   verifyImageConfirmationToken,
 } = jiti("../src/lib/image-confirmation-token.ts");
@@ -331,6 +332,252 @@ const invalidTokenResult = await handleConfirmRequest({
 
 assert.equal(invalidTokenResult.status, 400);
 assert.equal(invalidTokenResult.body.error.code, "invalid_request");
+
+const problemOnlyExtraction = {
+  question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
+  student_answer: "未识别到学生答案",
+  student_solution_steps: [],
+  standard_solution_draft: "应先求导，再按参数分类讨论。",
+  extraction_confidence: "low",
+  warnings: ["没有识别到学生作答区域。"],
+};
+const problemOnlyToken = createImageConfirmationToken({
+  draft_id: "image_draft_problem_only",
+  extraction_confidence: "low",
+  can_persist_after_confirmation: false,
+  draft_fingerprint: createImageConfirmationFingerprint(problemOnlyExtraction),
+});
+
+const skipFollowUpResult = await handleConfirmRequest({
+  student_id: "demo_student_001",
+  task_type: "confirmed_image_diagnosis",
+  confirmation_token: problemOnlyToken,
+  confirmation_action: "skip_follow_up",
+  confirmed_extraction: problemOnlyExtraction,
+  student_profile: demoStudentProfile,
+  mistake_history: [],
+});
+
+assert.equal(skipFollowUpResult.status, 200);
+assert.equal(skipFollowUpResult.body.evidence_level, "problem_only");
+assert.equal(skipFollowUpResult.body.profile_update_kind, "problem_type_focus");
+assert.equal(
+  skipFollowUpResult.body.persistence_evidence,
+  "uploaded_problem_only",
+);
+assert.deepEqual(skipFollowUpResult.body.memory_delta.mistake_cause_changes, {});
+assert.deepEqual(skipFollowUpResult.body.memory_delta.knowledge_mastery_changes, {
+  derivative_monotonicity: -2,
+  parameter_classification: -2,
+});
+assert.equal(skipFollowUpResult.body.memory_delta.should_persist, true);
+assert.equal(
+  skipFollowUpResult.body.student_profile.frequent_mistake_causes
+    .classification_missing,
+  4,
+);
+
+let problemOnlyAnalysisCallCount = 0;
+const analyzedSkipFollowUpResult = await handleConfirmRequest(
+  {
+    student_id: "demo_student_001",
+    task_type: "confirmed_image_diagnosis",
+    confirmation_token: problemOnlyToken,
+    confirmation_action: "skip_follow_up",
+    confirmed_extraction: problemOnlyExtraction,
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  },
+  {
+    analysis_provider: {
+      async analyzeConfirmedExtraction(extraction, context) {
+        problemOnlyAnalysisCallCount += 1;
+        assert.equal(extraction.standard_solution_draft, "应先求导，再按参数分类讨论。");
+        assert.equal(context.confirmation_action, "skip_follow_up");
+        assert.equal(context.follow_up_answer, undefined);
+
+        return {
+          ok: true,
+          value: {
+            expected_diagnosis: "DeepSeek 展示增强：本题先求导再分类讨论。",
+            step_analysis: ["DeepSeek 展示增强步骤"],
+            solution_highlights: ["DeepSeek 展示增强高亮"],
+            standard_solution:
+              "DeepSeek 补全标准解法：先求导，再按 $a\\le 0$ 与 $a>0$ 分类讨论。",
+            warnings: ["分析模型只增强展示文本。"],
+          },
+        };
+      },
+    },
+  },
+);
+
+assert.equal(problemOnlyAnalysisCallCount, 1);
+assert.equal(analyzedSkipFollowUpResult.status, 200);
+assert.equal(
+  analyzedSkipFollowUpResult.body.mistake_diagnosis.standard_solution,
+  "DeepSeek 补全标准解法：先求导，再按 $a\\le 0$ 与 $a>0$ 分类讨论。",
+);
+assert.equal(
+  analyzedSkipFollowUpResult.body.profile_update_kind,
+  "problem_type_focus",
+);
+assert.deepEqual(
+  analyzedSkipFollowUpResult.body.memory_delta.mistake_cause_changes,
+  {},
+);
+assert.deepEqual(
+  analyzedSkipFollowUpResult.body.memory_delta.knowledge_mastery_changes,
+  skipFollowUpResult.body.memory_delta.knowledge_mastery_changes,
+);
+
+const mismatchedProblemOnlyToken = createImageConfirmationToken({
+  draft_id: "image_draft_problem_only_mismatch",
+  extraction_confidence: "low",
+  can_persist_after_confirmation: false,
+  draft_fingerprint: "different-problem-only-fingerprint",
+});
+const mismatchedSkipFollowUpResult = await handleConfirmRequest({
+  student_id: "demo_student_001",
+  task_type: "confirmed_image_diagnosis",
+  confirmation_token: mismatchedProblemOnlyToken,
+  confirmation_action: "skip_follow_up",
+  confirmed_extraction: problemOnlyExtraction,
+  student_profile: demoStudentProfile,
+  mistake_history: [],
+});
+
+assert.equal(mismatchedSkipFollowUpResult.status, 200);
+assert.equal(mismatchedSkipFollowUpResult.body.evidence_level, "problem_only");
+assert.equal(
+  mismatchedSkipFollowUpResult.body.profile_update_kind,
+  "none",
+);
+assert.equal(mismatchedSkipFollowUpResult.body.persistence_evidence, "none");
+assert.deepEqual(
+  mismatchedSkipFollowUpResult.body.memory_delta.mistake_cause_changes,
+  {},
+);
+assert.equal(
+  mismatchedSkipFollowUpResult.body.memory_delta.should_persist,
+  false,
+);
+
+const submittedFollowUpResult = await handleConfirmRequest({
+  student_id: "demo_student_001",
+  task_type: "confirmed_image_diagnosis",
+  confirmation_token: problemOnlyToken,
+  confirmation_action: "submit_stuck_point",
+  follow_up_answer: {
+    selected_stuck_point_id: "classification_missing",
+    custom_text: null,
+  },
+  confirmed_extraction: problemOnlyExtraction,
+  student_profile: demoStudentProfile,
+  mistake_history: [],
+});
+
+assert.equal(submittedFollowUpResult.status, 200);
+assert.equal(submittedFollowUpResult.body.evidence_level, "problem_only");
+assert.equal(submittedFollowUpResult.body.persistence_evidence, "none");
+assert.equal(submittedFollowUpResult.body.profile_update_kind, "none");
+assert.deepEqual(submittedFollowUpResult.body.mistake_diagnosis.mistake_causes, [
+  "classification_missing",
+]);
+assert.deepEqual(
+  submittedFollowUpResult.body.memory_delta.mistake_cause_changes,
+  {},
+);
+assert.equal(submittedFollowUpResult.body.memory_delta.should_persist, false);
+assert.equal(
+  submittedFollowUpResult.body.student_profile.frequent_mistake_causes
+    .classification_missing,
+  4,
+);
+
+let submittedAnalysisCallCount = 0;
+const analyzedSubmittedFollowUpResult = await handleConfirmRequest(
+  {
+    student_id: "demo_student_001",
+    task_type: "confirmed_image_diagnosis",
+    confirmation_token: problemOnlyToken,
+    confirmation_action: "submit_stuck_point",
+    follow_up_answer: {
+      selected_stuck_point_id: "classification_missing",
+      custom_text: null,
+    },
+    confirmed_extraction: problemOnlyExtraction,
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  },
+  {
+    analysis_provider: {
+      async analyzeConfirmedExtraction(_extraction, context) {
+        submittedAnalysisCallCount += 1;
+        assert.equal(context.confirmation_action, "submit_stuck_point");
+        assert.deepEqual(context.follow_up_answer, {
+          selected_stuck_point_id: "classification_missing",
+          custom_text: null,
+        });
+
+        return {
+          ok: true,
+          value: {
+            expected_diagnosis: "DeepSeek 草稿：你可能卡在分类讨论。",
+            step_analysis: ["DeepSeek 根据卡点生成草稿"],
+            solution_highlights: ["DeepSeek 补充分类讨论结构"],
+            standard_solution:
+              "DeepSeek 草稿标准解法：求导后按参数分类讨论。",
+            warnings: [],
+          },
+        };
+      },
+    },
+  },
+);
+
+assert.equal(submittedAnalysisCallCount, 1);
+assert.equal(analyzedSubmittedFollowUpResult.status, 200);
+assert.equal(
+  analyzedSubmittedFollowUpResult.body.mistake_diagnosis.expected_diagnosis,
+  "DeepSeek 草稿：你可能卡在分类讨论。",
+);
+assert.equal(analyzedSubmittedFollowUpResult.body.profile_update_kind, "none");
+assert.deepEqual(
+  analyzedSubmittedFollowUpResult.body.memory_delta.mistake_cause_changes,
+  {},
+);
+assert.equal(
+  analyzedSubmittedFollowUpResult.body.memory_delta.should_persist,
+  false,
+);
+
+const confirmedFollowUpResult = await handleConfirmRequest({
+  student_id: "demo_student_001",
+  task_type: "confirmed_image_diagnosis",
+  confirmation_token: problemOnlyToken,
+  confirmation_action: "confirm_stuck_point_analysis",
+  follow_up_answer: {
+    selected_stuck_point_id: "classification_missing",
+    custom_text: null,
+  },
+  confirmed_extraction: problemOnlyExtraction,
+  student_profile: demoStudentProfile,
+  mistake_history: [],
+});
+
+assert.equal(confirmedFollowUpResult.status, 200);
+assert.equal(confirmedFollowUpResult.body.persistence_evidence, "user_confirmed");
+assert.equal(confirmedFollowUpResult.body.profile_update_kind, "mistake_cause");
+assert.deepEqual(confirmedFollowUpResult.body.memory_delta.mistake_cause_changes, {
+  classification_missing: 1,
+});
+assert.equal(confirmedFollowUpResult.body.memory_delta.should_persist, true);
+assert.equal(
+  confirmedFollowUpResult.body.student_profile.frequent_mistake_causes
+    .classification_missing,
+  5,
+);
 
 const lowConfidenceProvider = {
   async extractQuestionFromImage() {
