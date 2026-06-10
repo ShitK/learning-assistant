@@ -211,3 +211,48 @@ assert.equal(
   requests[0].body.messages[0].content.includes("\\ln a"),
   true,
 );
+
+const endpointRequests = [];
+const endpointProvider = createAnalysisProvider({
+  protocol: "openai",
+  base_url: "https://api.deepseek.com/chat/completions",
+  model: "deepseek-v4-flash",
+  api_key: "local-secret",
+  provider_name: "deepseek_v4_flash",
+  timeout_ms: 60000,
+  fetch_fn: async (url) => {
+    endpointRequests.push(url);
+
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                expected_diagnosis: "DeepSeek 增强错因。",
+                step_analysis: ["DeepSeek 步骤"],
+                solution_highlights: ["DeepSeek 高亮"],
+                standard_solution: "DeepSeek 标准解法。",
+                warnings: [],
+              }),
+            },
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  },
+});
+
+await endpointProvider.analyzeConfirmedExtraction({
+  question_text: "题干",
+  student_answer: "学生答案",
+  student_solution_steps: ["步骤"],
+  standard_solution_draft: "标准解法草稿",
+  extraction_confidence: "high",
+  warnings: [],
+});
+
+assert.deepEqual(endpointRequests, [
+  "https://api.deepseek.com/chat/completions",
+]);

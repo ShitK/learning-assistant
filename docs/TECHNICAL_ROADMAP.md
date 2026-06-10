@@ -164,9 +164,9 @@ P2：模型 adapter 可负责结构化生成练习和计划；是否引入 Verce
 P3：根据复杂度评估 OpenAI Agents SDK 或 LangGraph。
 ```
 
-GLM、Kimi、MiMo 适合放在“题目识别模块”里，由服务端 adapter 包装成统一的 `VisionExtractionProvider`。当前实现支持 Anthropic-compatible 与 OpenAI-compatible 接口，并显式关闭 `thinking` 以确保返回可解析 text block；切换兼容 provider 时优先改本地 `VISION_PROVIDER_*` 配置，不改 route 和确定性 Pipeline。
+GLM、Kimi、MiMo 适合放在“题目识别模块”里，由服务端 adapter 包装成统一的 `VisionExtractionProvider`。当前实现支持 Anthropic-compatible 与 OpenAI-compatible 接口，并显式关闭 `thinking` 以确保返回可解析 text block；切换兼容 provider 时优先改本地 `VISION_PROVIDER_*` 配置，不改 route 和确定性 Pipeline。确认 token 使用独立 `MATHTRACE_CONFIRM_SECRET` 或本地 demo secret 签名，不再回退到 provider API Key，避免切模型时让已发出的确认草稿失效。
 
-DeepSeek `deepseek-v4-flash` 当前放在“确认后文本分析增强模块”里，由 `ANALYSIS_PROVIDER_*` 配置。它只接收用户确认后的文本草稿，增强 `expected_diagnosis`、`step_analysis`、`solution_highlights` 和 `standard_solution`，不参与 `knowledge_mapping`、`mistake_causes`、`severity`、`memory_delta`、`student_profile`、练习和复习计划生成。推荐链路是：
+DeepSeek `deepseek-v4-flash` 当前放在“确认后文本分析增强模块”里，由 `ANALYSIS_PROVIDER_*` 配置。它只接收用户确认后的文本草稿，增强 `expected_diagnosis`、`step_analysis`、`solution_highlights` 和 `standard_solution`，不参与 `knowledge_mapping`、`mistake_causes`、`severity`、`memory_delta`、`student_profile`、练习和复习计划生成。`ANALYSIS_PROVIDER_BASE_URL` 支持 provider 根地址或完整 `/chat/completions` endpoint，但当前协议仍只支持 OpenAI-compatible。推荐链路是：
 
 ```text
 GLM/Kimi/MiMo vision extraction

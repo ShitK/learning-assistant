@@ -489,16 +489,10 @@ try {
   assert.equal(verifyImageConfirmationToken(visionProviderSignedToken).ok, true);
 
   process.env.VISION_PROVIDER_API_KEY = "wrong-vision-provider-secret";
-  assert.equal(verifyImageConfirmationToken(visionProviderSignedToken).ok, false);
+  assert.equal(verifyImageConfirmationToken(visionProviderSignedToken).ok, true);
 
   delete process.env.VISION_PROVIDER_API_KEY;
-  const legacyProviderSignedToken = createImageConfirmationToken({
-    draft_id: "image_draft_test",
-    extraction_confidence: "high",
-    can_persist_after_confirmation: true,
-    draft_fingerprint: "signed-fingerprint",
-  });
-  assert.equal(verifyImageConfirmationToken(legacyProviderSignedToken).ok, true);
+  assert.equal(verifyImageConfirmationToken(visionProviderSignedToken).ok, true);
 
   process.env.NODE_ENV = "production";
   delete process.env.MATHTRACE_CONFIRM_SECRET;

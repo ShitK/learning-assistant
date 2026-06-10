@@ -117,6 +117,11 @@ export function createVisionProviderConfigFromEnv(
   };
 }
 
+/**
+ * @deprecated New code should call createVisionProvider. This compatibility
+ * wrapper keeps older tests and imports working while the provider now supports
+ * both Anthropic-compatible and OpenAI-compatible protocols.
+ */
 export function createAnthropicCompatibleVisionProvider(
   config: Omit<VisionProviderRuntimeConfig, "protocol" | "image_format"> & {
     protocol?: VisionProviderProtocol;

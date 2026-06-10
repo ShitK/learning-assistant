@@ -63,7 +63,7 @@ const ALLOWED_OUTPUT_KEYS = new Set([
 ]);
 
 export function createAnalysisProviderConfigFromEnv(
-  env: NodeJS.ProcessEnv,
+  env: Record<string, string | undefined>,
 ): AnalysisProviderConfigResult {
   const apiKey = env.ANALYSIS_PROVIDER_API_KEY?.trim();
   if (!apiKey) {
@@ -307,7 +307,10 @@ function readOpenAiMessageContent(
 }
 
 function buildCompletionsUrl(baseUrl: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  return normalizedBaseUrl.endsWith("/chat/completions")
+    ? normalizedBaseUrl
+    : `${normalizedBaseUrl}/chat/completions`;
 }
 
 function extractJsonObjectText(text: string): string | null {
