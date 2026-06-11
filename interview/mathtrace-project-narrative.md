@@ -1366,11 +1366,11 @@ P1.5 做完后，系统的关键风险已经不是“缺一个功能”，而是
 
 ---
 
-## 13. Supabase Postgres 数据底座与只读错题本 MVP
+## 13. Supabase Postgres 数据底座与错题本 MVP
 
 ### 当前状态
 
-P1.7 正在实现和文档收口中，目标是把确认后的诊断结果从纯前端 demo 状态推进到 Supabase Postgres 数据底座。当前阶段不声称已经完成真实云端 migration apply，也不声称已经合并到 main；它的边界是：诊断确认后写入 `diagnosis_runs`、`mistake_book_items` 和 `memory_events`，前端通过 Next API 展示只读错题本 MVP，`sample_diagnosis` 作为 demo 自动确认路径也会写。
+P1.7 正在实现和文档收口中，目标是把确认后的诊断结果从纯前端 demo 状态推进到 Supabase Postgres 数据底座。当前分支不声称已经合并到 main；新增的去重和删除 migration 还需要在 Supabase SQL Editor 中应用。它的边界是：诊断确认后写入 `diagnosis_runs`、`mistake_book_items` 和 `memory_events`，前端通过 Next API 展示错题本并支持二次确认删除，`sample_diagnosis` 作为 demo 自动确认路径也会写。
 
 同时，这一阶段仍固定 `demo_student_001`，不做登录、真实 RLS 用户策略、老师端、RAG、pgvector、对象存储或完整学生画像迁移。未配置 Supabase 时，demo 仍要能跑，错题本为空，诊断主流程不能因为数据库缺失失败。
 
@@ -1386,12 +1386,14 @@ P1.7 的数据库表保持很少：
 
 - `students`：当前只固定 `demo_student_001`，作为 demo 学生外键。
 - `diagnosis_runs`：保存一次诊断运行的结构化快照，包括来源、证据等级、`memory_delta`、知识点、错因、练习和复习计划。
-- `mistake_book_items`：保存只读错题本条目，服务前端最近错题展示。
+- `mistake_book_items`：保存错题本条目，服务前端最近错题展示、题目级去重和删除。
 - `memory_events`：保存画像变化事件，记录掌握度变化、错因频次变化、复习优先级变化和 rationale。
 
 写入只发生在确认后的服务端路径。`sample_diagnosis` 是稳定 demo 自动确认路径；图片诊断必须经过 `/api/confirm`，并且由服务端证据策略判断 `memory_delta.should_persist=true` 后才写。`image_diagnosis` 的识别草稿、未确认内容和完整图片 base64 不进入数据库。
 
-前端不直连数据库，也不持有 Supabase service role key。浏览器只能调用 Next API，例如只读错题本接口；真正的 Supabase admin client 只在服务端读取 `SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY`。
+前端不直连数据库，也不持有 Supabase service role key。浏览器只能调用 Next API，例如错题本读取和删除接口；真正的 Supabase admin client 只在服务端读取 `SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY`。
+
+错题本去重使用 `student_id + question_fingerprint`。重复确认同一道题时，系统保留旧错题，不新增错题条目，也不新增 `memory_events`，前端提示“本题已加入错题本”，并且不重复写入 localStorage demo 画像。删除则只删除 `mistake_book_items` 及其级联的 `memory_events`，保留 `diagnosis_runs` 作为审计记录，避免把“曾经做过这次诊断”的事实抹掉。
 
 ### 技术决策与取舍
 
@@ -1402,6 +1404,8 @@ Supabase 的价值是快速提供托管 Postgres、RLS、Auth、API 管理和后
 我没有选 MySQL，并不是因为 MySQL 不行。MySQL 做关系型业务数据完全可以，但这个项目后续很可能需要 JSONB、pgvector、RLS 和 Supabase 托管生态，Postgres 更贴合演进路线。当前阶段也避免引入 ORM 和复杂多租户，因为这会把重点从“诊断数据如何沉淀”转移到框架和权限系统本身。
 
 `memory_events` 独立成表是一个关键取舍。我不只保存最新画像分数，而是保存每次画像变化的原因。这样后续 Agent 或老师端不仅能看到“这个学生导数掌握度变低了”，还能追溯“是哪一次诊断、什么错因、什么证据导致这次变化”。这对教育产品尤其重要，因为画像变化必须可解释、可回放、可纠错。
+
+去重和删除的取舍也很关键。我没有让前端自己判断重复题，因为浏览器看到的是展示文本，无法作为数据一致性的兜底；服务端计算 fingerprint，数据库用唯一索引兜底。迁移历史数据时也不静默删除重复错题，而是先生成候选重复报告并 fail fast。对学习数据来说，误删比多一条重复记录更难恢复。
 
 ### 性能收益（如适用）
 
@@ -1418,7 +1422,9 @@ P1.7 的主要收益不是响应速度，而是稳定性和数据可追溯性。
 5. `diagnosis_runs`、`mistake_book_items` 和 `memory_events` 为什么要拆表？
 6. `memory_events` 和 `memory_delta` 的关系是什么？
 7. Supabase 未配置时为什么不能让诊断失败？
-8. 未来怎么从只读错题本演进到 RAG 或老师端？
+8. 为什么重复题不新增 `memory_events`？
+9. 删除错题为什么保留 `diagnosis_runs`？
+10. 未来怎么从错题本 MVP 演进到 RAG 或老师端？
 
 ### 推荐回答
 
@@ -1432,18 +1438,22 @@ P1.7 的主要收益不是响应速度，而是稳定性和数据可追溯性。
 
 `memory_events` 独立出来，是因为学习画像不能只保存最后结果。教育系统需要解释“为什么这个学生画像变了”。每次诊断写一个 event，记录掌握度变化、错因变化、复习优先级变化和 rationale，后续 Agent、老师端或复习规划都能追溯依据。
 
+错题本去重我放在服务端和数据库层做，而不是只靠前端提示。重复题再次确认时，我仍然保留 diagnosis run 作为审计，但不再新增错题条目和 memory event，因为这次操作没有带来新的学习证据。删除错题时，我让用户二次确认，并只删除错题条目及其关联画像事件，诊断运行仍然保留，便于以后解释“这次诊断曾经发生过”。
+
 ### 可能被继续追问
 
 - 如果未来有真实学生账号，RLS 策略怎么设计？
 - `student_profiles` 什么时候从 localStorage 迁移到云端聚合表？
 - 如果数据库写入成功但前端刷新失败，错题本如何保持一致？
 - `memory_events` 未来如何支持回滚或重建画像？
+- 题目 fingerprint 会不会误判重复？如何控制误删风险？
+- 删除错题后画像是否应该重算？
 - pgvector 相似错题召回会基于哪些文本生成 embedding？
 - service role key 滥用风险如何审计？
 
 ### 反思与后续优化
 
-当前 P1.7 仍然是数据底座 MVP，不是生产级多用户系统。已知缺口包括：尚无真实登录，尚无面向用户的 RLS 策略，尚未完成真实云端 migration apply，尚未做 pgvector/RAG，错题本还是只读 MVP，也没有把完整 `student_profile` 云端聚合出来。
+当前 P1.7 仍然是数据底座 MVP，不是生产级多用户系统。已知缺口包括：尚无真实登录，尚无面向用户的 RLS 策略，新增去重/删除 migration 仍需应用到 Supabase，尚未做 pgvector/RAG，错题本支持展示和删除但还不是完整复习工作流，也没有把完整 `student_profile` 云端聚合出来。
 
 后续更合理的演进是：先把 Supabase migration 在真实项目中 apply 并验证；再引入 Auth 和 RLS 用户策略；然后增加云端 `student_profiles` 聚合或由 `memory_events` 重建画像；最后再做 pgvector 相似错题召回、RAG 和老师端授权视图。
 

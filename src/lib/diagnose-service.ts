@@ -10,6 +10,7 @@ import {
 import {
   DATABASE_NOT_CONFIGURED_WARNING,
   DATABASE_WRITE_FAILED_WARNING,
+  DUPLICATE_MISTAKE_BOOK_ITEM_WARNING,
   persistDiagnosisResponse,
 } from "@/lib/diagnosis-persistence";
 import { parseImageInput } from "@/lib/image-input";
@@ -322,6 +323,10 @@ function getPersistenceWarning(
 
   if (result.status === "failed") {
     return DATABASE_WRITE_FAILED_WARNING;
+  }
+
+  if (result.status === "duplicate") {
+    return DUPLICATE_MISTAKE_BOOK_ITEM_WARNING;
   }
 
   return null;

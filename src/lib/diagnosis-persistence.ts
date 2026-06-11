@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   createSupabaseAdminClient,
   getSupabaseAdminConfig,
@@ -14,6 +16,7 @@ export const DATABASE_NOT_CONFIGURED_WARNING =
   "数据库暂未配置，本次只返回诊断报告。";
 export const DATABASE_WRITE_FAILED_WARNING =
   "错题本写入失败，本次诊断报告已保留。";
+export const DUPLICATE_MISTAKE_BOOK_ITEM_WARNING = "本题已加入错题本。";
 
 export interface DiagnosisPersistencePayload {
   p_student_id: string;
@@ -39,10 +42,12 @@ export interface DiagnosisPersistencePayload {
   p_mistake_causes: string[];
   p_severity: DiagnoseSuccessResponse["mistake_diagnosis"]["severity"];
   p_diagnosis_summary: string;
+  p_question_fingerprint: string;
 }
 
 export type DiagnosisPersistenceResult =
   | { status: "persisted" }
+  | { status: "duplicate" }
   | { status: "skipped" }
   | { status: "disabled" }
   | { status: "failed" };
@@ -57,7 +62,7 @@ export interface SupabaseDiagnosisPersistenceRpcClient {
   rpc(
     name: string,
     params: Record<string, unknown>,
-  ): PromiseLike<{ error: unknown }>;
+  ): PromiseLike<{ data?: unknown; error: unknown }>;
 }
 
 type PersistableDiagnosisResponse =
@@ -103,7 +108,19 @@ export function createDiagnosisPersistencePayload(
     p_mistake_causes: response.mistake_diagnosis.mistake_causes,
     p_severity: response.mistake_diagnosis.severity,
     p_diagnosis_summary: response.mistake_diagnosis.expected_diagnosis,
+    p_question_fingerprint: createQuestionFingerprint(
+      response.recognized_question.question_text,
+    ),
   };
+}
+
+export function createQuestionFingerprint(questionText: string): string {
+  const normalizedQuestionText = questionText
+    .replace(/[，。；：！？、]/gu, "")
+    .normalize("NFKC")
+    .replace(/\s+/gu, "");
+
+  return createHash("sha256").update(normalizedQuestionText).digest("hex");
 }
 
 export async function persistDiagnosisResponse(
@@ -139,13 +156,17 @@ export function createSupabaseDiagnosisPersistenceRepository(
 ): DiagnosisPersistenceRepository {
   return {
     async persistDiagnosis(payload) {
-      const { error } = await client.rpc(
+      const { data, error } = await client.rpc(
         "persist_mathtrace_diagnosis",
         toRpcParams(payload),
       );
 
       if (error) {
         return { status: "failed" };
+      }
+
+      if (hasDuplicatePersistenceStatus(data)) {
+        return { status: "duplicate" };
       }
 
       return { status: "persisted" };
@@ -185,4 +206,19 @@ function toRpcParams(
   payload: DiagnosisPersistencePayload,
 ): Record<string, unknown> {
   return { ...payload };
+}
+
+function hasDuplicatePersistenceStatus(data: unknown): boolean {
+  if (!Array.isArray(data)) {
+    return false;
+  }
+
+  return data.some((row) => {
+    return (
+      typeof row === "object" &&
+      row !== null &&
+      "persistence_status" in row &&
+      row.persistence_status === "duplicate"
+    );
+  });
 }

@@ -29,6 +29,14 @@ export interface MistakeBookResponse {
   warnings: string[];
 }
 
+export interface MistakeBookDeleteResponse {
+  student_id: "demo_student_001";
+  item_id: string;
+  deleted: boolean;
+  is_database_configured: boolean;
+  warnings: string[];
+}
+
 export async function requestMistakeBookItems(input: {
   fetcher: typeof fetch;
   student_id: string;
@@ -62,6 +70,42 @@ export async function requestMistakeBookItems(input: {
   return responseBody;
 }
 
+export async function deleteMistakeBookItem(input: {
+  fetcher: typeof fetch;
+  student_id: string;
+  item_id: string;
+}): Promise<MistakeBookDeleteResponse> {
+  let response: Response;
+
+  try {
+    response = await input.fetcher("/api/mistake-book", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        student_id: input.student_id,
+        item_id: input.item_id,
+      }),
+    });
+  } catch {
+    throw new Error("错题本删除失败。");
+  }
+
+  const responseBody = await readJsonResponse(response);
+  if (!response.ok) {
+    throw new Error("错题本删除失败。");
+  }
+
+  if (!isMistakeBookDeleteResponse(responseBody)) {
+    throw new Error("错题本删除返回格式异常。");
+  }
+
+  if (!responseBody.deleted) {
+    throw new Error("错题本删除失败。");
+  }
+
+  return responseBody;
+}
+
 export function isMistakeBookResponse(
   value: unknown,
 ): value is MistakeBookResponse {
@@ -73,6 +117,22 @@ export function isMistakeBookResponse(
     value.student_id === "demo_student_001" &&
     Array.isArray(value.items) &&
     value.items.every(isMistakeBookItemSummary) &&
+    typeof value.is_database_configured === "boolean" &&
+    isStringArray(value.warnings)
+  );
+}
+
+function isMistakeBookDeleteResponse(
+  value: unknown,
+): value is MistakeBookDeleteResponse {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    value.student_id === "demo_student_001" &&
+    typeof value.item_id === "string" &&
+    typeof value.deleted === "boolean" &&
     typeof value.is_database_configured === "boolean" &&
     isStringArray(value.warnings)
   );

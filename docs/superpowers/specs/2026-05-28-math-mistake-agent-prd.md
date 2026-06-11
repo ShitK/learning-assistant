@@ -367,11 +367,15 @@ MVP 阶段默认自动确认样例题诊断结果；真实图片上传场景在 
 P1.7 持久化边界：
 
 - 诊断确认后写入 diagnosis run、错题本条目和 memory event；`sample_diagnosis` 作为 demo 自动确认路径也会写。
+- 错题本按 `student_id + question_fingerprint` 去重。同一道题重复确认时保留旧错题，不新增 `mistake_book_items`，不新增 `memory_events`，不报错；前端提示“本题已加入错题本。”。
+- 重复题不应再次写入 localStorage demo 画像，避免本地画像变化和数据库 `memory_events` 不一致。
+- `diagnosis_runs` 仍保留诊断审计记录；错题本去重只影响错题条目和画像事件，不抹掉一次诊断运行的事实。
+- 错题本条目允许前端删除，但必须二次确认，并通过 Next API 在服务端删除；删除 `mistake_book_items` 后，关联 `memory_events` 通过外键级联删除，`diagnosis_runs` 保留。
 - 前端不直连数据库；`SUPABASE_SERVICE_ROLE_KEY` 只允许服务端读取，浏览器只能通过 Next.js API 访问错题本。
 - 未配置数据库或写入失败时，诊断主流程不失败，错题本为空或保留旧列表。
 - 不保存完整图片 base64，不保存 provider secret，不把完整 provider payload 写入数据库。
 - localStorage 暂时继续作为 demo 画像恢复来源，不迁移完整学生画像。
-- 当前不做登录、RLS 用户策略、老师端、多学生权限、RAG、pgvector 或可编辑错题本。
+- 当前不做登录、RLS 用户策略、老师端、多学生权限、RAG、pgvector 或错题内容编辑。
 
 ### Workflow Principles
 
@@ -536,7 +540,7 @@ diagnosis_runs
 
 mistake_book_items
   保存只读错题本条目，包括题干、学生答案、标准解法、知识点、
-  错因、严重度、诊断摘要、证据等级和复习状态。
+  错因、严重度、诊断摘要、证据等级、题目 fingerprint 和复习状态。
 
 memory_events
   保存本次画像变化事件，包括 knowledge_mastery_changes、
@@ -547,6 +551,8 @@ memory_events
 `memory_events` 独立成表，是为了让后续 Agent、老师端或复习规划可以追溯“为什么这个学生画像变了”，而不是只能读取最新画像分数。当前阶段不做 `student_profiles` 云端聚合表，避免在没有登录和权限模型时迁移完整画像；localStorage 继续负责 demo 画像恢复。
 
 数据库写入只发生在服务端确认后的路径：`sample_diagnosis` 自动确认，`confirmed_image_diagnosis` 需要 `/api/confirm` 和服务端证据策略允许。`image_diagnosis` 的识别草稿、完整图片 base64 和未确认内容不进入错题本持久化。
+
+错题本去重由服务端从题干生成 `question_fingerprint`，数据库用 `(student_id, question_fingerprint)` 唯一索引兜底。迁移不自动删除历史重复错题；如果历史数据已经存在重复 fingerprint，先写入 `mistake_book_item_dedupe_candidates` 报告并 fail fast，避免无审计地删除学习记录。P1.7 的删除只删除错题本条目及其关联 memory event，不删除诊断运行快照。
 
 ### Mistake Record
 
@@ -1069,13 +1075,14 @@ Supabase PostgreSQL + server-only service role + Next API
 
 - `students` 固定 demo 学生。
 - `diagnosis_runs` 保存诊断运行快照。
-- `mistake_book_items` 支持只读错题本 MVP。
+- `mistake_book_items` 支持错题本展示、去重和删除 MVP。
 - `memory_events` 保存画像变化事件和解释依据。
 
 边界：
 
 - 不做登录、老师端、RLS 用户策略、RAG、pgvector、Storage 或完整画像迁移。
 - 前端不直连数据库，service role key 只在服务端读取。
+- 重复题不新增错题或 memory event，删除错题必须二次确认且不删除 `diagnosis_runs` 审计记录。
 - 未配置数据库时，demo 仍可运行，错题本为空，诊断主流程不失败。
 
 #### Phase 2: Usable Product

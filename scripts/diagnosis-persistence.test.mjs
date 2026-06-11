@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createJiti } from "jiti";
 
@@ -8,6 +9,7 @@ const { handleDiagnoseRequest } = jiti("../src/lib/diagnose-service.ts");
 const { handleConfirmRequest } = jiti("../src/lib/confirm-service.ts");
 const {
   createDiagnosisPersistencePayload,
+  createQuestionFingerprint,
   createSupabaseDiagnosisPersistenceRepository,
   persistDiagnosisResponse,
 } = jiti("../src/lib/diagnosis-persistence.ts");
@@ -62,13 +64,47 @@ assert.deepEqual(
   sampleRepository.calls[0].p_student_profile_snapshot,
   sampleResult.body.student_profile,
 );
+assert.equal(
+  sampleRepository.calls[0].p_question_fingerprint,
+  createQuestionFingerprint(sampleResult.body.recognized_question.question_text),
+);
 
 const samplePayloadJson = JSON.stringify(sampleRepository.calls[0]);
 assert.equal(samplePayloadJson.includes("image_base64"), false);
 assert.equal(samplePayloadJson.includes("a".repeat(1200)), false);
 
+const normalizedQuestionText = "已知函数$f(x)=x^3-3ax+1$讨论单调性";
+const expectedQuestionFingerprint = createHash("sha256")
+  .update(normalizedQuestionText)
+  .digest("hex");
+assert.equal(
+  createQuestionFingerprint("已知函数 $f(x)=x^3 - 3ax + 1$，讨论单调性。"),
+  expectedQuestionFingerprint,
+);
+assert.equal(
+  createQuestionFingerprint(" 已知函数$f(x)=x^3-3ax+1$ 讨论单调性 "),
+  expectedQuestionFingerprint,
+);
+assert.match(createQuestionFingerprint(normalizedQuestionText), /^[a-f0-9]{64}$/);
+assert.notEqual(
+  createQuestionFingerprint("求 x=1.5 时的函数值。"),
+  createQuestionFingerprint("求 x=15 时的函数值。"),
+);
+assert.notEqual(
+  createQuestionFingerprint("方程的根为 x=1,2。"),
+  createQuestionFingerprint("方程的根为 x=12。"),
+);
+assert.notEqual(
+  createQuestionFingerprint("讨论 f(x): x>0。"),
+  createQuestionFingerprint("讨论 f(x) x>0。"),
+);
+
 const directPayload = createDiagnosisPersistencePayload(sampleResult.body);
 assert.deepEqual(directPayload, sampleRepository.calls[0]);
+assert.equal(
+  directPayload.p_question_fingerprint,
+  createQuestionFingerprint(directPayload.p_question_text),
+);
 
 const successfulRpcClient = createRecordingRpcClient({ error: null });
 const successfulRpcRepository =
@@ -83,6 +119,24 @@ assert.equal(
   "persist_mathtrace_diagnosis",
 );
 assert.deepEqual(successfulRpcClient.calls[0].params, directPayload);
+
+const duplicateRpcClient = createRecordingRpcClient({
+  data: [
+    {
+      diagnosis_run_id: "00000000-0000-0000-0000-000000000001",
+      mistake_book_item_id: "00000000-0000-0000-0000-000000000002",
+      memory_event_id: null,
+      persistence_status: "duplicate",
+    },
+  ],
+  error: null,
+});
+const duplicateRpcRepository =
+  createSupabaseDiagnosisPersistenceRepository(duplicateRpcClient);
+const duplicateRpcResult =
+  await duplicateRpcRepository.persistDiagnosis(directPayload);
+
+assert.deepEqual(duplicateRpcResult, { status: "duplicate" });
 
 const failingRpcClient = createRecordingRpcClient({
   error: { message: "secret service role key should not leak" },
@@ -161,6 +215,65 @@ assert.equal(
   true,
 );
 
+const dedupeMigrationSql = readFileSync(
+  new URL(
+    "../supabase/migrations/20260611001000_p17_mistake_book_dedupe_delete.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+assert.equal(dedupeMigrationSql.includes("question_fingerprint"), true);
+assert.equal(
+  dedupeMigrationSql.includes("mistake_book_item_dedupe_candidates"),
+  true,
+);
+assert.equal(
+  dedupeMigrationSql.includes("raise exception 'Duplicate mistake book items must be reviewed before enforcing fingerprint uniqueness: % groups'"),
+  true,
+);
+assert.equal(
+  dedupeMigrationSql.includes(
+    "create unique index if not exists mistake_book_items_student_question_fingerprint_idx",
+  ),
+  true,
+);
+assert.equal(dedupeMigrationSql.includes("persistence_status"), true);
+assert.equal(dedupeMigrationSql.includes("'duplicate'"), true);
+assert.equal(dedupeMigrationSql.includes("memory_event_id=null"), true);
+assert.equal(
+  dedupeMigrationSql.includes("existing_event_id"),
+  false,
+);
+assert.equal(
+  dedupeMigrationSql.includes("return query select active_run_id, existing_item_id, existing_event_id, 'persisted'::text"),
+  false,
+);
+assert.equal(
+  dedupeMigrationSql.includes("active_run_id is null or existing_item_id is null"),
+  false,
+);
+assert.equal(
+  dedupeMigrationSql.includes("if existing_item_id is not null then"),
+  true,
+);
+assert.equal(
+  /delete\s+from\s+public\.mistake_book_items/i.test(dedupeMigrationSql),
+  false,
+);
+assert.equal(
+  dedupeMigrationSql.includes(
+    "grant select, insert, update, delete on table public.mistake_book_items to service_role",
+  ),
+  true,
+);
+assert.equal(
+  dedupeMigrationSql.includes(
+    "grant select, insert, delete on table public.memory_events to service_role",
+  ),
+  true,
+);
+
 const failedRpcServiceResult = await handleDiagnoseRequest(samplePayload, {
   persistence_repository: failingRpcRepository,
 });
@@ -176,6 +289,17 @@ assert.equal(
 assert.equal(
   JSON.stringify(failedRpcServiceResult.body.warnings).includes("secret"),
   false,
+);
+
+const duplicateRepository = createRecordingRepository({ status: "duplicate" });
+const duplicateSampleResult = await handleDiagnoseRequest(samplePayload, {
+  persistence_repository: duplicateRepository,
+});
+
+assert.equal(duplicateSampleResult.status, 200);
+assert.equal(
+  duplicateSampleResult.body.warnings.includes("本题已加入错题本。"),
+  true,
 );
 
 const studentWorkExtraction = {
@@ -204,6 +328,20 @@ assert.equal(
   "student_work",
 );
 assert.equal(studentWorkRepository.calls[0].p_profile_update_kind, "mistake_cause");
+
+const duplicateConfirmRepository = createRecordingRepository({
+  status: "duplicate",
+});
+const duplicateConfirmResult = await handleConfirmRequest(
+  createConfirmPayload(studentWorkExtraction),
+  { persistence_repository: duplicateConfirmRepository },
+);
+
+assert.equal(duplicateConfirmResult.status, 200);
+assert.equal(
+  duplicateConfirmResult.body.warnings.includes("本题已加入错题本。"),
+  true,
+);
 
 const problemOnlyExtraction = {
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
@@ -431,7 +569,7 @@ function createRecordingRepository(options = {}) {
         throw new Error("secret service role key should not leak");
       }
 
-      return { status: "persisted" };
+      return { status: options.status ?? "persisted" };
     },
   };
 }

@@ -11,6 +11,9 @@ import type {
 export const DATABASE_READ_NOT_CONFIGURED_WARNING =
   "数据库暂未配置，错题本暂为空。";
 export const DATABASE_READ_FAILED_WARNING = "错题本暂时读取失败。";
+export const DATABASE_DELETE_NOT_CONFIGURED_WARNING =
+  "数据库暂未配置，错题本删除已跳过。";
+export const DATABASE_DELETE_FAILED_WARNING = "错题本暂时删除失败。";
 
 const DEMO_STUDENT_ID = "demo_student_001";
 const DEFAULT_LIMIT = 5;
@@ -33,7 +36,16 @@ const MISTAKE_BOOK_SELECT_FIELDS = [
 
 export type MistakeBookApiResponse =
   | MistakeBookResponse
+  | MistakeBookDeleteResponse
   | MistakeBookErrorResponse;
+
+export interface MistakeBookDeleteResponse {
+  student_id: typeof DEMO_STUDENT_ID;
+  item_id: string;
+  deleted: boolean;
+  is_database_configured: boolean;
+  warnings: string[];
+}
 
 export interface MistakeBookErrorResponse {
   error: {
@@ -50,6 +62,10 @@ export interface MistakeBookRepository {
     student_id: typeof DEMO_STUDENT_ID;
     limit: number;
   }): Promise<MistakeBookItemSummary[]>;
+  deleteItem(input: {
+    student_id: typeof DEMO_STUDENT_ID;
+    item_id: string;
+  }): Promise<void>;
 }
 
 export interface SupabaseMistakeBookClient {
@@ -69,7 +85,14 @@ export interface SupabaseMistakeBookClient {
         };
       };
     };
+    delete(): SupabaseMistakeBookDeleteBuilder;
   };
+}
+
+interface SupabaseMistakeBookDeleteBuilder
+  extends PromiseLike<{ data: unknown; error: unknown }> {
+  select(fields: string): SupabaseMistakeBookDeleteBuilder;
+  eq(columnName: string, value: string): SupabaseMistakeBookDeleteBuilder;
 }
 
 export async function handleMistakeBookRequest(
@@ -121,6 +144,58 @@ export async function handleMistakeBookRequest(
   }
 }
 
+export async function handleMistakeBookDeleteRequest(
+  body: unknown,
+  options: {
+    repository?: MistakeBookRepository;
+  } = {},
+): Promise<{ status: number; body: MistakeBookApiResponse }> {
+  const parsedRequest = parseMistakeBookDeleteRequest(body);
+  if (!parsedRequest.ok) {
+    return { status: 400, body: parsedRequest.response };
+  }
+
+  try {
+    const repository = options.repository ?? createDefaultMistakeBookRepository();
+    if (!repository.is_database_configured) {
+      return {
+        status: 200,
+        body: {
+          student_id: DEMO_STUDENT_ID,
+          item_id: parsedRequest.value.item_id,
+          deleted: false,
+          is_database_configured: false,
+          warnings: [DATABASE_DELETE_NOT_CONFIGURED_WARNING],
+        },
+      };
+    }
+
+    await repository.deleteItem(parsedRequest.value);
+
+    return {
+      status: 200,
+      body: {
+        student_id: DEMO_STUDENT_ID,
+        item_id: parsedRequest.value.item_id,
+        deleted: true,
+        is_database_configured: true,
+        warnings: [],
+      },
+    };
+  } catch {
+    return {
+      status: 200,
+      body: {
+        student_id: DEMO_STUDENT_ID,
+        item_id: parsedRequest.value.item_id,
+        deleted: false,
+        is_database_configured: true,
+        warnings: [DATABASE_DELETE_FAILED_WARNING],
+      },
+    };
+  }
+}
+
 export function createDefaultMistakeBookRepository(): MistakeBookRepository {
   const config = getSupabaseAdminConfig();
   if (!config.ok) {
@@ -139,6 +214,9 @@ export function createDisabledMistakeBookRepository(): MistakeBookRepository {
     is_database_configured: false,
     async listRecentItems() {
       return [];
+    },
+    async deleteItem() {
+      return;
     },
   };
 }
@@ -161,6 +239,18 @@ export function createSupabaseMistakeBookRepository(
       }
 
       return parseMistakeBookItems(data);
+    },
+    async deleteItem(input) {
+      const { data, error } = await client
+        .from("mistake_book_items")
+        .delete()
+        .select("id")
+        .eq("id", input.item_id)
+        .eq("student_id", input.student_id);
+
+      if (error || !hasDeletedMistakeBookItem(data, input.item_id)) {
+        throw new Error("mistake book delete failed");
+      }
     },
   };
 }
@@ -193,6 +283,35 @@ function parseMistakeBookRequest(
   };
 }
 
+function parseMistakeBookDeleteRequest(
+  body: unknown,
+):
+  | {
+      ok: true;
+      value: { student_id: typeof DEMO_STUDENT_ID; item_id: string };
+    }
+  | { ok: false; response: MistakeBookErrorResponse } {
+  if (!isRecord(body)) {
+    return invalidRequest("DELETE body 必须包含 student_id 和 item_id。");
+  }
+
+  if (body.student_id !== DEMO_STUDENT_ID) {
+    return invalidRequest("只支持 demo_student_001 的错题本。");
+  }
+
+  if (typeof body.item_id !== "string" || !isUuid(body.item_id)) {
+    return invalidRequest("item_id 必须是 uuid 格式。");
+  }
+
+  return {
+    ok: true,
+    value: {
+      student_id: DEMO_STUDENT_ID,
+      item_id: body.item_id,
+    },
+  };
+}
+
 function getSearchParam(
   searchParams: URLSearchParams | Record<string, string | undefined>,
   key: string,
@@ -219,6 +338,23 @@ function parseLimit(value: string | undefined): number | null {
   }
 
   return limit;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasDeletedMistakeBookItem(data: unknown, itemId: string): boolean {
+  return (
+    Array.isArray(data) &&
+    data.some((item) => isRecord(item) && item.id === itemId)
+  );
 }
 
 function invalidRequest(message: string): {

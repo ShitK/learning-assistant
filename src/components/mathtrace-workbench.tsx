@@ -30,7 +30,10 @@ import {
   requestSampleDiagnosis,
   shouldPersistDiagnoseProfile,
 } from "@/lib/diagnose-client";
-import { requestMistakeBookItems } from "@/lib/mistake-book-client";
+import {
+  deleteMistakeBookItem,
+  requestMistakeBookItems,
+} from "@/lib/mistake-book-client";
 import {
   canConfirmEditableExtractionDraft,
   createAgentTimelineStatusLabel,
@@ -165,6 +168,9 @@ export function MathTraceWorkbench(): ReactElement {
   const [mistakeBookErrorMessage, setMistakeBookErrorMessage] = useState<
     string | null
   >(null);
+  const [deletingMistakeBookItemId, setDeletingMistakeBookItemId] = useState<
+    string | null
+  >(null);
   const isDiagnosisRequestLockedRef = useRef(false);
   const isTimelineRunning =
     isTimelineAnimating && completedStepCount < diagnosisView.steps.length;
@@ -201,6 +207,34 @@ export function MathTraceWorkbench(): ReactElement {
 
     return () => window.clearTimeout(timeoutId);
   }, [hasHydrated, refreshMistakeBook]);
+
+  const handleDeleteMistakeBookItem = useCallback(
+    async (itemId: string): Promise<void> => {
+      if (deletingMistakeBookItemId !== null) {
+        return;
+      }
+
+      setDeletingMistakeBookItemId(itemId);
+      setMistakeBookErrorMessage(null);
+
+      try {
+        await deleteMistakeBookItem({
+          fetcher: window.fetch.bind(window),
+          student_id: "demo_student_001",
+          item_id: itemId,
+        });
+        await refreshMistakeBook();
+      } catch (error) {
+        setMistakeBookStatus("error");
+        setMistakeBookErrorMessage(
+          error instanceof Error ? error.message : "错题本删除失败。",
+        );
+      } finally {
+        setDeletingMistakeBookItemId(null);
+      }
+    },
+    [deletingMistakeBookItemId, refreshMistakeBook],
+  );
 
   useEffect(() => {
     if (!isTimelineAnimating) {
@@ -456,16 +490,24 @@ export function MathTraceWorkbench(): ReactElement {
         });
         const nextView = createSampleDiagnosisViewModel(
           diagnosis.sample_diagnosis,
+          diagnosis.warnings,
         );
         setDiagnosisView(nextView);
         setIsCurrentConfirmedImageReport(false);
         setRetainedReportNotice(null);
-        setSessionStudentProfile(diagnosis.student_profile);
-        writeStoredStudentProfile(window.localStorage, diagnosis.student_profile);
-        setProfilePreview({
-          beforeProfile: profileBeforeDiagnosis,
-          afterProfile: diagnosis.student_profile,
-        });
+        if (!hasDuplicateMistakeBookItemWarning(diagnosis.warnings)) {
+          setSessionStudentProfile(diagnosis.student_profile);
+          writeStoredStudentProfile(window.localStorage, diagnosis.student_profile);
+          setProfilePreview({
+            beforeProfile: profileBeforeDiagnosis,
+            afterProfile: diagnosis.student_profile,
+          });
+        } else {
+          setProfilePreview({
+            beforeProfile: profileBeforeDiagnosis,
+            afterProfile: null,
+          });
+        }
         void refreshMistakeBook();
         return;
       }
@@ -577,7 +619,10 @@ export function MathTraceWorkbench(): ReactElement {
       }
       setRetainedReportNotice(null);
 
-      if (shouldPersistDiagnoseProfile(diagnosis)) {
+      if (
+        shouldPersistDiagnoseProfile(diagnosis) &&
+        !hasDuplicateMistakeBookItemWarning(diagnosis.warnings)
+      ) {
         setSessionStudentProfile(diagnosis.student_profile);
         writeStoredStudentProfile(window.localStorage, diagnosis.student_profile);
         setProfilePreview({
@@ -702,6 +747,8 @@ export function MathTraceWorkbench(): ReactElement {
             status={mistakeBookStatus}
             response={mistakeBookResponse}
             errorMessage={mistakeBookErrorMessage}
+            deletingItemId={deletingMistakeBookItemId}
+            onDeleteItem={handleDeleteMistakeBookItem}
           />
         </div>
       </div>
@@ -1306,6 +1353,19 @@ function DiagnosisResultCard({
           </p>
         ) : null}
 
+        {diagnosis.warnings.length > 0 ? (
+          <div className="grid gap-2">
+            {diagnosis.warnings.map((warning) => (
+              <p
+                key={warning}
+                className="rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]"
+              >
+                {warning}
+              </p>
+            ))}
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap gap-2">
           {diagnosis.knowledge_points.map((id) => (
             <Tag key={id} tone="green">
@@ -1322,19 +1382,6 @@ function DiagnosisResultCard({
                 模型识别结果
               </p>
             </div>
-
-            {diagnosis.warnings.length > 0 ? (
-              <div className="mt-3 grid gap-2">
-                {diagnosis.warnings.map((warning) => (
-                  <p
-                    key={warning}
-                    className="rounded-[16px] bg-[var(--amber-bg)] px-4 py-3 text-sm leading-6 text-[var(--amber-text)]"
-                  >
-                    {warning}
-                  </p>
-                ))}
-              </div>
-            ) : null}
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <div className="rounded-[16px] bg-[var(--oat)] p-4">
@@ -1907,6 +1954,10 @@ function Tag({
       {children}
     </span>
   );
+}
+
+function hasDuplicateMistakeBookItemWarning(warnings: string[]): boolean {
+  return warnings.includes("本题已加入错题本。");
 }
 
 function useHasHydrated(): boolean {

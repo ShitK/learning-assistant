@@ -31,6 +31,10 @@ assert.equal(sampleView.question_text, sample.question_text);
 assert.deepEqual(sampleView.knowledge_points, sample.knowledge_points);
 assert.equal(sampleView.extraction_confidence, null);
 assert.equal(sampleView.should_persist_profile, true);
+assert.deepEqual(
+  createSampleDiagnosisViewModel(sample, ["本题已加入错题本。"]).warnings,
+  ["本题已加入错题本。"],
+);
 
 assert.deepEqual(
   createStandardSolutionBlocks(
@@ -273,6 +277,13 @@ assert.deepEqual(createFollowUpDraftFromChoice("custom", " 我卡在参数范围
   custom_text: "我卡在参数范围。",
 });
 assert.deepEqual(imageView.warnings, ["请检查识别结果。"]);
+assert.deepEqual(
+  createImageDiagnosisViewModel({
+    ...imageResponse,
+    warnings: ["本题已加入错题本。"],
+  }).warnings,
+  ["本题已加入错题本。"],
+);
 
 const extractionReviewDraft = createEditableExtractionDraft({
   stage: "extraction_review",

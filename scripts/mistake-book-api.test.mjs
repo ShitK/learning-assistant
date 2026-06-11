@@ -4,20 +4,26 @@ import { createJiti } from "jiti";
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 
 const {
+  DATABASE_DELETE_FAILED_WARNING,
+  DATABASE_DELETE_NOT_CONFIGURED_WARNING,
   DATABASE_READ_FAILED_WARNING,
   DATABASE_READ_NOT_CONFIGURED_WARNING,
   createDisabledMistakeBookRepository,
   createSupabaseMistakeBookRepository,
+  handleMistakeBookDeleteRequest,
   handleMistakeBookRequest,
 } = jiti("../src/lib/mistake-book-service.ts");
 const {
+  deleteMistakeBookItem,
   isMistakeBookResponse,
   requestMistakeBookItems,
 } = jiti("../src/lib/mistake-book-client.ts");
-const { GET } = jiti("../src/app/api/mistake-book/route.ts");
+const { DELETE, GET } = jiti("../src/app/api/mistake-book/route.ts");
+
+const itemId = "11111111-1111-4111-8111-111111111111";
 
 const item = {
-  id: "book_item_001",
+  id: itemId,
   diagnosis_run_id: "diag_run_001",
   source: "sample",
   question_text: "已知函数 f(x)=x^3-3ax+1，讨论单调性。",
@@ -104,6 +110,73 @@ assert.deepEqual(failingResult.body, {
 });
 assert.equal(JSON.stringify(failingResult.body).includes("service role"), false);
 
+const deleteRepository = createRecordingRepository([item]);
+const deleteSuccessResult = await handleMistakeBookDeleteRequest(
+  { student_id: "demo_student_001", item_id: itemId },
+  { repository: deleteRepository },
+);
+
+assert.equal(deleteSuccessResult.status, 200);
+assert.deepEqual(deleteRepository.deleteCalls, [
+  { student_id: "demo_student_001", item_id: itemId },
+]);
+assert.deepEqual(deleteSuccessResult.body, {
+  student_id: "demo_student_001",
+  item_id: itemId,
+  deleted: true,
+  is_database_configured: true,
+  warnings: [],
+});
+
+const deleteInvalidStudentResult = await handleMistakeBookDeleteRequest(
+  { student_id: "student_002", item_id: itemId },
+  { repository: createRecordingRepository([item]) },
+);
+
+assert.equal(deleteInvalidStudentResult.status, 400);
+assert.equal(deleteInvalidStudentResult.body.error.code, "invalid_request");
+assert.equal(deleteInvalidStudentResult.body.error.recoverable, true);
+
+const deleteInvalidItemResult = await handleMistakeBookDeleteRequest(
+  { student_id: "demo_student_001", item_id: "book_item_001" },
+  { repository: createRecordingRepository([item]) },
+);
+
+assert.equal(deleteInvalidItemResult.status, 400);
+assert.equal(deleteInvalidItemResult.body.error.code, "invalid_request");
+
+const deleteDisabledResult = await handleMistakeBookDeleteRequest(
+  { student_id: "demo_student_001", item_id: itemId },
+  { repository: createDisabledMistakeBookRepository() },
+);
+
+assert.equal(deleteDisabledResult.status, 200);
+assert.deepEqual(deleteDisabledResult.body, {
+  student_id: "demo_student_001",
+  item_id: itemId,
+  deleted: false,
+  is_database_configured: false,
+  warnings: [DATABASE_DELETE_NOT_CONFIGURED_WARNING],
+});
+
+const deleteFailingResult = await handleMistakeBookDeleteRequest(
+  { student_id: "demo_student_001", item_id: itemId },
+  { repository: createFailingRepository() },
+);
+
+assert.equal(deleteFailingResult.status, 200);
+assert.deepEqual(deleteFailingResult.body, {
+  student_id: "demo_student_001",
+  item_id: itemId,
+  deleted: false,
+  is_database_configured: true,
+  warnings: [DATABASE_DELETE_FAILED_WARNING],
+});
+assert.equal(
+  JSON.stringify(deleteFailingResult.body).includes("service role"),
+  false,
+);
+
 const routeResponse = await GET(
   new Request("http://localhost/api/mistake-book?student_id=demo_student_001"),
 );
@@ -114,6 +187,27 @@ assert.equal(routeBody.student_id, "demo_student_001");
 assert.deepEqual(routeBody.items, []);
 assert.equal(routeBody.is_database_configured, false);
 assert.deepEqual(routeBody.warnings, [DATABASE_READ_NOT_CONFIGURED_WARNING]);
+
+const deleteRouteResponse = await DELETE(
+  new Request("http://localhost/api/mistake-book", {
+    method: "DELETE",
+    body: JSON.stringify({
+      student_id: "demo_student_001",
+      item_id: itemId,
+    }),
+    headers: { "Content-Type": "application/json" },
+  }),
+);
+const deleteRouteBody = await deleteRouteResponse.json();
+
+assert.equal(deleteRouteResponse.status, 200);
+assert.equal(deleteRouteBody.student_id, "demo_student_001");
+assert.equal(deleteRouteBody.item_id, itemId);
+assert.equal(deleteRouteBody.deleted, false);
+assert.equal(deleteRouteBody.is_database_configured, false);
+assert.deepEqual(deleteRouteBody.warnings, [
+  DATABASE_DELETE_NOT_CONFIGURED_WARNING,
+]);
 
 const originalSupabaseUrl = process.env.SUPABASE_URL;
 const originalSupabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -203,6 +297,71 @@ assert.equal(
   ].join(", "),
 );
 
+const deleteFilters = [];
+const supabaseDeleteRepository = createSupabaseMistakeBookRepository({
+  from(tableName) {
+    assert.equal(tableName, "mistake_book_items");
+
+    return {
+      delete() {
+        return {
+          select(fields) {
+            assert.equal(fields, "id");
+            return this;
+          },
+          eq(column, value) {
+            deleteFilters.push({ column, value });
+
+            if (deleteFilters.length === 1) {
+              return this;
+            }
+
+            return Promise.resolve({ data: [{ id: itemId }], error: null });
+          },
+        };
+      },
+    };
+  },
+});
+await supabaseDeleteRepository.deleteItem({
+  student_id: "demo_student_001",
+  item_id: itemId,
+});
+assert.deepEqual(deleteFilters, [
+  { column: "id", value: itemId },
+  { column: "student_id", value: "demo_student_001" },
+]);
+
+const supabaseDeleteNoRowsRepository = createSupabaseMistakeBookRepository({
+  from() {
+    return {
+      delete() {
+        return {
+          select() {
+            return this;
+          },
+          eq() {
+            return this;
+          },
+          then(resolve) {
+            return Promise.resolve(
+              resolve({ data: [], error: null }),
+            );
+          },
+        };
+      },
+    };
+  },
+});
+await assert.rejects(
+  () =>
+    supabaseDeleteNoRowsRepository.deleteItem({
+      student_id: "demo_student_001",
+      item_id: itemId,
+    }),
+  /mistake book delete failed/,
+);
+
 assert.equal(isMistakeBookResponse(successResult.body), true);
 assert.equal(
   isMistakeBookResponse({
@@ -239,6 +398,32 @@ assert.equal(
   "/api/mistake-book?student_id=demo_student_001&limit=5",
 );
 assert.deepEqual(clientRequests[0].init, { method: "GET", cache: "no-store" });
+
+const deleteClientRequests = [];
+const deleteClientResult = await deleteMistakeBookItem({
+  fetcher: async (url, init) => {
+    deleteClientRequests.push({ url, init });
+
+    return new Response(JSON.stringify(deleteSuccessResult.body), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  },
+  student_id: "demo_student_001",
+  item_id: itemId,
+});
+
+assert.deepEqual(deleteClientResult, deleteSuccessResult.body);
+assert.equal(deleteClientRequests[0].url, "/api/mistake-book");
+assert.equal(deleteClientRequests[0].init.method, "DELETE");
+assert.equal(
+  deleteClientRequests[0].init.headers["Content-Type"],
+  "application/json",
+);
+assert.deepEqual(JSON.parse(deleteClientRequests[0].init.body), {
+  student_id: "demo_student_001",
+  item_id: itemId,
+});
 
 await assert.rejects(
   () =>
@@ -280,13 +465,66 @@ await assert.rejects(
   /错题本返回格式异常。/,
 );
 
+await assert.rejects(
+  () =>
+    deleteMistakeBookItem({
+      fetcher: async () =>
+        new Response(JSON.stringify({ error: { code: "invalid_request" } }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+      student_id: "student_002",
+      item_id: itemId,
+    }),
+  /错题本删除失败。/,
+);
+
+await assert.rejects(
+  () =>
+    deleteMistakeBookItem({
+      fetcher: async () =>
+        new Response(
+          JSON.stringify({
+            student_id: "demo_student_001",
+            item_id: itemId,
+            deleted: false,
+            is_database_configured: false,
+            warnings: [DATABASE_DELETE_NOT_CONFIGURED_WARNING],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      student_id: "demo_student_001",
+      item_id: itemId,
+    }),
+  /错题本删除失败。/,
+);
+
+await assert.rejects(
+  () =>
+    deleteMistakeBookItem({
+      fetcher: async () => {
+        throw new Error("network failed with service role key");
+      },
+      student_id: "demo_student_001",
+      item_id: itemId,
+    }),
+  /错题本删除失败。/,
+);
+
 function createRecordingRepository(items) {
   return {
     is_database_configured: true,
     calls: [],
+    deleteCalls: [],
     async listRecentItems(input) {
       this.calls.push(input);
       return items;
+    },
+    async deleteItem(input) {
+      this.deleteCalls.push(input);
     },
   };
 }
@@ -295,6 +533,9 @@ function createFailingRepository() {
   return {
     is_database_configured: true,
     async listRecentItems() {
+      throw new Error("service role key leaked");
+    },
+    async deleteItem() {
       throw new Error("service role key leaked");
     },
   };

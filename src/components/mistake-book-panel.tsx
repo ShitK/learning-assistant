@@ -12,6 +12,8 @@ interface MistakeBookPanelProps {
   status: MistakeBookPanelStatus;
   response: MistakeBookResponse | null;
   errorMessage: string | null;
+  deletingItemId: string | null;
+  onDeleteItem: (itemId: string) => void;
 }
 
 interface MistakeBookPanelViewModel {
@@ -64,6 +66,8 @@ export function MistakeBookPanel({
   status,
   response,
   errorMessage,
+  deletingItemId,
+  onDeleteItem,
 }: MistakeBookPanelProps): ReactElement {
   const viewModel = createMistakeBookPanelViewModel({
     status,
@@ -125,6 +129,25 @@ export function MistakeBookPanel({
                 <span className="ml-auto text-xs text-[var(--warm-gray)]">
                   {item.createdAtLabel}
                 </span>
+                <button
+                  type="button"
+                  className="rounded-full border border-[var(--oat)] px-3 py-1 text-xs font-semibold text-[var(--warm-gray)] transition hover:border-[var(--amber-text)] hover:text-[var(--amber-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={deletingItemId === item.id}
+                  onClick={() => {
+                    if (
+                      !confirmMistakeBookItemDeletion({
+                        confirm: window.confirm.bind(window),
+                        questionText: item.questionText,
+                      })
+                    ) {
+                      return;
+                    }
+
+                    onDeleteItem(item.id);
+                  }}
+                >
+                  {deletingItemId === item.id ? "删除中" : "删除"}
+                </button>
               </div>
 
               <h3 className="mt-3 text-base font-semibold leading-6 text-[var(--charcoal)]">
@@ -146,6 +169,13 @@ export function MistakeBookPanel({
       </div>
     </section>
   );
+}
+
+export function confirmMistakeBookItemDeletion(input: {
+  confirm: (message: string) => boolean;
+  questionText: string;
+}): boolean {
+  return input.confirm(`确认删除这条错题吗？\n${input.questionText}`);
 }
 
 export function createMistakeBookPanelViewModel(input: {

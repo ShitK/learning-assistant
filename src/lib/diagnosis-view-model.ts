@@ -79,6 +79,7 @@ export interface DiagnosisResultVisibility {
 
 export function createSampleDiagnosisViewModel(
   sample: SampleDiagnosis,
+  warnings: string[] = [],
 ): DiagnosisViewModel {
   return {
     source: "sample",
@@ -106,7 +107,7 @@ export function createSampleDiagnosisViewModel(
     persistence_evidence: null,
     profile_update_kind: "mistake_cause",
     risk_follow_up: null,
-    warnings: [],
+    warnings: getUserFacingWarnings(warnings),
   };
 }
 

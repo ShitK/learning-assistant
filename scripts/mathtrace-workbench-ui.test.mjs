@@ -7,6 +7,7 @@ const source = await readFile("src/components/mathtrace-workbench.tsx", "utf8");
 const panelSource = await readFile("src/components/mistake-book-panel.tsx", "utf8");
 const globalStyles = await readFile("src/app/globals.css", "utf8");
 const {
+  confirmMistakeBookItemDeletion,
   createMistakeBookPanelViewModel,
 } = jiti("../src/components/mistake-book-panel.tsx");
 
@@ -88,6 +89,26 @@ assert.equal(
   "错题本只读面板不能读取 Supabase service role key。",
 );
 assert.equal(
+  panelSource.includes("删除"),
+  true,
+  "错题本每条记录应展示删除按钮。",
+);
+assert.equal(
+  panelSource.includes("onDeleteItem"),
+  true,
+  "错题本删除按钮应通过父组件回调触发删除，避免面板直连数据库。",
+);
+assert.equal(
+  panelSource.includes("deletingItemId"),
+  true,
+  "删除请求进行中应只禁用对应错题的删除按钮。",
+);
+assert.match(
+  panelSource,
+  /if \(\s*!confirmMistakeBookItemDeletion/,
+  "删除按钮应先二次确认，取消后不触发删除回调。",
+);
+assert.equal(
   panelSource.includes('import { MathText } from "@/components/math-text";'),
   true,
   "错题本题干和摘要应复用 MathText 渲染数学公式。",
@@ -104,10 +125,53 @@ assert.equal(
   "工作台应接入 MistakeBookPanel。",
 );
 assert.equal(
+  source.includes("deleteMistakeBookItem"),
+  true,
+  "工作台应通过 mistake-book client 调用 DELETE API。",
+);
+assert.match(
+  source,
+  /await deleteMistakeBookItem[\s\S]*await refreshMistakeBook\(\);/,
+  "确认删除成功后应刷新错题本。",
+);
+assert.equal(
   source.includes("await refreshMistakeBook();"),
   true,
   "图片确认写入成功后应重新读取错题本，避免页面停留在旧列表。",
 );
+assert.equal(
+  source.includes("diagnosis.warnings"),
+  true,
+  "诊断响应中的用户可见提示应展示在报告顶部。",
+);
+assert.match(
+  source,
+  /createSampleDiagnosisViewModel\(\s*diagnosis\.sample_diagnosis,\s*diagnosis\.warnings,\s*\)/,
+  "sample_diagnosis 的持久化提示不应在前端丢失。",
+);
+assert.match(
+  source,
+  /!hasDuplicateMistakeBookItemWarning\(diagnosis\.warnings\)/,
+  "重复题不新增 memory_event 时，前端也不应重复写入 demo localStorage 画像。",
+);
+
+let confirmMessage = null;
+const didCancelDeletion = confirmMistakeBookItemDeletion({
+  confirm: (message) => {
+    confirmMessage = message;
+    return false;
+  },
+  questionText: "已知 $f(x)$ 的单调性。",
+});
+assert.equal(didCancelDeletion, false);
+assert.equal(confirmMessage.includes("确认删除这条错题"), true);
+assert.equal(confirmMessage.includes("$f(x)$"), true);
+
+const didConfirmDeletion = confirmMistakeBookItemDeletion({
+  confirm: () => true,
+  questionText: "已知 $f(x)$ 的单调性。",
+});
+assert.equal(didConfirmDeletion, true);
 
 const emptyPanel = createMistakeBookPanelViewModel({
   status: "ready",
