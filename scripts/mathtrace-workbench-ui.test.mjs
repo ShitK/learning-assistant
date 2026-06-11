@@ -102,6 +102,11 @@ assert.equal(
   true,
   "工作台应接入 MistakeBookPanel。",
 );
+assert.equal(
+  source.includes("await refreshMistakeBook();"),
+  true,
+  "图片确认写入成功后应重新读取错题本，避免页面停留在旧列表。",
+);
 
 const emptyPanel = createMistakeBookPanelViewModel({
   status: "ready",

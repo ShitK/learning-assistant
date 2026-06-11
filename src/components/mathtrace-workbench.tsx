@@ -584,13 +584,13 @@ export function MathTraceWorkbench(): ReactElement {
           beforeProfile: profileBeforeDiagnosis,
           afterProfile: diagnosis.student_profile,
         });
-        void refreshMistakeBook();
       } else {
         setProfilePreview({
           beforeProfile: profileBeforeDiagnosis,
           afterProfile: null,
         });
       }
+      await refreshMistakeBook();
     } catch (error) {
       const message =
         error instanceof Error
