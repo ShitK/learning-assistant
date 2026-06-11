@@ -86,6 +86,16 @@ assert.equal(
   false,
   "错题本只读面板不能读取 Supabase service role key。",
 );
+assert.equal(
+  panelSource.includes('import { MathText } from "@/components/math-text";'),
+  true,
+  "错题本题干和摘要应复用 MathText 渲染数学公式。",
+);
+assert.equal(
+  panelSource.includes("<MathText text={item.questionText}"),
+  true,
+  "错题本题干不能直接输出含 $...$ 的普通文本。",
+);
 
 assert.equal(
   source.includes("MistakeBookPanel"),

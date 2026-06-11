@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { MathText } from "@/components/math-text";
 import type {
   MistakeBookItemSummary,
   MistakeBookResponse,
@@ -126,10 +127,10 @@ export function MistakeBookPanel({
               </div>
 
               <h3 className="mt-3 text-base font-semibold leading-6 text-[var(--charcoal)]">
-                {item.questionText}
+                <MathText text={item.questionText} />
               </h3>
               <p className="mt-2 text-sm leading-6 text-[var(--warm-gray)]">
-                {item.summary}
+                <MathText text={item.summary} />
               </p>
 
               <div className="mt-4 grid gap-2 text-xs leading-5 text-[var(--warm-gray)] sm:grid-cols-2">
