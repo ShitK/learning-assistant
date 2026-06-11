@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ChangeEvent, ReactElement, ReactNode } from "react";
 import { ImageUploadPanel } from "@/components/image-upload-panel";
 import { MathText } from "@/components/math-text";
+import { MistakeBookPanel } from "@/components/mistake-book-panel";
 import {
   demoStudentContext,
   demoStudentProfile,
@@ -23,6 +30,7 @@ import {
   requestSampleDiagnosis,
   shouldPersistDiagnoseProfile,
 } from "@/lib/diagnose-client";
+import { requestMistakeBookItems } from "@/lib/mistake-book-client";
 import {
   canConfirmEditableExtractionDraft,
   createAgentTimelineStatusLabel,
@@ -57,12 +65,14 @@ import type {
   FollowUpAnswerDraft,
   ProblemRiskFollowUp,
 } from "@/lib/diagnose-api";
+import type { MistakeBookResponse } from "@/lib/mistake-book-client";
 import type { PreparedImageUpload } from "@/lib/image-upload-client";
 import { clampScore } from "@/lib/utils";
 
 const DEFAULT_SAMPLE_ID: SampleQuestionId = "sample_derivative_001";
 
 type DiagnosisMode = "sample" | "image";
+type MistakeBookPanelStatus = "loading" | "ready" | "error";
 type OrderedStandardSolutionBlock = Extract<
   StandardSolutionBlock,
   { kind: "ordered" }
@@ -148,10 +158,49 @@ export function MathTraceWorkbench(): ReactElement {
   const [retainedReportNotice, setRetainedReportNotice] = useState<string | null>(
     null,
   );
+  const [mistakeBookStatus, setMistakeBookStatus] =
+    useState<MistakeBookPanelStatus>("loading");
+  const [mistakeBookResponse, setMistakeBookResponse] =
+    useState<MistakeBookResponse | null>(null);
+  const [mistakeBookErrorMessage, setMistakeBookErrorMessage] = useState<
+    string | null
+  >(null);
   const isDiagnosisRequestLockedRef = useRef(false);
   const isTimelineRunning =
     isTimelineAnimating && completedStepCount < diagnosisView.steps.length;
   const isDiagnosing = isRequestPending || isTimelineRunning;
+
+  const refreshMistakeBook = useCallback(async (): Promise<void> => {
+    setMistakeBookStatus("loading");
+    setMistakeBookErrorMessage(null);
+
+    try {
+      const response = await requestMistakeBookItems({
+        fetcher: window.fetch.bind(window),
+        student_id: "demo_student_001",
+        limit: 5,
+      });
+      setMistakeBookResponse(response);
+      setMistakeBookStatus("ready");
+    } catch (error) {
+      setMistakeBookStatus("error");
+      setMistakeBookErrorMessage(
+        error instanceof Error ? error.message : "错题本暂时读取失败。",
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void refreshMistakeBook();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [hasHydrated, refreshMistakeBook]);
 
   useEffect(() => {
     if (!isTimelineAnimating) {
@@ -417,6 +466,7 @@ export function MathTraceWorkbench(): ReactElement {
           beforeProfile: profileBeforeDiagnosis,
           afterProfile: diagnosis.student_profile,
         });
+        void refreshMistakeBook();
         return;
       }
 
@@ -534,6 +584,7 @@ export function MathTraceWorkbench(): ReactElement {
           beforeProfile: profileBeforeDiagnosis,
           afterProfile: diagnosis.student_profile,
         });
+        void refreshMistakeBook();
       } else {
         setProfilePreview({
           beforeProfile: profileBeforeDiagnosis,
@@ -645,6 +696,14 @@ export function MathTraceWorkbench(): ReactElement {
           />
           <ReviewPath diagnosis={diagnosisView} />
         </section>
+
+        <div className="mt-8">
+          <MistakeBookPanel
+            status={mistakeBookStatus}
+            response={mistakeBookResponse}
+            errorMessage={mistakeBookErrorMessage}
+          />
+        </div>
       </div>
     </main>
   );

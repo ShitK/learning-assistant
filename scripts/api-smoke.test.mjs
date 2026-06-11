@@ -46,6 +46,16 @@ await assertRouteError(
   diagnoseRoutePost,
   jsonRequest({
     ...samplePayload,
+    student_id: "student_002",
+  }),
+  400,
+  "invalid_request",
+);
+
+await assertRouteError(
+  diagnoseRoutePost,
+  jsonRequest({
+    ...samplePayload,
     task_type: "image_diagnosis",
     sample_question_id: null,
     image_base64: null,
@@ -105,6 +115,16 @@ assert.equal(confirmRouteResponse.status, 200);
 assert.equal(confirmRouteBody.source, "image");
 assert.equal(confirmRouteBody.evidence_level, "student_work_sufficient");
 assert.equal(confirmRouteBody.memory_delta.should_persist, true);
+
+await assertRouteError(
+  confirmRoutePost,
+  jsonRequest({
+    ...confirmPayload,
+    student_id: "student_002",
+  }),
+  400,
+  "invalid_request",
+);
 
 const confirmResult = await handleConfirmRequest(confirmPayload);
 

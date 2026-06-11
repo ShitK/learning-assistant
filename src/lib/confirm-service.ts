@@ -12,8 +12,10 @@ import {
   createImageConfirmationFingerprint,
   verifyImageConfirmationToken,
 } from "@/lib/image-confirmation-token";
+import { persistDiagnosisIfNeeded } from "@/lib/diagnose-service";
 import { runImageMathTraceAgent } from "@/lib/image-diagnosis-pipeline";
 import { isRecord } from "@/lib/utils";
+import type { DiagnosisPersistenceRepository } from "@/lib/diagnosis-persistence";
 import type {
   AnalysisEnhancementDraft,
   AnalysisProvider,
@@ -47,6 +49,7 @@ export async function handleConfirmRequest(
   payload: unknown,
   deps?: {
     analysis_provider?: AnalysisProvider;
+    persistence_repository?: DiagnosisPersistenceRepository;
   },
 ): Promise<DiagnoseServiceResult> {
   const parsed = parseConfirmImageDiagnosisRequest(payload);
@@ -69,17 +72,20 @@ export async function handleConfirmRequest(
     },
   );
 
-  return {
-    status: 200,
-    body: runImageMathTraceAgent({
-      request: parsed.value.request,
-      extraction: parsed.value.extraction,
-      is_extraction_confirmed: parsed.value.is_confirmation_token_matched,
-      confirmation_action: parsed.value.confirmation_action,
-      follow_up_answer: parsed.value.follow_up_answer,
-      analysis,
-    }),
-  };
+  return persistDiagnosisIfNeeded(
+    {
+      status: 200,
+      body: runImageMathTraceAgent({
+        request: parsed.value.request,
+        extraction: parsed.value.extraction,
+        is_extraction_confirmed: parsed.value.is_confirmation_token_matched,
+        confirmation_action: parsed.value.confirmation_action,
+        follow_up_answer: parsed.value.follow_up_answer,
+        analysis,
+      }),
+    },
+    deps?.persistence_repository,
+  );
 }
 
 async function getAnalysisEnhancement(
@@ -119,6 +125,10 @@ function parseConfirmImageDiagnosisRequest(
 
   if (!isNonEmptyString(payload.student_id)) {
     return { ok: false, message: "缺少 student_id。" };
+  }
+
+  if (payload.student_id.trim() !== "demo_student_001") {
+    return { ok: false, message: "当前阶段只支持 demo_student_001。" };
   }
 
   if (payload.task_type !== "confirmed_image_diagnosis") {

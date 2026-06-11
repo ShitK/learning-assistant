@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createJiti } from "jiti";
 
+const jiti = createJiti(import.meta.url, { tsconfigPaths: true, jsx: true });
 const source = await readFile("src/components/mathtrace-workbench.tsx", "utf8");
+const panelSource = await readFile("src/components/mistake-book-panel.tsx", "utf8");
+const {
+  createMistakeBookPanelViewModel,
+} = jiti("../src/components/mistake-book-panel.tsx");
 
 assert.equal(
   source.includes("错误发生步骤"),
@@ -56,5 +62,83 @@ assert.match(
   /pendingFollowUpAnswer \? "确认写入画像" : "生成分析草稿"/,
   "追问卡片应使用同一个主按钮在“生成分析草稿”和“确认写入画像”之间切换。",
 );
+
+assert.equal(
+  source.includes("@supabase/supabase-js"),
+  false,
+  "工作台客户端组件不能 import Supabase 浏览器客户端。",
+);
+
+assert.equal(
+  source.includes("SUPABASE_SERVICE_ROLE_KEY"),
+  false,
+  "工作台客户端组件不能读取 Supabase service role key。",
+);
+
+assert.equal(
+  panelSource.includes("@supabase/supabase-js"),
+  false,
+  "错题本只读面板不能 import Supabase 浏览器客户端。",
+);
+
+assert.equal(
+  panelSource.includes("SUPABASE_SERVICE_ROLE_KEY"),
+  false,
+  "错题本只读面板不能读取 Supabase service role key。",
+);
+
+assert.equal(
+  source.includes("MistakeBookPanel"),
+  true,
+  "工作台应接入 MistakeBookPanel。",
+);
+
+const emptyPanel = createMistakeBookPanelViewModel({
+  status: "ready",
+  response: {
+    student_id: "demo_student_001",
+    items: [],
+    is_database_configured: true,
+    warnings: [],
+  },
+  errorMessage: null,
+});
+
+assert.equal(emptyPanel.statusLabel, "暂无错题记录");
+assert.equal(emptyPanel.description, "完成一次可写入画像的诊断后，这里会显示最近错题。");
+
+const longTextPanel = createMistakeBookPanelViewModel({
+  status: "ready",
+  response: {
+    student_id: "demo_student_001",
+    items: [
+      {
+        id: "book_item_001",
+        diagnosis_run_id: "diag_run_001",
+        source: "image",
+        question_text:
+          "这是一道很长很长的函数与导数题，包含参数分类讨论、单调区间判断、极值存在性分析，以及学生在若干步骤中遗漏条件导致后续推理失真的完整题干。",
+        knowledge_points: ["derivative_monotonicity", "parameter_classification"],
+        mistake_causes: ["classification_missing"],
+        severity: "medium",
+        diagnosis_summary:
+          "学生主要问题是直接代入临界点，没有先按参数范围分类讨论。",
+        evidence_level: "student_work_sufficient",
+        persistence_evidence: "student_work",
+        profile_update_kind: "mistake_cause",
+        review_status: 0,
+        created_at: "2026-06-11T10:00:00.000Z",
+      },
+    ],
+    is_database_configured: true,
+    warnings: [],
+  },
+  errorMessage: null,
+});
+
+assert.equal(longTextPanel.items.length, 1);
+assert.equal(longTextPanel.items[0].questionText.endsWith("..."), true);
+assert.equal(longTextPanel.items[0].sourceLabel, "图片诊断");
+assert.equal(longTextPanel.items[0].severityLabel, "中等");
 
 console.log("mathtrace workbench UI regression test passed");

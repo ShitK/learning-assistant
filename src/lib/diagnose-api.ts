@@ -198,6 +198,10 @@ export function parseDiagnoseRequest(payload: unknown): ParseDiagnoseResult {
     return invalidRequest("缺少 student_id。");
   }
 
+  if (payload.student_id.trim() !== "demo_student_001") {
+    return invalidRequest("当前阶段只支持 demo_student_001。");
+  }
+
   if (!isDiagnoseTaskType(payload.task_type)) {
     return invalidRequest("task_type 只能是 sample_diagnosis 或 image_diagnosis。");
   }
@@ -215,7 +219,7 @@ export function parseDiagnoseRequest(payload: unknown): ParseDiagnoseResult {
     return {
       ok: true,
       value: {
-        student_id: payload.student_id,
+        student_id: payload.student_id.trim(),
         task_type: payload.task_type,
         sample_question_id: parseNullableSampleQuestionId(
           payload.sample_question_id,
@@ -253,7 +257,7 @@ export function parseDiagnoseRequest(payload: unknown): ParseDiagnoseResult {
   return {
     ok: true,
     value: {
-      student_id: payload.student_id,
+      student_id: payload.student_id.trim(),
       task_type: payload.task_type,
       sample_question_id: payload.sample_question_id,
       image_base64: imageBase64,

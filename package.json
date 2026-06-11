@@ -7,11 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node scripts/vision-extraction-parser.test.mjs && node scripts/anthropic-compatible-provider.test.mjs && node scripts/analysis-provider.test.mjs && node scripts/diagnosis-evidence.test.mjs && node scripts/math-text-parser.test.mjs && node scripts/image-diagnosis-pipeline.test.mjs && node scripts/image-confirmation.test.mjs && node scripts/diagnose-client.test.mjs && node scripts/image-upload-client.test.mjs && node scripts/diagnosis-view-model.test.mjs && node scripts/mathtrace-workbench-ui.test.mjs && node scripts/agent-pipeline.test.mjs && node scripts/demo-state.test.mjs && npm run test:smoke",
+    "test": "node scripts/vision-extraction-parser.test.mjs && node scripts/anthropic-compatible-provider.test.mjs && node scripts/analysis-provider.test.mjs && node scripts/diagnosis-evidence.test.mjs && node scripts/diagnosis-persistence.test.mjs && node scripts/mistake-book-api.test.mjs && node scripts/math-text-parser.test.mjs && node scripts/image-diagnosis-pipeline.test.mjs && node scripts/image-confirmation.test.mjs && node scripts/diagnose-client.test.mjs && node scripts/image-upload-client.test.mjs && node scripts/diagnosis-view-model.test.mjs && node scripts/mathtrace-workbench-ui.test.mjs && node scripts/agent-pipeline.test.mjs && node scripts/demo-state.test.mjs && npm run test:smoke",
     "test:eval": "node scripts/eval-harness.test.mjs",
     "test:smoke": "node scripts/api-smoke.test.mjs && node scripts/demo-smoke.test.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.1",
     "katex": "^0.17.0",
     "next": "16.2.6",
     "react": "19.2.4",

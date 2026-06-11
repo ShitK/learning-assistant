@@ -734,7 +734,7 @@ P0 阶段我用 localStorage 是为了用最小成本展示“长期画像变化
   - `scripts/vision-extraction-parser.test.mjs`
 - 文档：
   - `docs/superpowers/plans/2026-05-30-image-diagnosis-frontend-experience.md`
-  - `docs/reviews/2026-05-31-image-diagnosis-frontend-experience-review.md`
+  - 本地 Claude Code 审查报告
   - `README.md`
 - 验证：
   - `npm test`
@@ -765,8 +765,8 @@ P0 阶段我用 localStorage 是为了用最小成本展示“长期画像变化
 - 复杂任务先写计划。
 - Codex 实现并自测。
 - Claude Code 做本地或 PR 审查。
-- 审查报告写入 `docs/reviews/YYYY-MM-DD-任务名-review.md`。
-- `docs/reviews/*.md` 默认本地-only，不提交 GitHub。
+- 审查报告默认作为本地材料保留，不提交 GitHub。
+- 本地审查材料不进入 staged 范围。
 - 修复审查意见后重跑相关测试。
 - 合并前检查文档、测试、lint、build 和敏感信息。
 
@@ -817,7 +817,7 @@ P0 阶段我用 localStorage 是为了用最小成本展示“长期画像变化
 
 当前流程适合个人开发和面试项目，但长期可以加入 GitHub Actions，自动跑 `npm test`、`npm run lint`、`npm run build` 和敏感信息扫描。这样合并前不只依赖人工执行。
 
-另外，review docs 本地-only 的规则需要配合 `.gitignore` 或 staged 范围检查，否则仍可能误提交。后续可以考虑把 `docs/reviews/` 加入 `.gitignore`，或者把本地审查报告移到仓库外路径。
+另外，本地审查材料不提交的规则需要配合 `.gitignore` 或 staged 范围检查，否则仍可能误提交。后续可以考虑把本地审查报告移到仓库外路径，进一步降低误提交风险。
 
 ### 项目中的真实证据
 
@@ -827,7 +827,7 @@ P0 阶段我用 localStorage 是为了用最小成本展示“长期画像变化
 - 测试：
   - `package.json` 中的 `npm test` 串行脚本
 - 文档：
-  - `docs/reviews/2026-05-31-image-diagnosis-frontend-experience-review.md`
+  - 本地 Claude Code 审查报告
   - `docs/superpowers/plans/2026-05-30-image-diagnosis-frontend-experience.md`
   - `docs/TECHNICAL_ROADMAP.md`
 - 验证：
@@ -1366,12 +1366,123 @@ P1.5 做完后，系统的关键风险已经不是“缺一个功能”，而是
 
 ---
 
+## 13. Supabase Postgres 数据底座与只读错题本 MVP
+
+### 当前状态
+
+P1.7 正在实现和文档收口中，目标是把确认后的诊断结果从纯前端 demo 状态推进到 Supabase Postgres 数据底座。当前阶段不声称已经完成真实云端 migration apply，也不声称已经合并到 main；它的边界是：诊断确认后写入 `diagnosis_runs`、`mistake_book_items` 和 `memory_events`，前端通过 Next API 展示只读错题本 MVP，`sample_diagnosis` 作为 demo 自动确认路径也会写。
+
+同时，这一阶段仍固定 `demo_student_001`，不做登录、真实 RLS 用户策略、老师端、RAG、pgvector、对象存储或完整学生画像迁移。未配置 Supabase 时，demo 仍要能跑，错题本为空，诊断主流程不能因为数据库缺失失败。
+
+### 功能价值
+
+数据库是这个项目的面试高频问题，因为 MathTrace 的核心卖点是“越用越懂你”。如果没有真实数据底座，长期画像、错题复盘、复发判断和复习计划依据都只能停留在 demo 表达。P1.7 的价值是把“长期记忆”从浏览器 localStorage 的演示状态，推进到可审计、可查询、可解释的后端记录。
+
+我没有一上来做完整账号系统，而是先做最小数据闭环：一次诊断确认后，系统保存诊断运行、错题本条目和画像变化事件。这样面试时可以清楚说明：项目已经从单次 AI 报告进入“学习数据沉淀”的阶段，但仍然有意识地控制范围，不把登录、老师端和 RAG 混进同一次实现。
+
+### 关键设计
+
+P1.7 的数据库表保持很少：
+
+- `students`：当前只固定 `demo_student_001`，作为 demo 学生外键。
+- `diagnosis_runs`：保存一次诊断运行的结构化快照，包括来源、证据等级、`memory_delta`、知识点、错因、练习和复习计划。
+- `mistake_book_items`：保存只读错题本条目，服务前端最近错题展示。
+- `memory_events`：保存画像变化事件，记录掌握度变化、错因频次变化、复习优先级变化和 rationale。
+
+写入只发生在确认后的服务端路径。`sample_diagnosis` 是稳定 demo 自动确认路径；图片诊断必须经过 `/api/confirm`，并且由服务端证据策略判断 `memory_delta.should_persist=true` 后才写。`image_diagnosis` 的识别草稿、未确认内容和完整图片 base64 不进入数据库。
+
+前端不直连数据库，也不持有 Supabase service role key。浏览器只能调用 Next API，例如只读错题本接口；真正的 Supabase admin client 只在服务端读取 `SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY`。
+
+### 技术决策与取舍
+
+我选择 PostgreSQL/Supabase，是因为这个项目的数据不是一堆聊天文本，而是结构化学习记录：学生、诊断运行、错题条目、画像事件之间有清晰关系，需要外键、一致性和 SQL 约束。PostgreSQL 的 JSONB 又适合保存诊断快照、`memory_delta`、练习和复习计划这类半结构化数据；未来要做相似错题召回或 RAG 时，也可以沿着 pgvector 演进。
+
+Supabase 的价值是快速提供托管 Postgres、RLS、Auth、API 管理和后续 Storage 生态。对一个求职展示项目来说，它让我不用先搭一整套数据库运维和认证基础设施，就能展示真实后端数据建模能力。
+
+我没有选 MySQL，并不是因为 MySQL 不行。MySQL 做关系型业务数据完全可以，但这个项目后续很可能需要 JSONB、pgvector、RLS 和 Supabase 托管生态，Postgres 更贴合演进路线。当前阶段也避免引入 ORM 和复杂多租户，因为这会把重点从“诊断数据如何沉淀”转移到框架和权限系统本身。
+
+`memory_events` 独立成表是一个关键取舍。我不只保存最新画像分数，而是保存每次画像变化的原因。这样后续 Agent 或老师端不仅能看到“这个学生导数掌握度变低了”，还能追溯“是哪一次诊断、什么错因、什么证据导致这次变化”。这对教育产品尤其重要，因为画像变化必须可解释、可回放、可纠错。
+
+### 性能收益（如适用）
+
+P1.7 的主要收益不是响应速度，而是稳定性和数据可追溯性。数据库未配置时走 no-op 或空列表，诊断主流程不被外部数据库阻塞；配置数据库时，写入集中在确认后的服务端路径，前端不需要额外持有数据库连接或密钥。
+
+相比把完整学生画像每次整体覆盖到云端，当前只先保存 diagnosis run、mistake book item 和 memory event，可以降低早期迁移复杂度，也避免在没有登录和 RLS 用户策略前过早承诺完整多设备画像同步。
+
+### 面试官可能怎么问
+
+1. 这个项目为什么现在需要数据库？
+2. 为什么选 PostgreSQL/Supabase，而不是 MySQL？
+3. 你为什么没有直接做完整登录和多用户权限？
+4. service role key 为什么不能放在前端？
+5. `diagnosis_runs`、`mistake_book_items` 和 `memory_events` 为什么要拆表？
+6. `memory_events` 和 `memory_delta` 的关系是什么？
+7. Supabase 未配置时为什么不能让诊断失败？
+8. 未来怎么从只读错题本演进到 RAG 或老师端？
+
+### 推荐回答
+
+我会这样回答：
+
+数据库对这个项目很关键，因为 MathTrace 不是一次性解题工具，它要证明长期学习画像和错题复盘。如果所有状态都只在 localStorage 里，面试官会追问“长期记忆到底在哪里”。所以 P1.7 我先引入 Supabase Postgres，把确认后的诊断运行、错题条目和画像变化事件沉淀下来。
+
+我选 Postgres/Supabase，不是因为 MySQL 做不了，而是因为这个项目后续路径更贴近 Postgres：诊断快照适合 JSONB，未来相似错题和 RAG 可以用 pgvector，Supabase 又提供托管 Postgres、RLS、Auth 和 API 管理。当前阶段我没有引入 ORM，也没有做复杂多租户，因为 demo 还固定 `demo_student_001`，过早做完整账号系统会扩大风险。
+
+我特别把 service role key 限制在服务端。前端如果直接连 Supabase admin client，就等于把数据库高权限凭据暴露给浏览器，这是不可接受的。浏览器只能通过 Next API 请求错题本；服务端根据当前 demo 边界读取或写入数据库。
+
+`memory_events` 独立出来，是因为学习画像不能只保存最后结果。教育系统需要解释“为什么这个学生画像变了”。每次诊断写一个 event，记录掌握度变化、错因变化、复习优先级变化和 rationale，后续 Agent、老师端或复习规划都能追溯依据。
+
+### 可能被继续追问
+
+- 如果未来有真实学生账号，RLS 策略怎么设计？
+- `student_profiles` 什么时候从 localStorage 迁移到云端聚合表？
+- 如果数据库写入成功但前端刷新失败，错题本如何保持一致？
+- `memory_events` 未来如何支持回滚或重建画像？
+- pgvector 相似错题召回会基于哪些文本生成 embedding？
+- service role key 滥用风险如何审计？
+
+### 反思与后续优化
+
+当前 P1.7 仍然是数据底座 MVP，不是生产级多用户系统。已知缺口包括：尚无真实登录，尚无面向用户的 RLS 策略，尚未完成真实云端 migration apply，尚未做 pgvector/RAG，错题本还是只读 MVP，也没有把完整 `student_profile` 云端聚合出来。
+
+后续更合理的演进是：先把 Supabase migration 在真实项目中 apply 并验证；再引入 Auth 和 RLS 用户策略；然后增加云端 `student_profiles` 聚合或由 `memory_events` 重建画像；最后再做 pgvector 相似错题召回、RAG 和老师端授权视图。
+
+### 项目中的真实证据
+
+- 代码：
+  - `src/lib/supabase-admin.ts`
+  - `src/lib/diagnosis-persistence.ts`
+  - `src/lib/mistake-book-service.ts`
+  - `src/app/api/mistake-book/route.ts`
+  - `src/components/mistake-book-panel.tsx`
+  - `src/lib/diagnose-service.ts`
+  - `src/lib/confirm-service.ts`
+- 测试：
+  - `scripts/diagnosis-persistence.test.mjs`
+  - `scripts/mistake-book-api.test.mjs`
+  - `scripts/api-smoke.test.mjs`
+  - `scripts/demo-smoke.test.mjs`
+- 文档：
+  - `README.md`
+  - `docs/superpowers/plans/2026-06-11-p17-supabase-mistake-book.md`
+  - `docs/superpowers/specs/2026-05-28-math-mistake-agent-prd.md`
+  - `docs/TECHNICAL_ROADMAP.md`
+- 验证：
+  - `npm test`
+  - `npm run test:eval`
+  - `npm run test:smoke`
+  - `npm run lint`
+  - `npm run build`
+  - `git diff --check`
+
+---
+
 ## 后续可追加的阶段
 
 这些阶段还没有完全完成，后续实现后可以继续按同一模板追加：
 
-- 数据库支持的图片确认写入与可审计草稿版本。
-- 数据库 schema、`mistake_records`、`memory_deltas` 和 `student_profiles`。
+- 真实云端 migration apply、Auth/RLS 用户策略和云端 `student_profiles` 聚合。
+- 数据库支持的图片确认草稿版本审计。
 - 动态生成变式练习题。
 - Kimi / GLM / DeepSeek provider 的生产级 telemetry 与审计。
 - LLM 输出迁移到 Zod schema。
@@ -1382,28 +1493,28 @@ P1.5 做完后，系统的关键风险已经不是“缺一个功能”，而是
 
 ### LLM 安全边界
 
-重点阶段：5、7、9、10、11、12。核心表达：模型只做抽取或确认后文本增强，不直接写画像；所有模型输出先过 JSON parser 和业务边界校验；只有学生步骤或用户确认构成足够证据时才写具体错因。
+重点阶段：5、7、9、10、11、12、13。核心表达：模型只做抽取或确认后文本增强，不直接写画像；所有模型输出先过 JSON parser 和业务边界校验；只有学生步骤或用户确认构成足够证据时才写具体错因；数据库写入也必须经过服务端确认和证据策略。
 
 ### Demo 稳定性
 
-重点阶段：1、2、6、9、10、11、12。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像；P1.6a 用 `npm run test:smoke` 和浏览器 checklist 锁住合并前主路径。
+重点阶段：1、2、6、9、10、11、12、13。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像；P1.6a 用 `npm run test:smoke` 和浏览器 checklist 锁住合并前主路径；P1.7 未配置数据库时仍保持 demo 可运行。
 
 ### Agent 工程化
 
-重点阶段：4、5。核心表达：先用确定性 pipeline 表达 Agent 流程，再逐步把适合的环节替换为模型或工具调用。
+重点阶段：4、5、13。核心表达：先用确定性 pipeline 表达 Agent 流程，再逐步把适合的环节替换为模型或工具调用；长期记忆先用结构化 diagnosis run 和 memory event 作为 Agent 可追溯上下文。
 
 ### 前端状态管理
 
-重点阶段：2、6、7、11、12。核心表达：单页工作台用 React state 足够；localStorage 只做 P0/P1 演示状态恢复；前端只在服务端 `memory_delta.should_persist=true` 且响应 guard 通过时持久化。
+重点阶段：2、6、7、11、12、13。核心表达：单页工作台用 React state 足够；localStorage 只做 P0/P1 演示状态恢复；前端只在服务端 `memory_delta.should_persist=true` 且响应 guard 通过时持久化；P1.7 前端不直连数据库，只通过 Next API 读取错题本。
 
 ### 测试策略
 
-重点阶段：3、4、5、6、7、9、10、11、12。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界；P1.6a 用 smoke 测试验证 Demo 主路径和 API contract 是否仍能跑通。
+重点阶段：3、4、5、6、7、9、10、11、12、13。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界；P1.6a 用 smoke 测试验证 Demo 主路径和 API contract 是否仍能跑通；P1.7 需要覆盖数据库未配置、fake repo 写入和只读错题本 API。
 
 ### 性能收益
 
-重点阶段：1、2、3、4、5、6、7、8、9、10、11、12。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退、`npm run test:eval` 和 `npm run test:smoke`。
+重点阶段：1、2、3、4、5、6、7、8、9、10、11、12、13。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退、`npm run test:eval`、`npm run test:smoke` 和数据库未配置 no-op 降级。
 
 ### 范围控制
 
-重点阶段：1、8、11。核心表达：不提前做数据库、登录、老师端和复杂 Agent 框架；先验证错因诊断闭环和可信写入边界，再逐步演进。
+重点阶段：1、8、11、13。核心表达：不提前做登录、老师端、RAG 和复杂 Agent 框架；先验证错因诊断闭环和可信写入边界，再用 P1.7 引入最小数据库底座，后续逐步演进。

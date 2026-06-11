@@ -25,15 +25,15 @@
 - 前端已经能通过接口触发诊断，并用返回的 `student_profile` 展示画像变化。
 - P1 后端具备 `image_diagnosis` 服务端路径：通用 vision provider adapter，支持通过 `VISION_PROVIDER_*` 切换 Anthropic-compatible 与 OpenAI-compatible provider；模型只做图片抽取，`/api/diagnose` 先返回可编辑 `extraction_review` 草稿，用户确认后再由 `/api/confirm` 复用确定性 Pipeline。
 - P1 前端具备图片上传入口、预览、客户端校验和压缩、识别结果编辑确认表单、可恢复错误态，以及未确认/低置信度/确认令牌不匹配不写入 localStorage 的保护。
+- P1.7 正在引入 Supabase Postgres 数据底座：确认后的诊断可写入 `students`、`diagnosis_runs`、`mistake_book_items` 和 `memory_events`，并支持只读错题本 MVP；未配置 Supabase 时 demo 主流程仍稳定运行。
 
 当前还没有完成：
 
 - 非 Anthropic-compatible / OpenAI-compatible provider 的适配器实现。
 - 真正的 Agent 内部编排模块。
-- 数据库持久化。
 - 用户登录、权限、老师端、班级端。
 - 动态生成变式练习。
-- 长期用户画像的真实数据写入和回放。
+- 真实登录、RLS 用户策略、老师端、RAG、pgvector、完整云端学生画像迁移和长期回放。
 
 ## 3. 总体架构目标
 
@@ -106,6 +106,7 @@ P1 已新增确认接口，其他接口不要太早拆散：
 
 ```text
 POST /api/confirm
+GET /api/mistake-book?student_id=demo_student_001
 POST /api/practice-attempts
 GET /api/profile
 GET /api/history
@@ -119,6 +120,7 @@ GET /api/history
 - 错误响应必须稳定，包括 `invalid_request`、`invalid_json`、`missing_image`、`invalid_image`、`image_too_large`、`model_not_configured`、`model_timeout`、`model_request_failed`、`model_invalid_output` 等。
 - Provider/OCR 可观测性边界：P1 不保存原始 provider 响应，也不记录图片内容。请求失败只暴露安全元数据 `provider_debug`，用于区分 `http_error`、`invalid_json`、`empty_text_content`、`network_failed` 和 `timeout`。其中 `empty_text_content` 表示 provider HTTP/JSON 响应成功，但响应体没有可解析的文本内容。未来 OCR provider 接入时应复用这一错误结构，而不是新增一套前端不可识别的错误通道。
 - 图片确认边界：`/api/diagnose` 的 `image_diagnosis` 成功响应只包含 `extraction_review` 草稿和 `confirmation_token`；`/api/confirm` 接收用户确认后的草稿并返回完整图片诊断。生产环境需要 `MATHTRACE_CONFIRM_SECRET` 签名确认令牌；未确认、低置信度或令牌指纹不匹配的结果不能写入长期画像。
+- 数据库访问边界：P1.7 前端只调用 Next API，不直连 Supabase；`SUPABASE_SERVICE_ROLE_KEY` 只允许服务端读取。Supabase 未配置或写入失败时，诊断报告仍返回，错题本接口返回稳定空列表或安全错误，不泄露 secret、完整图片 base64 或 provider payload。
 
 Zod 是 TypeScript-first 的 schema validation 工具，适合在 TypeScript 项目里同时获得运行时校验和静态类型推导。参考：[Zod](https://zod.dev/)。
 
@@ -218,8 +220,9 @@ interface StructuredGenerationProvider {
 
 ```text
 P0：localStorage + mock 数据
-P1：继续无数据库，完善 memory_delta
-P2：Supabase Postgres 或托管 Postgres
+P1.5/P1.6：继续用 localStorage 表达 demo 画像，完善可信写入边界和 smoke
+P1.7：Supabase Postgres 数据底座，写入 diagnosis run、错题本条目和 memory event
+P2：Supabase Auth/RLS 用户策略、完整云端画像和对象存储
 P3：加入 pgvector 做相似错题召回
 ```
 
@@ -236,14 +239,28 @@ Supabase RLS 用于控制行级权限。官方文档强调暴露给 API 的 sche
 
 ### 5.2 核心表设计
 
-长期产品至少需要这些表：
+P1.7 先落四张表，覆盖确认后的诊断记录、只读错题本和画像事件：
 
 ```text
 students
-student_profiles
-mistake_records
 diagnosis_runs
-memory_deltas
+mistake_book_items
+memory_events
+```
+
+关键设计：
+
+- `students` 当前固定 `demo_student_001`，不假装已经有多用户系统。
+- `diagnosis_runs` 保存一次诊断运行的结构化快照，用 `client_diagnosis_id` 承接现有 API 的诊断 ID。
+- `mistake_book_items` 保存只读错题本条目，字段以题干、学生答案、标准解法、知识点、错因、严重度和诊断摘要为主。
+- `memory_events` 保存画像变化事件，独立记录 `knowledge_mastery_changes`、`mistake_cause_changes`、`review_priority_changes` 和 rationale，便于后续解释画像变化。
+- `sample_diagnosis` 是 demo 自动确认路径，也会在 `memory_delta.should_persist=true` 时尝试写入。
+- 不保存完整图片 base64；localStorage 暂时继续作为 demo 画像恢复来源，不迁移完整画像。
+
+长期产品再补齐这些表：
+
+```text
+student_profiles
 practice_questions
 practice_attempts
 review_plans
@@ -254,18 +271,19 @@ mistake_taxonomy
 
 关键设计：
 
-- `mistake_records` 保存每道错题的结构化信息。
+- `mistake_book_items` 是当前阶段的错题本条目；长期可扩展为更完整的 `mistake_records`。
 - `diagnosis_runs` 保存一次诊断过程，包括输入、输出、模型版本、置信度和错误信息。
-- `memory_deltas` 保存画像变化的增量，而不是只保存最终分数。
+- `memory_events` 保存画像变化的增量事件，而不是只保存最终分数；长期可按需要聚合为 `memory_deltas` 或直接驱动 profile rebuild。
 - `student_profiles` 保存当前聚合后的学习画像。
 - `practice_attempts` 保存学生做变式题后的结果，用于画像回升或复发判断。
 
 示例：
 
 ```text
-mistake_records
+mistake_book_items
   id
   student_id
+  diagnosis_run_id
   source
   question_text
   student_answer
@@ -278,11 +296,12 @@ mistake_records
   created_at
   updated_at
 
-memory_deltas
+memory_events
   id
   student_id
-  mistake_record_id
   diagnosis_run_id
+  mistake_book_item_id
+  event_type
   knowledge_mastery_changes
   mistake_cause_changes
   review_priority_changes
@@ -625,7 +644,7 @@ Agent 质量评估不要只看文本好不好看，要看结构化指标：
 
 ```text
 Vercel 或本地演示
-无数据库
+P0/P1.6 可无数据库运行
 无真实模型依赖
 ```
 
@@ -634,7 +653,7 @@ Vercel 或本地演示
 ```text
 Vercel
 Supabase Postgres
-Supabase Storage
+Supabase Storage（图片长期保存阶段再引入）
 服务端环境变量管理 MiMo/Kimi/OpenAI API Key
 ```
 
@@ -804,29 +823,35 @@ Supabase Storage
 - `docs/demo-smoke-checklist.md` 可指导一次 3-5 分钟浏览器检查。
 - 不新增用户功能，不改变画像写入策略，不接入真实 provider smoke。
 
-### Phase 3：长期记忆与数据库
+### Phase 3：P1.7 长期记忆与数据库底座
 
-目标：画像从前端状态升级为真实持久化。
+目标：先把确认后的诊断记录、错题本条目和画像变化事件写入 Supabase Postgres，同时保持 `sample_diagnosis` 稳定路径不依赖数据库。
 
 技术：
 
-- Supabase Postgres 或托管 Postgres。
-- Auth。
-- RLS。
-- SQL migration 或 ORM。
+- Supabase Postgres。
+- SQL migration。
+- Server-only Supabase admin client。
+- Next API 作为唯一前端访问边界。
+- service role key 只在服务端读取。
 
 交付：
 
 - `students`。
-- `student_profiles`。
-- `mistake_records`。
-- `memory_deltas`。
 - `diagnosis_runs`。
+- `mistake_book_items`。
+- `memory_events`。
+- 只读错题本 MVP。
 
 验收：
 
-- 同一学生多次诊断后画像连续变化。
-- 可以解释每个掌握度变化来自哪道错题。
+- 诊断确认后写入 diagnosis run、错题本条目和 memory event；`sample_diagnosis` 作为 demo 自动确认路径也会写。
+- 当前仍固定 `demo_student_001`，不做登录、权限、老师端、RAG 或 pgvector。
+- 前端不直连数据库；未配置 Supabase 时 demo 仍可运行，错题本为空或稳定降级。
+- 不存完整图片 base64；localStorage 暂时继续作为 demo 画像恢复，不迁移完整画像。
+- `sample_diagnosis` 稳定路径不破坏。
+
+后续 Phase 3.x 再补 Supabase Auth、RLS 用户策略、云端 `student_profiles` 聚合、对象存储和 pgvector 相似错题召回。
 
 ### Phase 4：练习闭环
 
@@ -917,19 +942,19 @@ Supabase Storage
 推荐当前主线：
 
 ```text
-Next.js + TypeScript Pipeline + Zod + mock 数据
+Next.js + TypeScript Pipeline + Zod + mock 数据 + optional Supabase Postgres
 ```
 
 推荐中期主线：
 
 ```text
-Next.js + Anthropic-compatible provider adapter + Postgres/Supabase
+Next.js + provider adapters + Supabase Postgres + Auth/RLS
 ```
 
 推荐长期主线：
 
 ```text
-Postgres + memory_deltas + pgvector + Agent framework
+Postgres + memory_events + pgvector + Agent framework
 ```
 
 不建议现在做：

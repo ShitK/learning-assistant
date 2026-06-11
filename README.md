@@ -43,6 +43,25 @@ ANALYSIS_PROVIDER_TIMEOUT_MS=60000
 
 `ANALYSIS_PROVIDER_*` 只服务 `/api/confirm` 后的文本分析增强，不接收图片 base64。`ANALYSIS_PROVIDER_PROTOCOL` 当前只支持 `openai`，`ANALYSIS_PROVIDER_BASE_URL` 可以配置 provider 根地址，也可以直接配置到 `/chat/completions`。未配置或请求失败时，确认流程会回退到本地确定性规则报告；DeepSeek 不能写入 `memory_delta`、`student_profile`、`mistake_history`，也不能决定是否持久化长期画像。
 
+## Local Supabase Settings
+
+P1.7 引入 Supabase Postgres 作为错题本和长期记忆事件的数据底座。服务端会在确认后的诊断流程中尝试写入 `students`、`diagnosis_runs`、`mistake_book_items` 和 `memory_events`：
+
+- `sample_diagnosis` 是 demo 自动确认路径，诊断主流程成功且 `memory_delta.should_persist=true` 时也会尝试写入。
+- 图片诊断只有经过 `/api/confirm` 确认，并由服务端证据规则允许持久化时才会写入。
+- 当前仍固定使用 `demo_student_001`，不做登录、老师端、RAG、pgvector 或完整画像迁移。
+
+本地如需连接 Supabase，在 `.env.local` 配置：
+
+```bash
+SUPABASE_URL=<your-supabase-project-url>
+SUPABASE_SERVICE_ROLE_KEY=<local-service-role-secret>
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` 只能在服务端读取，前端不得直连数据库或 import Supabase admin client；浏览器只能通过 Next.js API 获取错题本数据。不要提交 `.env*`，不要把真实 Supabase key 写入文档、日志、截图或提交历史。
+
+未配置 Supabase 时，demo 仍可运行：诊断主流程不因数据库缺失失败，错题本接口返回稳定空列表。P1.7 不保存完整图片 base64；localStorage 暂时继续用于 demo 学生画像恢复，不迁移完整画像到数据库。
+
 ## Local Smoke Tests
 
 样例题诊断不依赖外部模型：

@@ -7,14 +7,25 @@ import {
   createImageConfirmationFingerprint,
   createImageConfirmationToken,
 } from "@/lib/image-confirmation-token";
+import {
+  DATABASE_NOT_CONFIGURED_WARNING,
+  DATABASE_WRITE_FAILED_WARNING,
+  persistDiagnosisResponse,
+} from "@/lib/diagnosis-persistence";
 import { parseImageInput } from "@/lib/image-input";
 import { runMathTraceAgent } from "@/lib/mathtrace-agent-pipeline";
 import { isRecord } from "@/lib/utils";
 import type {
   DiagnoseApiResponse,
   DiagnoseImageExtractionResponse,
+  DiagnoseImageSuccessResponse,
+  DiagnoseSuccessResponse,
   ParsedImageDiagnoseRequest,
 } from "@/lib/diagnose-api";
+import type {
+  DiagnosisPersistenceRepository,
+  DiagnosisPersistenceResult,
+} from "@/lib/diagnosis-persistence";
 import type {
   VisionExtractionInput,
   VisionExtractionProvider,
@@ -27,35 +38,39 @@ export interface DiagnoseServiceResult {
   body: DiagnoseApiResponse;
 }
 
-export function handleDiagnoseRequest(
+export async function handleDiagnoseRequest(
   payload: unknown,
   deps?: {
     vision_provider?: VisionExtractionProvider;
+    persistence_repository?: DiagnosisPersistenceRepository;
   },
 ): Promise<DiagnoseServiceResult> {
   const parsedRequest = parseDiagnoseRequest(payload);
   if (!parsedRequest.ok) {
-    return Promise.resolve({
+    return {
       status: 400,
       body: parsedRequest.response,
-    });
+    };
   }
 
   if (parsedRequest.value.task_type === "sample_diagnosis") {
     try {
-      return Promise.resolve({
-        status: 200,
-        body: runMathTraceAgent(parsedRequest.value),
-      });
+      return await persistDiagnosisIfNeeded(
+        {
+          status: 200,
+          body: runMathTraceAgent(parsedRequest.value),
+        },
+        deps?.persistence_repository,
+      );
     } catch {
-      return Promise.resolve({
+      return {
         status: 400,
         body: createDiagnoseError(
           "unknown_sample_question_id",
           "未找到这个样例题，请重新选择。",
           true,
         ),
-      });
+      };
     }
   }
 
@@ -66,6 +81,7 @@ async function handleImageDiagnoseRequest(
   request: ParsedImageDiagnoseRequest,
   deps?: {
     vision_provider?: VisionExtractionProvider;
+    persistence_repository?: DiagnosisPersistenceRepository;
   },
 ): Promise<DiagnoseServiceResult> {
   const parsedImage = parseImageInput({
@@ -136,6 +152,32 @@ async function handleImageDiagnoseRequest(
       ),
     };
   }
+}
+
+export async function persistDiagnosisIfNeeded(
+  result: DiagnoseServiceResult,
+  repository?: DiagnosisPersistenceRepository,
+): Promise<DiagnoseServiceResult> {
+  if (!isPersistableDiagnosisResponse(result.body)) {
+    return result;
+  }
+
+  const persistenceResult = await persistDiagnosisResponse(
+    result.body,
+    repository,
+  );
+  const warning = getPersistenceWarning(persistenceResult);
+  if (!warning) {
+    return result;
+  }
+
+  return {
+    ...result,
+    body: {
+      ...result.body,
+      warnings: appendUniqueWarning(result.body.warnings, warning),
+    },
+  };
 }
 
 function buildImageExtractionResponse(input: {
@@ -258,6 +300,35 @@ function shouldMarkFallbackUsed(error: VisionProviderError): boolean {
     error.code === "model_request_failed" ||
     error.code === "model_invalid_output"
   );
+}
+
+function isPersistableDiagnosisResponse(
+  body: DiagnoseApiResponse,
+): body is DiagnoseSuccessResponse | DiagnoseImageSuccessResponse {
+  return (
+    isRecord(body) &&
+    (body.source === "sample" || body.source === "image") &&
+    "memory_delta" in body &&
+    "student_profile" in body
+  );
+}
+
+function getPersistenceWarning(
+  result: DiagnosisPersistenceResult,
+): string | null {
+  if (result.status === "disabled") {
+    return DATABASE_NOT_CONFIGURED_WARNING;
+  }
+
+  if (result.status === "failed") {
+    return DATABASE_WRITE_FAILED_WARNING;
+  }
+
+  return null;
+}
+
+function appendUniqueWarning(warnings: string[], warning: string): string[] {
+  return warnings.includes(warning) ? warnings : [...warnings, warning];
 }
 
 function getSafeDebugSummary(error: VisionProviderError):
