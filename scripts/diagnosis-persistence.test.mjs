@@ -258,6 +258,20 @@ assert.equal(
   true,
 );
 assert.equal(
+  dedupeMigrationSql.includes("return query select active_run_id, existing_item_id, null::uuid, 'duplicate'::text"),
+  true,
+);
+assert.equal(
+  dedupeMigrationSql.includes("insert into public.mistake_book_items"),
+  true,
+  "已有 diagnosis_run 但错题 item 已删除时，RPC 应继续尝试重新插入 mistake_book_items。",
+);
+assert.equal(
+  dedupeMigrationSql.includes("insert into public.memory_events"),
+  true,
+  "删除后再次确认同题重新插入错题时，应重新写入新的 memory_event。",
+);
+assert.equal(
   /delete\s+from\s+public\.mistake_book_items/i.test(dedupeMigrationSql),
   false,
 );

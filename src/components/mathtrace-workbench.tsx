@@ -34,6 +34,7 @@ import {
   deleteMistakeBookItem,
   requestMistakeBookItems,
 } from "@/lib/mistake-book-client";
+import { DUPLICATE_MISTAKE_BOOK_ITEM_WARNING } from "@/lib/persistence-warnings";
 import {
   canConfirmEditableExtractionDraft,
   createAgentTimelineStatusLabel,
@@ -1957,7 +1958,7 @@ function Tag({
 }
 
 function hasDuplicateMistakeBookItemWarning(warnings: string[]): boolean {
-  return warnings.includes("本题已加入错题本。");
+  return warnings.includes(DUPLICATE_MISTAKE_BOOK_ITEM_WARNING);
 }
 
 function useHasHydrated(): boolean {

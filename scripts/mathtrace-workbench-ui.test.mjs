@@ -154,6 +154,16 @@ assert.match(
   /!hasDuplicateMistakeBookItemWarning\(diagnosis\.warnings\)/,
   "重复题不新增 memory_event 时，前端也不应重复写入 demo localStorage 画像。",
 );
+assert.equal(
+  source.includes("@/lib/persistence-warnings"),
+  true,
+  "工作台应从 browser-safe 共享模块读取重复错题提示文案。",
+);
+assert.equal(
+  /warnings\.includes\("本题已加入错题本。"\)/.test(source),
+  false,
+  "工作台不应硬编码重复错题提示文案，避免与服务端常量漂移。",
+);
 
 let confirmMessage = null;
 const didCancelDeletion = confirmMistakeBookItemDeletion({
