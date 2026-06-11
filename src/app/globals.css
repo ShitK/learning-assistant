@@ -47,6 +47,20 @@ body {
   overflow-y: hidden;
 }
 
+.math-text .math-text-inline {
+  margin-inline: 0.03em;
+  vertical-align: -0.3em;
+}
+
+.math-text .math-text-inline .katex {
+  font-size: 1.12em !important;
+  line-height: 1 !important;
+}
+
+.math-text .math-text-display .katex {
+  font-size: 1.02em !important;
+}
+
 @layer components {
   .standard-solution-body {
     font-size: 15px;
@@ -55,20 +69,6 @@ body {
 
   .standard-solution-body .standard-solution-line {
     line-height: 2.05;
-  }
-
-  .standard-solution-body .math-text-inline {
-    margin-inline: 0.03em;
-    vertical-align: -0.3em;
-  }
-
-  .standard-solution-body .math-text-inline .katex {
-    font-size: 1.12em !important;
-    line-height: 1 !important;
-  }
-
-  .standard-solution-body .math-text-display .katex {
-    font-size: 1.02em !important;
   }
 }
 

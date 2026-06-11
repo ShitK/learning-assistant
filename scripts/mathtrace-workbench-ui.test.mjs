@@ -5,6 +5,7 @@ import { createJiti } from "jiti";
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true, jsx: true });
 const source = await readFile("src/components/mathtrace-workbench.tsx", "utf8");
 const panelSource = await readFile("src/components/mistake-book-panel.tsx", "utf8");
+const globalStyles = await readFile("src/app/globals.css", "utf8");
 const {
   createMistakeBookPanelViewModel,
 } = jiti("../src/components/mistake-book-panel.tsx");
@@ -191,6 +192,17 @@ assert.equal(
 assert.equal(rawMathPanel.items[0].summary.includes("$f'(x)=1/x-a$"), true);
 assert.equal(hasBalancedInlineMathDelimiters(rawMathPanel.items[0].questionText), true);
 assert.equal(hasBalancedInlineMathDelimiters(rawMathPanel.items[0].summary), true);
+
+assert.equal(
+  globalStyles.includes(".math-text .math-text-inline"),
+  true,
+  "题干、学生步骤、错题本等 MathText 场景应复用标准解法的内联公式字号和对齐规则。",
+);
+assert.equal(
+  globalStyles.includes(".standard-solution-body .math-text-inline"),
+  false,
+  "公式字号和对齐规则不能只限定在标准解法区域。",
+);
 
 console.log("mathtrace workbench UI regression test passed");
 
