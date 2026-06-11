@@ -1,4 +1,5 @@
 import { isRecord } from "@/lib/utils";
+import { normalizeExtractedMathText } from "@/lib/math-extraction-normalizer";
 
 export type ExtractionConfidence = "high" | "medium" | "low";
 
@@ -142,7 +143,7 @@ export function parseVisionExtractionText(
   }
 
   const standardSolutionDraft = isNonEmptyString(parsed.standard_solution_draft)
-    ? parsed.standard_solution_draft.trim()
+    ? normalizeExtractedMathText(parsed.standard_solution_draft.trim())
     : createFallbackStandardSolutionDraft(parsed.question_text.trim());
   if (!isNonEmptyString(parsed.standard_solution_draft)) {
     parserWarnings.push("模型未返回标准解法草稿，已生成待确认占位内容。");
@@ -190,9 +191,11 @@ export function parseVisionExtractionText(
   return {
     ok: true,
     value: {
-      question_text: parsed.question_text.trim(),
-      student_answer: normalized.student_answer,
-      student_solution_steps: normalized.student_solution_steps,
+      question_text: normalizeExtractedMathText(parsed.question_text.trim()),
+      student_answer: normalizeExtractedMathText(normalized.student_answer),
+      student_solution_steps: normalized.student_solution_steps.map((step) =>
+        normalizeExtractedMathText(step),
+      ),
       standard_solution_draft: standardSolutionDraft,
       extraction_confidence: normalized.extraction_confidence,
       warnings: normalized.warnings,
@@ -278,6 +281,7 @@ export function createVisionExtractionPrompt(input: {
     "只输出一个合法 JSON 对象，不要输出 Markdown、解释文字或代码块。",
     "JSON 字段必须且只能包含 question_text、student_answer、student_solution_steps、standard_solution_draft、extraction_confidence、warnings。",
     "standard_solution_draft 必须始终输出；如果图片里没有标准解法，请根据题干生成一份标准解法草稿，不要省略字段。",
+    "question_text、student_answer、student_solution_steps、standard_solution_draft 中的数学表达式都必须使用 LaTeX，并用 $...$ 或 $$...$$ 包裹。",
     "standard_solution_draft 内的数学公式必须使用 $...$ 或 $$...$$ 包裹；不要输出裸公式，例如把 f'(x)>0 写成 $f'(x)>0$。",
     "包含 LaTeX 命令的表达式也必须整体包裹，例如把 \\frac{1}{a}、\\ln a、a\\leq 0 写成 $\\frac{1}{a}$、$\\ln a$、$a\\leq 0$。",
     "student_solution_steps 和 warnings 必须输出为字符串数组；没有 warning 时输出空数组 []。",

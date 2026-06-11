@@ -53,6 +53,33 @@ const wrappedJson = parseVisionExtractionText(`下面是抽取结果：\n${valid
 assert.equal(wrappedJson.ok, true);
 assert.equal(wrappedJson.value.student_answer.includes("f'"), true);
 
+const rawMathModelText = JSON.stringify({
+  question_text:
+    "已知函数f(x)=lnx - a x + 1. (1)求f(x)的单调区间；(2)已知f(x)在(0,e)上有两个零点。",
+  student_answer: "当a > 0时，f'(x)=1/x-a。",
+  student_solution_steps: ["令f'(x)=0得x=1/a", "讨论区间(0,e)"],
+  standard_solution_draft:
+    "对f(x)求导，得到f'(x)=1/x-a，再分类讨论。",
+  extraction_confidence: "medium",
+  warnings: [],
+});
+const rawMathParsed = parseVisionExtractionText(rawMathModelText);
+assert.equal(rawMathParsed.ok, true);
+assert.equal(
+  rawMathParsed.value.question_text.includes("$f(x)=\\ln x - ax + 1$"),
+  true,
+);
+assert.equal(rawMathParsed.value.question_text.includes("$(0,e)$"), true);
+assert.equal(rawMathParsed.value.student_answer.includes("$a > 0$"), true);
+assert.equal(
+  rawMathParsed.value.student_solution_steps[0].includes("$f'(x)=0$"),
+  true,
+);
+assert.equal(
+  rawMathParsed.value.standard_solution_draft.includes("$f'(x)=1/x-a$"),
+  true,
+);
+
 const invalidJson = parseVisionExtractionText("```json\n{}\n```");
 assert.equal(invalidJson.ok, false);
 assert.equal(invalidJson.error.code, "model_invalid_output");
@@ -330,6 +357,12 @@ assert.equal(prompt.includes("未识别到学生答案"), true);
 assert.equal(prompt.includes("standard_solution_draft 必须始终输出"), true);
 assert.equal(
   prompt.includes("standard_solution_draft 内的数学公式必须使用 $...$ 或 $$...$$ 包裹"),
+  true,
+);
+assert.equal(
+  prompt.includes(
+    "question_text、student_answer、student_solution_steps、standard_solution_draft 中的数学表达式都必须使用 LaTeX",
+  ),
   true,
 );
 assert.equal(prompt.includes("\\frac{1}{a}"), true);

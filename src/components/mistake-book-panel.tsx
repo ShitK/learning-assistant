@@ -4,6 +4,7 @@ import type {
   MistakeBookItemSummary,
   MistakeBookResponse,
 } from "@/lib/mistake-book-client";
+import { normalizeExtractedMathText } from "@/lib/math-extraction-normalizer";
 
 type MistakeBookPanelStatus = "loading" | "ready" | "error";
 
@@ -192,12 +193,12 @@ function toItemViewModel(
 ): MistakeBookPanelItemViewModel {
   return {
     id: item.id,
-    questionText: truncateText(item.question_text, 56),
+    questionText: truncateText(normalizeExtractedMathText(item.question_text), 56),
     sourceLabel: sourceLabels[item.source],
     severityLabel: severityLabels[item.severity],
     knowledgeLabel: joinOrFallback(item.knowledge_points),
     mistakeCauseLabel: joinOrFallback(item.mistake_causes),
-    summary: truncateText(item.diagnosis_summary, 72),
+    summary: truncateText(normalizeExtractedMathText(item.diagnosis_summary), 72),
     evidenceLabel: getEvidenceLabel(item.persistence_evidence),
     reviewStatusLabel: reviewStatusLabels[item.review_status],
     createdAtLabel: item.created_at.slice(0, 10),
@@ -240,5 +241,34 @@ function truncateText(text: string, maxLength: number): string {
     return normalizedText;
   }
 
-  return `${normalizedText.slice(0, maxLength)}...`;
+  const slicedText = normalizedText.slice(0, maxLength).trimEnd();
+  if (!hasBalancedInlineMathDelimiters(slicedText)) {
+    const lastDelimiterIndex = findLastInlineMathDelimiterIndex(slicedText);
+    if (lastDelimiterIndex > 0) {
+      return `${slicedText.slice(0, lastDelimiterIndex).trimEnd()}...`;
+    }
+  }
+
+  return `${slicedText}...`;
+}
+
+function hasBalancedInlineMathDelimiters(text: string): boolean {
+  return findInlineMathDelimiterIndexes(text).length % 2 === 0;
+}
+
+function findLastInlineMathDelimiterIndex(text: string): number {
+  const indexes = findInlineMathDelimiterIndexes(text);
+  return indexes[indexes.length - 1] ?? -1;
+}
+
+function findInlineMathDelimiterIndexes(text: string): number[] {
+  const indexes: number[] = [];
+
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "$" && text[index - 1] !== "\\") {
+      indexes.push(index);
+    }
+  }
+
+  return indexes;
 }

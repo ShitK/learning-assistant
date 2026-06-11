@@ -156,4 +156,45 @@ assert.equal(longTextPanel.items[0].questionText.endsWith("..."), true);
 assert.equal(longTextPanel.items[0].sourceLabel, "图片诊断");
 assert.equal(longTextPanel.items[0].severityLabel, "中等");
 
+const rawMathPanel = createMistakeBookPanelViewModel({
+  status: "ready",
+  response: {
+    student_id: "demo_student_001",
+    items: [
+      {
+        id: "book_item_002",
+        diagnosis_run_id: "diag_run_002",
+        source: "image",
+        question_text:
+          "已知函数f(x)=lnx - a x + 1。(1)求f(x)的单调区间；(2)已知f(x)在(0,e)上有且仅有两个零点。",
+        knowledge_points: ["derivative_monotonicity"],
+        mistake_causes: ["domain_missing"],
+        severity: "minor",
+        diagnosis_summary: "学生只写出f'(x)=1/x-a，未讨论a > 0。",
+        evidence_level: "problem_only",
+        persistence_evidence: "user_confirmed",
+        profile_update_kind: "mistake_cause",
+        review_status: 0,
+        created_at: "2026-06-11T10:00:00.000Z",
+      },
+    ],
+    is_database_configured: true,
+    warnings: [],
+  },
+  errorMessage: null,
+});
+
+assert.equal(
+  rawMathPanel.items[0].questionText.includes("$f(x)=\\ln x - ax + 1$"),
+  true,
+);
+assert.equal(rawMathPanel.items[0].summary.includes("$f'(x)=1/x-a$"), true);
+assert.equal(hasBalancedInlineMathDelimiters(rawMathPanel.items[0].questionText), true);
+assert.equal(hasBalancedInlineMathDelimiters(rawMathPanel.items[0].summary), true);
+
 console.log("mathtrace workbench UI regression test passed");
+
+function hasBalancedInlineMathDelimiters(text) {
+  const matches = text.match(/(?<!\\)\$/g) ?? [];
+  return matches.length % 2 === 0;
+}
