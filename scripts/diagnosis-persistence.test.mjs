@@ -136,6 +136,30 @@ assert.equal(
   migrationSql.includes("Invalid image diagnosis persistence policy"),
   true,
 );
+assert.equal(
+  migrationSql.includes(
+    "grant select, insert, update on table public.students to service_role",
+  ),
+  true,
+);
+assert.equal(
+  migrationSql.includes(
+    "grant select, insert on table public.diagnosis_runs to service_role",
+  ),
+  true,
+);
+assert.equal(
+  migrationSql.includes(
+    "grant select, insert on table public.mistake_book_items to service_role",
+  ),
+  true,
+);
+assert.equal(
+  migrationSql.includes(
+    "grant select, insert on table public.memory_events to service_role",
+  ),
+  true,
+);
 
 const failedRpcServiceResult = await handleDiagnoseRequest(samplePayload, {
   persistence_repository: failingRpcRepository,
