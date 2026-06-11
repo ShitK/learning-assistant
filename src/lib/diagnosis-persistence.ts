@@ -2,7 +2,6 @@ import {
   createSupabaseAdminClient,
   getSupabaseAdminConfig,
 } from "@/lib/supabase-admin";
-import { createDefaultMistakeBookRepository } from "@/lib/mistake-book-service";
 import type {
   DiagnoseImageSuccessResponse,
   DiagnoseSuccessResponse,
@@ -15,7 +14,6 @@ export const DATABASE_NOT_CONFIGURED_WARNING =
   "数据库暂未配置，本次只返回诊断报告。";
 export const DATABASE_WRITE_FAILED_WARNING =
   "错题本写入失败，本次诊断报告已保留。";
-export const defaultMistakeBookRepository = createDefaultMistakeBookRepository;
 
 export interface DiagnosisPersistencePayload {
   p_student_id: string;

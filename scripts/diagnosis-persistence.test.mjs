@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
@@ -91,6 +92,50 @@ const failingRpcRepository =
 const failedRpcResult = await failingRpcRepository.persistDiagnosis(directPayload);
 
 assert.deepEqual(failedRpcResult, { status: "failed" });
+
+const migrationSql = readFileSync(
+  new URL("../supabase/migrations/20260611000000_p17_mistake_book.sql", import.meta.url),
+  "utf8",
+);
+
+assert.equal(
+  migrationSql.includes(
+    "create or replace function public.persist_mathtrace_diagnosis",
+  ),
+  true,
+);
+assert.equal(
+  migrationSql.includes(
+    "on conflict (student_id, client_diagnosis_id) do nothing",
+  ),
+  true,
+);
+assert.equal(
+  migrationSql.includes(
+    "Existing diagnosis run is missing mistake book item or memory event",
+  ),
+  true,
+);
+assert.equal(
+  migrationSql.includes("Only demo_student_001 is supported in P1.7"),
+  true,
+);
+assert.equal(
+  migrationSql.includes("memory_delta.should_persist must be true"),
+  true,
+);
+assert.equal(
+  migrationSql.includes("profile_update_kind must be persistable"),
+  true,
+);
+assert.equal(
+  migrationSql.includes("Invalid sample diagnosis persistence policy"),
+  true,
+);
+assert.equal(
+  migrationSql.includes("Invalid image diagnosis persistence policy"),
+  true,
+);
 
 const failedRpcServiceResult = await handleDiagnoseRequest(samplePayload, {
   persistence_repository: failingRpcRepository,
