@@ -496,7 +496,7 @@ assert.equal(
     ...draft,
     standard_solution_draft: " ",
   }),
-  false,
+  true,
 );
 
 console.log("diagnosis view model regression test passed");

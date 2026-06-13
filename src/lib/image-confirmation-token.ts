@@ -130,7 +130,6 @@ function canonicalizeExtractionDraft(extraction: VisionExtractionDraft): string 
     student_solution_steps: extraction.student_solution_steps,
     standard_solution_draft: extraction.standard_solution_draft,
     extraction_confidence: extraction.extraction_confidence,
-    warnings: extraction.warnings,
   });
 }
 

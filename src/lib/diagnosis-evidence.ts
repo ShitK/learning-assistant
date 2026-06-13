@@ -56,8 +56,6 @@ export function assessExtractionEvidence(
   extraction: VisionExtractionDraft,
 ): EvidenceAssessment {
   const hasQuestion = extraction.question_text.trim().length > 0;
-  const hasStandardSolution =
-    extraction.standard_solution_draft.trim().length > 0;
   const hasStudentAnswer =
     extraction.student_answer.trim().length > 0 &&
     !isUnrecognizedStudentAnswer(extraction.student_answer);
@@ -81,7 +79,7 @@ export function assessExtractionEvidence(
     };
   }
 
-  if (hasQuestion && hasStandardSolution) {
+  if (hasQuestion) {
     return {
       evidence_level: "problem_only",
       persistence_evidence: "uploaded_problem_only",
@@ -98,7 +96,7 @@ export function assessExtractionEvidence(
     profile_update_kind: "none",
     should_prompt_for_stuck_point: false,
     can_write_mistake_cause: false,
-    rationale: "题干或标准解法信息不足，不能生成可信诊断。",
+    rationale: "题干信息不足，不能生成可信诊断。",
   };
 }
 
@@ -180,6 +178,10 @@ function inferProblemType(questionText: string): string {
 
 function summarizeStandardSolution(standardSolutionDraft: string): string {
   const trimmed = standardSolutionDraft.trim();
+
+  if (trimmed.length === 0) {
+    return "标准解法将在确认后由分析模型生成。";
+  }
 
   if (trimmed.length <= 80) {
     return trimmed;

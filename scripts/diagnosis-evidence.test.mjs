@@ -39,6 +39,24 @@ assert.equal(problemOnly.profile_update_kind, "problem_type_focus");
 assert.equal(problemOnly.can_write_mistake_cause, false);
 assert.equal(problemOnly.should_prompt_for_stuck_point, true);
 
+const problemOnlyWithoutStandardSolutionDraft = assessExtractionEvidence({
+  question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
+  student_answer: "未识别到学生答案",
+  student_solution_steps: [],
+  standard_solution_draft: "",
+  extraction_confidence: "low",
+  warnings: ["没有识别到学生作答区域。"],
+});
+
+assert.equal(
+  problemOnlyWithoutStandardSolutionDraft.evidence_level,
+  "problem_only",
+);
+assert.equal(
+  problemOnlyWithoutStandardSolutionDraft.profile_update_kind,
+  "problem_type_focus",
+);
+
 const insufficient = assessExtractionEvidence({
   question_text: "",
   student_answer: "未识别到学生答案",

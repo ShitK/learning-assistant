@@ -260,9 +260,10 @@ function diagnoseImageMistake(
     solution_highlights: [
       "先补全题目隐含条件和分类讨论前提。",
       "再按知识点逐步检查学生步骤中的遗漏点。",
-      "最后用标准解法草稿对照关键结论。",
+      "标准解法由确认后的文本分析模型生成；未配置时需人工补全。",
     ],
-    standard_solution: extraction.standard_solution_draft,
+    standard_solution:
+      "标准解法将在确认后由文本分析模型生成；当前未生成分析模型结果时，请先根据题干人工补全。",
   };
 }
 

@@ -19,7 +19,10 @@ import {
   joinEditableStepsText,
   splitEditableStepsText,
 } from "@/lib/image-confirmation";
-import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
+import {
+  VISION_STANDARD_SOLUTION_PLACEHOLDER,
+  type VisionExtractionDraft,
+} from "@/lib/vision-extraction-parser";
 
 export interface DiagnosisViewModel {
   source: "sample" | "image";
@@ -159,7 +162,8 @@ export function createEditableExtractionDraft(
       response.recognized_question.student_solution_steps,
     ),
     standard_solution_draft:
-      response.recognized_question.standard_solution_draft,
+      response.recognized_question.standard_solution_draft.trim() ||
+      VISION_STANDARD_SOLUTION_PLACEHOLDER,
     extraction_confidence: response.recognized_question.extraction_confidence,
     warnings: getUserFacingWarnings(response.warnings),
     can_persist_after_confirmation: response.can_persist_after_confirmation,
@@ -173,7 +177,9 @@ export function createVisionExtractionDraftFromEditableDraft(
     question_text: draft.question_text,
     student_answer: draft.student_answer,
     student_solution_steps: splitEditableStepsText(draft.steps_text),
-    standard_solution_draft: draft.standard_solution_draft,
+    standard_solution_draft:
+      draft.standard_solution_draft.trim() ||
+      VISION_STANDARD_SOLUTION_PLACEHOLDER,
     extraction_confidence: draft.extraction_confidence,
     warnings: draft.warnings,
   };
@@ -185,7 +191,6 @@ export function canConfirmEditableExtractionDraft(
   return (
     draft.question_text.trim().length > 0 &&
     draft.student_answer.trim().length > 0 &&
-    draft.standard_solution_draft.trim().length > 0 &&
     splitEditableStepsText(draft.steps_text).length > 0
   );
 }

@@ -55,6 +55,14 @@ assert.equal(
 );
 assert.equal(response.practice_questions.length, 3);
 assert.equal(response.review_plan.seven_days.length, 7);
+assert.equal(
+  response.mistake_diagnosis.standard_solution.includes("未生成分析模型结果"),
+  true,
+);
+assert.equal(
+  response.mistake_diagnosis.standard_solution.includes("未配置分析模型"),
+  false,
+);
 
 const enhancedResponse = runImageMathTraceAgent({
   request,

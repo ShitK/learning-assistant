@@ -12,6 +12,9 @@ export interface VisionExtractionDraft {
   warnings: string[];
 }
 
+export const VISION_STANDARD_SOLUTION_PLACEHOLDER =
+  "标准解法将在确认后由分析模型生成。";
+
 export interface VisionExtractionDebugSummary {
   output_kind: "json_object" | "json_parse_error" | "non_object";
   raw_output_length: number;
@@ -78,12 +81,7 @@ const FORBIDDEN_KEYS = new Set([
   "mistake_cause_changes",
 ]);
 
-export function parseVisionExtractionText(
-  text: string,
-  options?: {
-    allow_missing_solution_defaults?: boolean;
-  },
-): VisionExtractionParseResult {
+export function parseVisionExtractionText(text: string): VisionExtractionParseResult {
   let parsed: unknown;
   const normalizedText = extractJsonObjectText(text) ?? text;
 
@@ -130,23 +128,14 @@ export function parseVisionExtractionText(
   }
 
   const parserWarnings: string[] = [];
-  const canFillMissingSolutionDefaults =
-    options?.allow_missing_solution_defaults === true;
-  if (
-    !canFillMissingSolutionDefaults &&
-    !isNonEmptyString(parsed.standard_solution_draft)
-  ) {
-    return invalidOutput(
-      "模型输出缺少 standard_solution_draft。",
-      debugSummary,
-    );
-  }
 
   const standardSolutionDraft = isNonEmptyString(parsed.standard_solution_draft)
     ? normalizeExtractedMathText(parsed.standard_solution_draft.trim())
-    : createFallbackStandardSolutionDraft(parsed.question_text.trim());
+    : VISION_STANDARD_SOLUTION_PLACEHOLDER;
   if (!isNonEmptyString(parsed.standard_solution_draft)) {
-    parserWarnings.push("模型未返回标准解法草稿，已生成待确认占位内容。");
+    parserWarnings.push(
+      "视觉模型未返回标准解法草稿，确认后将由分析模型生成标准解法。",
+    );
   }
 
   const extractionConfidence = isExtractionConfidence(parsed.extraction_confidence)
@@ -201,10 +190,6 @@ export function parseVisionExtractionText(
       warnings: normalized.warnings,
     },
   };
-}
-
-function createFallbackStandardSolutionDraft(questionText: string): string {
-  return `请根据题干补充标准解法：${questionText}`;
 }
 
 function extractJsonObjectText(text: string): string | null {
@@ -277,18 +262,17 @@ export function createVisionExtractionPrompt(input: {
 }): string {
   return [
     "你是 MathTrace 的图片错题抽取器。",
-    "请只做题目、学生答案、学生解题步骤和标准解法草稿抽取。",
+    "请只做题目、学生答案和学生解题步骤抽取。",
     "只输出一个合法 JSON 对象，不要输出 Markdown、解释文字或代码块。",
-    "JSON 字段必须且只能包含 question_text、student_answer、student_solution_steps、standard_solution_draft、extraction_confidence、warnings。",
-    "standard_solution_draft 必须始终输出；如果图片里没有标准解法，请根据题干生成一份标准解法草稿，不要省略字段。",
-    "question_text、student_answer、student_solution_steps、standard_solution_draft 中的数学表达式都必须使用 LaTeX，并用 $...$ 或 $$...$$ 包裹。",
-    "standard_solution_draft 内的数学公式必须使用 $...$ 或 $$...$$ 包裹；不要输出裸公式，例如把 f'(x)>0 写成 $f'(x)>0$。",
+    "JSON 字段必须且只能包含 question_text、student_answer、student_solution_steps、extraction_confidence、warnings。",
+    "不要生成标准解法、标准答案或完整解题过程；标准解法会在用户确认后由文本分析模型生成。",
+    "question_text、student_answer、student_solution_steps 中的数学表达式都必须使用 LaTeX，并用 $...$ 或 $$...$$ 包裹。",
     "包含 LaTeX 命令的表达式也必须整体包裹，例如把 \\frac{1}{a}、\\ln a、a\\leq 0 写成 $\\frac{1}{a}$、$\\ln a$、$a\\leq 0$。",
     "student_solution_steps 和 warnings 必须输出为字符串数组；没有 warning 时输出空数组 []。",
     "如果没有识别到学生答案，也必须输出 student_answer=\"未识别到学生答案\"，并将 extraction_confidence 设为 \"low\"。",
     "不要输出 memory_delta、student_profile、mistake_history、错因频次或画像更新。",
     "如果图片不清晰或信息不足，请设置 extraction_confidence=\"low\"，并把需要学生确认的点写入 warnings。",
-    'JSON 示例：{"question_text":"...","student_answer":"...","student_solution_steps":["..."],"standard_solution_draft":"...","extraction_confidence":"high","warnings":[]}',
+    'JSON 示例：{"question_text":"...","student_answer":"...","student_solution_steps":["..."],"extraction_confidence":"high","warnings":[]}',
     `学生画像摘要：${input.student_profile_summary}`,
   ].join("\n");
 }

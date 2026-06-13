@@ -431,6 +431,69 @@ assert.deepEqual(
   skipFollowUpResult.body.memory_delta.knowledge_mastery_changes,
 );
 
+const extractionWithTechnicalWarning = {
+  question_text: "已知函数 $f(x)=\\ln x-ax+1$。",
+  student_answer: "未识别到学生答案",
+  student_solution_steps: ["模型未识别到学生答案或具体解题步骤。"],
+  standard_solution_draft: "标准解法将在确认后由分析模型生成。",
+  extraction_confidence: "low",
+  warnings: [
+    "视觉模型未返回标准解法草稿，确认后将由分析模型生成标准解法。",
+    "未识别到清晰学生作答区域，请确认图片中包含学生答案或解题痕迹。",
+  ],
+};
+const tokenWithTechnicalWarning = createImageConfirmationToken({
+  draft_id: "image_draft_warning_filter",
+  extraction_confidence: "low",
+  can_persist_after_confirmation: false,
+  draft_fingerprint: createImageConfirmationFingerprint(
+    extractionWithTechnicalWarning,
+  ),
+});
+let warningFilteredAnalysisCallCount = 0;
+const warningFilteredResult = await handleConfirmRequest(
+  {
+    student_id: "demo_student_001",
+    task_type: "confirmed_image_diagnosis",
+    confirmation_token: tokenWithTechnicalWarning,
+    confirmation_action: "skip_follow_up",
+    confirmed_extraction: {
+      ...extractionWithTechnicalWarning,
+      warnings: [
+        "未识别到清晰学生作答区域，请确认图片中包含学生答案或解题痕迹。",
+      ],
+    },
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  },
+  {
+    analysis_provider: {
+      async analyzeConfirmedExtraction() {
+        warningFilteredAnalysisCallCount += 1;
+
+        return {
+          ok: true,
+          value: {
+            expected_diagnosis: "DeepSeek 已基于确认题干生成分析。",
+            step_analysis: ["DeepSeek 步骤"],
+            solution_highlights: ["DeepSeek 高亮"],
+            standard_solution: "DeepSeek 标准解法。",
+            warnings: [],
+          },
+        };
+      },
+    },
+  },
+);
+assert.equal(warningFilteredResult.status, 200);
+assert.equal(warningFilteredAnalysisCallCount, 1);
+assert.equal(
+  warningFilteredResult.body.warnings.includes(
+    "确认草稿与识别令牌不匹配，本次只生成报告，不写入长期画像。",
+  ),
+  false,
+);
+
 const mismatchedProblemOnlyToken = createImageConfirmationToken({
   draft_id: "image_draft_problem_only_mismatch",
   extraction_confidence: "low",

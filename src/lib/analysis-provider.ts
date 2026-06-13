@@ -275,7 +275,8 @@ function buildOpenAiRequestBody(
 function buildAnalysisSystemPrompt(): string {
   return [
     "你是高中数学错题诊断文本分析助手。",
-    "你只能基于用户已确认的题干、学生答案、学生步骤和标准解法草稿，增强报告表达。",
+    "你只能基于用户已确认的题干、学生答案和学生步骤增强报告表达。",
+    "你需要独立生成 standard_solution，不要依赖图片识别阶段的标准解法草稿。",
     "必须输出严格 json 对象，不要输出 markdown 解释文字。",
     "JSON 字段必须且只能包含 expected_diagnosis、step_analysis、solution_highlights、standard_solution、warnings。",
     "step_analysis、solution_highlights、warnings 必须是字符串数组。",
@@ -295,7 +296,7 @@ function buildAnalysisUserPrompt(
     `题干：${extraction.question_text}`,
     `学生答案：${extraction.student_answer}`,
     `学生步骤：${extraction.student_solution_steps.join("；")}`,
-    `标准解法草稿：${extraction.standard_solution_draft}`,
+    "标准解法要求：请根据确认后的题干、学生答案和学生步骤独立生成完整标准解法。",
     `识别置信度：${extraction.extraction_confidence}`,
     `已有提醒：${extraction.warnings.join("；") || "无"}`,
   ];

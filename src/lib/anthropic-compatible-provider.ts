@@ -187,9 +187,7 @@ export function createVisionProvider(
       };
     }
 
-    const parsed = parseVisionExtractionText(outputText, {
-      allow_missing_solution_defaults: Boolean(context.repair),
-    });
+    const parsed = parseVisionExtractionText(outputText);
     if (!parsed.ok) {
       return {
         ok: false,

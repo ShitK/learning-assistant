@@ -858,10 +858,7 @@ function MistakeInputCard({
       : createEditableDraftRiskFollowUp(editableExtractionDraft);
 
   function handleEditableDraftChange(
-    field:
-      | "question_text"
-      | "steps_text"
-      | "standard_solution_draft",
+    field: "question_text" | "steps_text",
     event: ChangeEvent<HTMLTextAreaElement>,
   ): void {
     if (editableExtractionDraft === null) {
@@ -1012,23 +1009,6 @@ function MistakeInputCard({
                   />
                 </label>
 
-                <label className="grid gap-1.5">
-                  <span className="text-xs font-semibold text-[var(--mocha)]">
-                    标准解法草稿
-                  </span>
-                  <textarea
-                    value={editableExtractionDraft.standard_solution_draft}
-                    rows={4}
-                    disabled={isDiagnosing || isImagePreparing}
-                    onChange={(event) =>
-                      handleEditableDraftChange(
-                        "standard_solution_draft",
-                        event,
-                      )
-                    }
-                    className="min-h-24 resize-y rounded-[16px] border border-[var(--light-gray)] bg-white px-3 py-2 text-sm leading-6 text-[var(--charcoal)] outline-none focus:border-[var(--mocha)] disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-                </label>
               </div>
 
               {riskFollowUp ? (
@@ -1232,7 +1212,6 @@ function createEditableDraftRiskFollowUp(
   draft: EditableExtractionDraft,
 ): ProblemRiskFollowUp | null {
   const questionText = draft.question_text.trim();
-  const standardSolution = draft.standard_solution_draft.trim();
   const hasRecognizedStudentAnswer =
     draft.student_answer.trim().length > 0 &&
     !isUnrecognizedStudentAnswer(draft.student_answer);
@@ -1240,7 +1219,6 @@ function createEditableDraftRiskFollowUp(
 
   if (
     questionText.length === 0 ||
-    standardSolution.length === 0 ||
     (hasRecognizedStudentAnswer &&
       hasStudentSteps &&
       draft.extraction_confidence !== "low")
@@ -1248,7 +1226,7 @@ function createEditableDraftRiskFollowUp(
     return null;
   }
 
-  const text = `${questionText}\n${standardSolution}`;
+  const text = questionText;
   const knowledgeIds = inferDraftKnowledgeIds(text);
 
   return {
@@ -1276,10 +1254,7 @@ function createEditableDraftRiskFollowUp(
         related_mistake_cause: "method_error",
       },
     ],
-    standard_solution_summary:
-      standardSolution.length > 80
-        ? `${standardSolution.slice(0, 80)}...`
-        : standardSolution,
+    standard_solution_summary: "标准解法将在确认后由分析模型生成。",
     prompt: "你主要卡在哪里？",
   };
 }

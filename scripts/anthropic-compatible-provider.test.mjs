@@ -345,17 +345,11 @@ const retryResult = await retryProvider.extractQuestionFromImage({
   student_profile_summary: "demo profile",
 });
 assert.equal(retryResult.ok, true);
-assert.equal(retryResult.value.standard_solution_draft, "补齐后的标准解法草稿");
-assert.equal(retryCalls.length, 2);
-const retryRequestBody = JSON.parse(retryCalls[1].init.body);
 assert.equal(
-  retryRequestBody.messages[0].content[0].text.includes("上一次模型输出未通过校验"),
-  true,
+  retryResult.value.standard_solution_draft,
+  "标准解法将在确认后由分析模型生成。",
 );
-assert.equal(
-  retryRequestBody.messages[0].content[0].text.includes("secret-key-for-test"),
-  false,
-);
+assert.equal(retryCalls.length, 1);
 
 const retryWithForbiddenTextValueCalls = [];
 const retryWithForbiddenTextValueProvider =
@@ -415,7 +409,7 @@ const retryWithForbiddenTextValueResult =
     student_profile_summary: "demo profile",
   });
 assert.equal(retryWithForbiddenTextValueResult.ok, true);
-assert.equal(retryWithForbiddenTextValueCalls.length, 2);
+assert.equal(retryWithForbiddenTextValueCalls.length, 1);
 
 const forbiddenRetryCalls = [];
 const forbiddenRetryProvider = createAnthropicCompatibleVisionProvider({

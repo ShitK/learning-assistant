@@ -211,6 +211,20 @@ assert.equal(
   requests[0].body.messages[0].content.includes("\\ln a"),
   true,
 );
+assert.equal(
+  requests[0].body.messages[0].content.includes("独立生成 standard_solution"),
+  true,
+);
+assert.equal(
+  requests[0].body.messages[1].content.includes("标准解法草稿："),
+  false,
+);
+assert.equal(
+  requests[0].body.messages[1].content.includes(
+    "请根据确认后的题干、学生答案和学生步骤独立生成完整标准解法",
+  ),
+  true,
+);
 
 const endpointRequests = [];
 const endpointProvider = createAnalysisProvider({

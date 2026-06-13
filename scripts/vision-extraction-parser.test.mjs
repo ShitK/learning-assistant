@@ -6,6 +6,7 @@ const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 const {
   parseVisionExtractionText,
   createVisionExtractionPrompt,
+  VISION_STANDARD_SOLUTION_PLACEHOLDER,
 } = jiti("../src/lib/vision-extraction-parser.ts");
 
 const validModelText = JSON.stringify({
@@ -121,16 +122,15 @@ const missingStandardSolutionDraft = parseVisionExtractionText(
     student_answer: "答案",
     student_solution_steps: ["步骤"],
   }),
-  { allow_missing_solution_defaults: true },
 );
 assert.equal(missingStandardSolutionDraft.ok, true);
 assert.equal(
   missingStandardSolutionDraft.value.standard_solution_draft,
-  "请根据题干补充标准解法：题干",
+  VISION_STANDARD_SOLUTION_PLACEHOLDER,
 );
 assert.equal(missingStandardSolutionDraft.value.extraction_confidence, "low");
 assert.deepEqual(missingStandardSolutionDraft.value.warnings, [
-  "模型未返回标准解法草稿，已生成待确认占位内容。",
+  "视觉模型未返回标准解法草稿，确认后将由分析模型生成标准解法。",
   "模型未返回置信度，已按低置信度处理。",
   "模型返回的 warnings 格式不完整，已忽略。",
 ]);
@@ -354,17 +354,19 @@ const prompt = createVisionExtractionPrompt({
 assert.equal(prompt.includes("不要输出 memory_delta"), true);
 assert.equal(prompt.includes("合法 JSON"), true);
 assert.equal(prompt.includes("未识别到学生答案"), true);
-assert.equal(prompt.includes("standard_solution_draft 必须始终输出"), true);
 assert.equal(
-  prompt.includes("standard_solution_draft 内的数学公式必须使用 $...$ 或 $$...$$ 包裹"),
+  prompt.includes("不要生成标准解法、标准答案或完整解题过程"),
   true,
 );
 assert.equal(
   prompt.includes(
-    "question_text、student_answer、student_solution_steps、standard_solution_draft 中的数学表达式都必须使用 LaTeX",
+    "question_text、student_answer、student_solution_steps 中的数学表达式都必须使用 LaTeX",
   ),
   true,
 );
+assert.equal(prompt.includes("standard_solution_draft 必须始终输出"), false);
+assert.equal(prompt.includes("standard_solution_draft 内的数学公式"), false);
+assert.equal(prompt.includes('"standard_solution_draft"'), false);
 assert.equal(prompt.includes("\\frac{1}{a}"), true);
 assert.equal(prompt.includes("\\ln a"), true);
 
