@@ -2,83 +2,121 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createJiti } from "jiti";
 
+function stripComments(sourceText) {
+  return sourceText
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+}
+
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true, jsx: true });
-const source = await readFile("src/components/mathtrace-workbench.tsx", "utf8");
-const panelSource = await readFile("src/components/mistake-book-panel.tsx", "utf8");
-const globalStyles = await readFile("src/app/globals.css", "utf8");
+const source = stripComments(
+  await readFile("src/components/mathtrace-workbench.tsx", "utf8"),
+);
+const panelSource = stripComments(
+  await readFile("src/components/mistake-book-panel.tsx", "utf8"),
+);
+const globalStyles = stripComments(await readFile("src/app/globals.css", "utf8"));
+const workbenchStructureSources = Object.fromEntries(
+  await Promise.all(
+    [
+      "agent-timeline.tsx",
+      "diagnosis-result-card.tsx",
+      "header-bar.tsx",
+      "mistake-input-card.tsx",
+      "practice-lab.tsx",
+      "profile-insights.tsx",
+      "review-path.tsx",
+      "risk-follow-up-panel.tsx",
+      "section-header.tsx",
+      "standard-solution-content.tsx",
+      "tag.tsx",
+      "workbench-labels.ts",
+      "workbench-types.ts",
+    ].map(async (fileName) => [
+      fileName,
+      stripComments(
+        await readFile(`src/components/workbench/${fileName}`, "utf8"),
+      ),
+    ]),
+  ),
+);
+const workbenchUiSource = [
+  source,
+  ...Object.values(workbenchStructureSources),
+].join("\n");
 const {
   confirmMistakeBookItemDeletion,
   createMistakeBookPanelViewModel,
 } = jiti("../src/components/mistake-book-panel.tsx");
 
 assert.equal(
-  source.includes("错误发生步骤"),
+  workbenchUiSource.includes("错误发生步骤"),
   false,
   "分析结果 UI 不应再展示“错误发生步骤”模块。",
 );
 
 assert.equal(
-  source.includes("学生答案与偏离点"),
+  workbenchUiSource.includes("学生答案与偏离点"),
   false,
   "分析结果 UI 不应再展示“学生答案与偏离点”模块。",
 );
 
 assert.equal(
-  source.includes("学生答案"),
+  workbenchUiSource.includes("学生答案"),
   false,
   "识别结果确认 UI 不应再展示“学生答案”输入框。",
 );
 
 assert.equal(
-  source.includes("学生解题步骤"),
+  workbenchUiSource.includes("学生解题步骤"),
   true,
   "识别结果确认 UI 应将“解题步骤”改为“学生解题步骤”。",
 );
 
 assert.equal(
-  source.includes("标准解法草稿"),
+  workbenchUiSource.includes("标准解法草稿"),
   false,
   "识别结果确认 UI 不应再展示视觉模型生成的标准解法草稿。",
 );
 
 assert.equal(
-  source.includes("解题步骤"),
+  workbenchUiSource.includes("解题步骤"),
   true,
   "识别结果确认 UI 仍应保留学生步骤输入能力。",
 );
 
 assert.equal(
-  source.includes("diagnosis conclusion"),
+  workbenchUiSource.includes("diagnosis conclusion"),
   false,
   "分析结果 UI 不应再展示偏离点结论卡片。",
 );
 
 assert.match(
-  source,
+  workbenchUiSource,
   /riskFollowUp \? null : \(/,
   "低证据追问模式下不应展示外层“确认生成报告”按钮。",
 );
 
 assert.equal(
-  source.includes("请在右侧核对"),
+  workbenchUiSource.includes("请在右侧核对"),
   false,
   "追问模式提示不应要求用户去右侧核对。",
 );
 
 assert.match(
-  source,
+  workbenchUiSource,
   /pendingFollowUpAnswer \? "确认写入画像" : "生成分析草稿"/,
   "追问卡片应使用同一个主按钮在“生成分析草稿”和“确认写入画像”之间切换。",
 );
 
 assert.equal(
-  source.includes("@supabase/supabase-js"),
+  workbenchUiSource.includes("@supabase/supabase-js"),
   false,
   "工作台客户端组件不能 import Supabase 浏览器客户端。",
 );
 
 assert.equal(
-  source.includes("SUPABASE_SERVICE_ROLE_KEY"),
+  workbenchUiSource.includes("SUPABASE_SERVICE_ROLE_KEY"),
   false,
   "工作台客户端组件不能读取 Supabase service role key。",
 );
@@ -146,7 +184,7 @@ assert.equal(
   "图片确认写入成功后应重新读取错题本，避免页面停留在旧列表。",
 );
 assert.equal(
-  source.includes("diagnosis.warnings"),
+  workbenchUiSource.includes("diagnosis.warnings"),
   true,
   "诊断响应中的用户可见提示应展示在报告顶部。",
 );
@@ -170,6 +208,101 @@ assert.equal(
   false,
   "工作台不应硬编码重复错题提示文案，避免与服务端常量漂移。",
 );
+
+assert.equal(
+  source.split("\n").length <= 950,
+  true,
+  "MathTraceWorkbench 主容器应保持在 950 行以内，交互组件应拆到 workbench 子组件。",
+);
+
+for (const { fileName, exportName, pattern } of [
+  {
+    fileName: "agent-timeline.tsx",
+    exportName: "AgentTimeline",
+    pattern: /^export\s+function\s+AgentTimeline\b/m,
+  },
+  {
+    fileName: "diagnosis-result-card.tsx",
+    exportName: "DiagnosisResultCard",
+    pattern: /^export\s+function\s+DiagnosisResultCard\b/m,
+  },
+  {
+    fileName: "header-bar.tsx",
+    exportName: "HeaderBar",
+    pattern: /^export\s+function\s+HeaderBar\b/m,
+  },
+  {
+    fileName: "mistake-input-card.tsx",
+    exportName: "MistakeInputCard",
+    pattern: /^export\s+function\s+MistakeInputCard\b/m,
+  },
+  {
+    fileName: "practice-lab.tsx",
+    exportName: "PracticeLab",
+    pattern: /^export\s+function\s+PracticeLab\b/m,
+  },
+  {
+    fileName: "profile-insights.tsx",
+    exportName: "ProfileInsights",
+    pattern: /^export\s+function\s+ProfileInsights\b/m,
+  },
+  {
+    fileName: "review-path.tsx",
+    exportName: "ReviewPath",
+    pattern: /^export\s+function\s+ReviewPath\b/m,
+  },
+  {
+    fileName: "risk-follow-up-panel.tsx",
+    exportName: "RiskFollowUpPanel",
+    pattern: /^export\s+function\s+RiskFollowUpPanel\b/m,
+  },
+  {
+    fileName: "risk-follow-up-panel.tsx",
+    exportName: "createEditableDraftRiskFollowUp",
+    pattern: /^export\s+function\s+createEditableDraftRiskFollowUp\b/m,
+  },
+  {
+    fileName: "section-header.tsx",
+    exportName: "SectionHeader",
+    pattern: /^export\s+function\s+SectionHeader\b/m,
+  },
+  {
+    fileName: "standard-solution-content.tsx",
+    exportName: "StandardSolutionContent",
+    pattern: /^export\s+function\s+StandardSolutionContent\b/m,
+  },
+  {
+    fileName: "tag.tsx",
+    exportName: "Tag",
+    pattern: /^export\s+function\s+Tag\b/m,
+  },
+  {
+    fileName: "workbench-labels.ts",
+    exportName: "practiceLevelLabels",
+    pattern: /^export\s+const\s+practiceLevelLabels\b/m,
+  },
+  {
+    fileName: "workbench-types.ts",
+    exportName: "DiagnosisMode",
+    pattern: /^export\s+type\s+DiagnosisMode\b/m,
+  },
+  {
+    fileName: "workbench-types.ts",
+    exportName: "ProfilePreview",
+    pattern: /^export\s+interface\s+ProfilePreview\b/m,
+  },
+  {
+    fileName: "workbench-types.ts",
+    exportName: "ConfirmedDiagnosisOptions",
+    pattern: /^export\s+interface\s+ConfirmedDiagnosisOptions\b/m,
+  },
+]) {
+  assert.match(
+    workbenchStructureSources[fileName],
+    pattern,
+    `${fileName} 应导出 ${exportName} named export。`,
+  );
+}
 
 let confirmMessage = null;
 const didCancelDeletion = confirmMistakeBookItemDeletion({
