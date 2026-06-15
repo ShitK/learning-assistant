@@ -7,7 +7,7 @@ const {
   assessExtractionEvidence,
   createProblemRiskFollowUp,
   parseFollowUpAnswer,
-} = jiti("../src/lib/diagnosis/diagnosis-evidence.ts");
+} = jiti("../src/lib/shared/diagnosis-evidence.ts");
 
 const sufficient = assessExtractionEvidence({
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",

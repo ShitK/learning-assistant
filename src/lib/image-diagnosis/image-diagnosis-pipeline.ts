@@ -7,11 +7,11 @@ import {
 import {
   applyMemoryDeltaToProfile,
   isStudentProfile,
-} from "@/lib/diagnosis/mathtrace-agent-pipeline";
+} from "@/lib/shared/student-profile";
 import {
   assessExtractionEvidence,
   createProblemRiskFollowUp,
-} from "@/lib/diagnosis/diagnosis-evidence";
+} from "@/lib/shared/diagnosis-evidence";
 import { isRecord } from "@/lib/shared/utils";
 import type {
   AgentStep,
@@ -30,7 +30,7 @@ import type {
   ConfirmationAction,
   EvidenceAssessment,
   FollowUpAnswerDraft,
-} from "@/lib/diagnosis/diagnosis-evidence";
+} from "@/lib/shared/diagnosis-evidence";
 import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
 
 const IMAGE_AGENT_STEPS: AgentStep[] = [

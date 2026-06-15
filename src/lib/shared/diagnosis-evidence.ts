@@ -1,4 +1,15 @@
+import type {
+  ConfirmationAction,
+  FollowUpAnswerDraft,
+  FollowUpAnswerParseResult,
+} from "@/lib/shared/confirmation-types";
 import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
+
+export type {
+  ConfirmationAction,
+  FollowUpAnswerDraft,
+  FollowUpAnswerParseResult,
+} from "@/lib/shared/confirmation-types";
 
 export type EvidenceLevel =
   | "student_work_sufficient"
@@ -15,12 +26,6 @@ export type ProfileUpdateKind =
   | "mistake_cause"
   | "problem_type_focus"
   | "none";
-
-export type ConfirmationAction =
-  | "diagnose_from_student_work"
-  | "skip_follow_up"
-  | "submit_stuck_point"
-  | "confirm_stuck_point_analysis";
 
 export interface EvidenceAssessment {
   evidence_level: EvidenceLevel;
@@ -42,15 +47,6 @@ export interface ProblemRiskFollowUp {
   standard_solution_summary: string;
   prompt: string;
 }
-
-export interface FollowUpAnswerDraft {
-  selected_stuck_point_id: string | null;
-  custom_text: string | null;
-}
-
-export type FollowUpAnswerParseResult =
-  | { ok: true; value: FollowUpAnswerDraft }
-  | { ok: false; message: string };
 
 export function assessExtractionEvidence(
   extraction: VisionExtractionDraft,

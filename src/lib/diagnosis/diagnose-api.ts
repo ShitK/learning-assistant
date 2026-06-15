@@ -6,7 +6,7 @@ import type {
   PersistenceEvidence,
   ProblemRiskFollowUp,
   ProfileUpdateKind,
-} from "@/lib/diagnosis/diagnosis-evidence";
+} from "@/lib/shared/diagnosis-evidence";
 import type {
   AgentStep,
   MemoryDelta,
@@ -27,7 +27,7 @@ export type {
   PersistenceEvidence,
   ProblemRiskFollowUp,
   ProfileUpdateKind,
-} from "@/lib/diagnosis/diagnosis-evidence";
+} from "@/lib/shared/diagnosis-evidence";
 export type { DiagnoseErrorCode } from "@/lib/shared/diagnose-error";
 
 export type DiagnoseTaskType = "sample_diagnosis" | "image_diagnosis";

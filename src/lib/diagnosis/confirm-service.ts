@@ -6,7 +6,7 @@ import { createDiagnoseError } from "@/lib/diagnosis/diagnose-api";
 import {
   assessExtractionEvidence,
   parseFollowUpAnswer,
-} from "@/lib/diagnosis/diagnosis-evidence";
+} from "@/lib/shared/diagnosis-evidence";
 import { parseConfirmedExtractionDraft } from "@/lib/image-diagnosis/image-confirmation";
 import {
   createImageConfirmationFingerprint,
@@ -24,7 +24,7 @@ import type {
 import type {
   ConfirmationAction,
   FollowUpAnswerDraft,
-} from "@/lib/diagnosis/diagnosis-evidence";
+} from "@/lib/shared/diagnosis-evidence";
 import type { DiagnoseServiceResult } from "@/lib/diagnosis/diagnose-service";
 import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
 
