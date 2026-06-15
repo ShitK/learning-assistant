@@ -331,6 +331,28 @@ const domainBoundaryRules = [
     message:
       "image-diagnosis must not import diagnosis; move shared types/rules/helpers into shared modules.",
   },
+  {
+    from_dir: "src/lib/shared/",
+    forbidden_dirs: [
+      "src/lib/diagnosis/",
+      "src/lib/image-diagnosis/",
+      "src/lib/providers/",
+    ],
+    runtime_only: false,
+    message:
+      "shared must stay domain-neutral and must not import diagnosis, image-diagnosis, or provider modules.",
+  },
+  {
+    from_dir: "src/lib/vision-extraction/",
+    forbidden_dirs: [
+      "src/lib/diagnosis/",
+      "src/lib/image-diagnosis/",
+      "src/lib/providers/",
+    ],
+    runtime_only: false,
+    message:
+      "vision-extraction must stay neutral and must not import diagnosis, image-diagnosis, or provider modules.",
+  },
 ];
 
 for (const rule of domainBoundaryRules) {
