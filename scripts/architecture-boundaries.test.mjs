@@ -312,21 +312,21 @@ for (const filePath of clientReachableFiles) {
 const domainBoundaryRules = [
   {
     from_dir: "src/lib/providers/",
-    forbidden_prefixes: ["@/lib/diagnosis/", "@/lib/image-diagnosis/"],
+    forbidden_dirs: ["src/lib/diagnosis/", "src/lib/image-diagnosis/"],
     runtime_only: false,
     message:
       "providers must depend only on shared contracts, not diagnosis or image-diagnosis domains.",
   },
   {
     from_dir: "src/lib/image-diagnosis/",
-    forbidden_prefixes: ["@/lib/providers/"],
+    forbidden_dirs: ["src/lib/providers/"],
     runtime_only: false,
     message:
       "image-diagnosis must depend on shared provider result types, not provider implementations.",
   },
   {
     from_dir: "src/lib/image-diagnosis/",
-    forbidden_prefixes: ["@/lib/diagnosis/"],
+    forbidden_dirs: ["src/lib/diagnosis/"],
     runtime_only: true,
     message:
       "image-diagnosis must not runtime-import diagnosis; move shared rules/helpers into shared modules.",
@@ -341,9 +341,20 @@ for (const rule of domainBoundaryRules) {
     const importSources = rule.runtime_only
       ? getRuntimeImportSources(source, filePath)
       : getImportSources(source, filePath);
-    const forbiddenImports = importSources.filter((importSource) =>
-      rule.forbidden_prefixes.some((prefix) => importSource.startsWith(prefix)),
-    );
+    const forbiddenImports = importSources
+      .map((importSource) => ({
+        importSource,
+        resolvedFile: resolveSourceFile(importSource, filePath),
+      }))
+      .filter(
+        ({ resolvedFile }) =>
+          resolvedFile &&
+          rule.forbidden_dirs.some((dir) => resolvedFile.startsWith(dir)),
+      )
+      .map(
+        ({ importSource, resolvedFile }) =>
+          `${importSource} -> ${resolvedFile}`,
+      );
 
     assert.deepEqual(
       forbiddenImports,
