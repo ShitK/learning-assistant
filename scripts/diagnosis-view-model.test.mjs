@@ -20,7 +20,7 @@ const {
   createStandardSolutionDisplayText,
   createStandardSolutionBlocks,
   createVisionExtractionDraftFromEditableDraft,
-} = jiti("../src/lib/diagnosis-view-model.ts");
+} = jiti("../src/lib/diagnosis/diagnosis-view-model.ts");
 
 const sample = sampleDiagnoses[0];
 const sampleView = createSampleDiagnosisViewModel(sample);

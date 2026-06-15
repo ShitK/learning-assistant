@@ -23,18 +23,18 @@ import {
   clearStoredStudentProfile,
   readStoredStudentProfile,
   writeStoredStudentProfile,
-} from "@/lib/demo-state";
+} from "@/lib/demo/demo-state";
 import {
   requestConfirmedImageDiagnosis,
   requestImageExtractionReview,
   requestSampleDiagnosis,
   shouldPersistDiagnoseProfile,
-} from "@/lib/diagnose-client";
+} from "@/lib/diagnosis/diagnose-client";
 import {
   deleteMistakeBookItem,
   requestMistakeBookItems,
-} from "@/lib/mistake-book-client";
-import { DUPLICATE_MISTAKE_BOOK_ITEM_WARNING } from "@/lib/persistence-warnings";
+} from "@/lib/mistake-book/mistake-book-client";
+import { DUPLICATE_MISTAKE_BOOK_ITEM_WARNING } from "@/lib/shared/persistence-warnings";
 import {
   canConfirmEditableExtractionDraft,
   createAgentTimelineStatusLabel,
@@ -48,8 +48,8 @@ import {
   createStandardSolutionBlocks,
   createStandardSolutionDisplayText,
   createVisionExtractionDraftFromEditableDraft,
-} from "@/lib/diagnosis-view-model";
-import { parseConfirmedExtractionDraft } from "@/lib/image-confirmation";
+} from "@/lib/diagnosis/diagnosis-view-model";
+import { parseConfirmedExtractionDraft } from "@/lib/image-diagnosis/image-confirmation";
 import type {
   AgentStep,
   KnowledgePoint,
@@ -63,15 +63,15 @@ import type {
   DiagnosisViewModel,
   EditableExtractionDraft,
   StandardSolutionBlock,
-} from "@/lib/diagnosis-view-model";
+} from "@/lib/diagnosis/diagnosis-view-model";
 import type {
   ConfirmationAction,
   FollowUpAnswerDraft,
   ProblemRiskFollowUp,
-} from "@/lib/diagnose-api";
-import type { MistakeBookResponse } from "@/lib/mistake-book-client";
-import type { PreparedImageUpload } from "@/lib/image-upload-client";
-import { clampScore } from "@/lib/utils";
+} from "@/lib/diagnosis/diagnose-api";
+import type { MistakeBookResponse } from "@/lib/mistake-book/mistake-book-client";
+import type { PreparedImageUpload } from "@/lib/image-diagnosis/image-upload-client";
+import { clampScore } from "@/lib/shared/utils";
 
 const DEFAULT_SAMPLE_ID: SampleQuestionId = "sample_derivative_001";
 

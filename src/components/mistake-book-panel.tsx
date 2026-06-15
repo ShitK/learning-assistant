@@ -3,8 +3,8 @@ import { MathText } from "@/components/math-text";
 import type {
   MistakeBookItemSummary,
   MistakeBookResponse,
-} from "@/lib/mistake-book-client";
-import { normalizeExtractedMathText } from "@/lib/math-extraction-normalizer";
+} from "@/lib/mistake-book/mistake-book-client";
+import { normalizeExtractedMathText } from "@/lib/math/math-extraction-normalizer";
 
 type MistakeBookPanelStatus = "loading" | "ready" | "error";
 

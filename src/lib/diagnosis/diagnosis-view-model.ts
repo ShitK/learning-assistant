@@ -14,15 +14,15 @@ import type {
   PersistenceEvidence,
   ProblemRiskFollowUp,
   ProfileUpdateKind,
-} from "@/lib/diagnose-api";
+} from "@/lib/diagnosis/diagnose-api";
 import {
   joinEditableStepsText,
   splitEditableStepsText,
-} from "@/lib/image-confirmation";
+} from "@/lib/image-diagnosis/image-confirmation";
 import {
   VISION_STANDARD_SOLUTION_PLACEHOLDER,
   type VisionExtractionDraft,
-} from "@/lib/vision-extraction-parser";
+} from "@/lib/image-diagnosis/vision-extraction-parser";
 
 export interface DiagnosisViewModel {
   source: "sample" | "image";

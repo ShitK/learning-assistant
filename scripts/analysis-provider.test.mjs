@@ -7,7 +7,7 @@ const {
   createAnalysisProvider,
   createAnalysisProviderConfigFromEnv,
   parseAnalysisProviderOutput,
-} = jiti("../src/lib/analysis-provider.ts");
+} = jiti("../src/lib/providers/analysis-provider.ts");
 
 const missingConfig = createAnalysisProviderConfigFromEnv({});
 assert.equal(missingConfig.ok, false);

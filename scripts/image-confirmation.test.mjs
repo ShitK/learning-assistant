@@ -3,20 +3,20 @@ import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 
-const { handleDiagnoseRequest } = jiti("../src/lib/diagnose-service.ts");
-const { handleConfirmRequest } = jiti("../src/lib/confirm-service.ts");
+const { handleDiagnoseRequest } = jiti("../src/lib/diagnosis/diagnose-service.ts");
+const { handleConfirmRequest } = jiti("../src/lib/diagnosis/confirm-service.ts");
 const { POST: confirmRoutePost } = jiti("../src/app/api/confirm/route.ts");
 const { isDiagnoseImageExtractionResponse } = jiti(
-  "../src/lib/diagnose-api.ts",
+  "../src/lib/diagnosis/diagnose-api.ts",
 );
 const { parseConfirmedExtractionDraft } = jiti(
-  "../src/lib/image-confirmation.ts",
+  "../src/lib/image-diagnosis/image-confirmation.ts",
 );
 const {
   createImageConfirmationFingerprint,
   createImageConfirmationToken,
   verifyImageConfirmationToken,
-} = jiti("../src/lib/image-confirmation-token.ts");
+} = jiti("../src/lib/image-diagnosis/image-confirmation-token.ts");
 const { demoStudentProfile } = jiti("../src/data/mathtrace-demo.ts");
 
 const provider = {

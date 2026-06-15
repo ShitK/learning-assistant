@@ -1,10 +1,10 @@
-import { isRecord } from "@/lib/utils";
-import type { DiagnoseErrorCode } from "@/lib/diagnose-api";
+import { isRecord } from "@/lib/shared/utils";
+import type { DiagnoseErrorCode } from "@/lib/diagnosis/diagnose-api";
 import type {
   ConfirmationAction,
   FollowUpAnswerDraft,
-} from "@/lib/diagnosis-evidence";
-import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
+} from "@/lib/diagnosis/diagnosis-evidence";
+import type { VisionExtractionDraft } from "@/lib/image-diagnosis/vision-extraction-parser";
 
 export interface AnalysisProviderConfig {
   protocol: "openai";

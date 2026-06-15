@@ -12,7 +12,7 @@ const {
   readStoredStudentProfile,
   writeStoredStudentProfile,
   clearStoredStudentProfile,
-} = jiti("../src/lib/demo-state.ts");
+} = jiti("../src/lib/demo/demo-state.ts");
 
 const updatedProfile = {
   ...demoStudentProfile,

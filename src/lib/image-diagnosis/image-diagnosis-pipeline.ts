@@ -7,12 +7,12 @@ import {
 import {
   applyMemoryDeltaToProfile,
   isStudentProfile,
-} from "@/lib/mathtrace-agent-pipeline";
+} from "@/lib/diagnosis/mathtrace-agent-pipeline";
 import {
   assessExtractionEvidence,
   createProblemRiskFollowUp,
-} from "@/lib/diagnosis-evidence";
-import { isRecord } from "@/lib/utils";
+} from "@/lib/diagnosis/diagnosis-evidence";
+import { isRecord } from "@/lib/shared/utils";
 import type {
   AgentStep,
   MemoryDelta,
@@ -24,14 +24,14 @@ import type {
   ImageRecognizedQuestion,
   KnowledgeMapping,
   MistakeDiagnosis,
-} from "@/lib/diagnose-api";
-import type { AnalysisEnhancementDraft } from "@/lib/analysis-provider";
+} from "@/lib/diagnosis/diagnose-api";
+import type { AnalysisEnhancementDraft } from "@/lib/providers/analysis-provider";
 import type {
   ConfirmationAction,
   EvidenceAssessment,
   FollowUpAnswerDraft,
-} from "@/lib/diagnosis-evidence";
-import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
+} from "@/lib/diagnosis/diagnosis-evidence";
+import type { VisionExtractionDraft } from "@/lib/image-diagnosis/vision-extraction-parser";
 
 const IMAGE_AGENT_STEPS: AgentStep[] = [
   {

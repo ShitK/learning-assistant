@@ -161,7 +161,7 @@ assert.match(
   "重复题不新增 memory_event 时，前端也不应重复写入 demo localStorage 画像。",
 );
 assert.equal(
-  source.includes("@/lib/persistence-warnings"),
+  source.includes("@/lib/shared/persistence-warnings"),
   true,
   "工作台应从 browser-safe 共享模块读取重复错题提示文案。",
 );

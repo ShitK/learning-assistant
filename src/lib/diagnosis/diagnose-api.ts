@@ -1,11 +1,11 @@
 import { sampleDiagnoses } from "@/data/mathtrace-demo";
-import { isRecord } from "@/lib/utils";
+import { isRecord } from "@/lib/shared/utils";
 import type {
   EvidenceLevel,
   PersistenceEvidence,
   ProblemRiskFollowUp,
   ProfileUpdateKind,
-} from "@/lib/diagnosis-evidence";
+} from "@/lib/diagnosis/diagnosis-evidence";
 import type {
   AgentStep,
   MemoryDelta,
@@ -16,8 +16,8 @@ import type {
   Severity,
   StudentProfile,
 } from "@/data/mathtrace-demo";
-import type { ProviderFailureDebug } from "@/lib/provider-error";
-import type { VisionExtractionDebugSummary } from "@/lib/vision-extraction-parser";
+import type { ProviderFailureDebug } from "@/lib/shared/provider-error";
+import type { VisionExtractionDebugSummary } from "@/lib/image-diagnosis/vision-extraction-parser";
 
 export type {
   ConfirmationAction,
@@ -26,7 +26,7 @@ export type {
   PersistenceEvidence,
   ProblemRiskFollowUp,
   ProfileUpdateKind,
-} from "@/lib/diagnosis-evidence";
+} from "@/lib/diagnosis/diagnosis-evidence";
 
 export type DiagnoseTaskType = "sample_diagnosis" | "image_diagnosis";
 

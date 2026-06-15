@@ -2,9 +2,9 @@ import {
   isDiagnoseImageExtractionResponse,
   isDiagnoseImageSuccessResponse,
   isDiagnoseSuccessResponse,
-} from "@/lib/diagnose-api";
-import { isProviderFailureDebug } from "@/lib/provider-error";
-import { isRecord } from "@/lib/utils";
+} from "@/lib/diagnosis/diagnose-api";
+import { isProviderFailureDebug } from "@/lib/shared/provider-error";
+import { isRecord } from "@/lib/shared/utils";
 import type {
   ConfirmationAction,
   DiagnoseApiResponse,
@@ -13,13 +13,13 @@ import type {
   DiagnoseSuccessResponse,
   DiagnoseErrorResponse,
   FollowUpAnswerDraft,
-} from "@/lib/diagnose-api";
+} from "@/lib/diagnosis/diagnose-api";
 import type {
   MistakeHistoryItem,
   SampleQuestionId,
   StudentProfile,
 } from "@/data/mathtrace-demo";
-import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
+import type { VisionExtractionDraft } from "@/lib/image-diagnosis/vision-extraction-parser";
 
 export interface SampleDiagnosePayload {
   student_id: string;

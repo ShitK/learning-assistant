@@ -1,8 +1,8 @@
-import { isRecord } from "@/lib/utils";
+import { isRecord } from "@/lib/shared/utils";
 import type {
   ExtractionConfidence,
   VisionExtractionDraft,
-} from "@/lib/vision-extraction-parser";
+} from "@/lib/image-diagnosis/vision-extraction-parser";
 
 export function parseConfirmedExtractionDraft(
   value: unknown,

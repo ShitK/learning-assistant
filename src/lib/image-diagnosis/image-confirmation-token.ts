@@ -1,9 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { isRecord } from "@/lib/utils";
+import { isRecord } from "@/lib/shared/utils";
 import type {
   ExtractionConfidence,
   VisionExtractionDraft,
-} from "@/lib/vision-extraction-parser";
+} from "@/lib/image-diagnosis/vision-extraction-parser";
 
 export interface ImageConfirmationTokenPayload {
   draft_id: string;

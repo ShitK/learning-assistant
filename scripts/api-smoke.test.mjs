@@ -5,13 +5,13 @@ const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 
 const { POST: diagnoseRoutePost } = jiti("../src/app/api/diagnose/route.ts");
 const { POST: confirmRoutePost } = jiti("../src/app/api/confirm/route.ts");
-const { handleDiagnoseRequest } = jiti("../src/lib/diagnose-service.ts");
-const { handleConfirmRequest } = jiti("../src/lib/confirm-service.ts");
+const { handleDiagnoseRequest } = jiti("../src/lib/diagnosis/diagnose-service.ts");
+const { handleConfirmRequest } = jiti("../src/lib/diagnosis/confirm-service.ts");
 const { demoStudentProfile, mistakeHistory } = jiti(
   "../src/data/mathtrace-demo.ts",
 );
 const { isDiagnoseImageExtractionResponse } = jiti(
-  "../src/lib/diagnose-api.ts",
+  "../src/lib/diagnosis/diagnose-api.ts",
 );
 
 const samplePayload = {

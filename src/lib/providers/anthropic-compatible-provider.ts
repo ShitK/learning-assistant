@@ -1,16 +1,16 @@
 import {
   createVisionExtractionPrompt,
   parseVisionExtractionText,
-} from "@/lib/vision-extraction-parser";
-import { isRecord } from "@/lib/utils";
+} from "@/lib/image-diagnosis/vision-extraction-parser";
+import { isRecord } from "@/lib/shared/utils";
 import type {
   VisionExtractionDebugSummary,
   VisionExtractionDraft,
-} from "@/lib/vision-extraction-parser";
+} from "@/lib/image-diagnosis/vision-extraction-parser";
 import type {
   ProviderFailureDebug,
   ProviderFailureKind,
-} from "@/lib/provider-error";
+} from "@/lib/shared/provider-error";
 
 export interface VisionExtractionInput {
   image_base64: string;

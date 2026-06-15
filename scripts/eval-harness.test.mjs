@@ -8,11 +8,11 @@ const { demoStudentProfile, sampleDiagnoses } = jiti(
   "../src/data/mathtrace-demo.ts",
 );
 const { runImageMathTraceAgent } = jiti(
-  "../src/lib/image-diagnosis-pipeline.ts",
+  "../src/lib/image-diagnosis/image-diagnosis-pipeline.ts",
 );
-const { runMathTraceAgent } = jiti("../src/lib/mathtrace-agent-pipeline.ts");
+const { runMathTraceAgent } = jiti("../src/lib/diagnosis/mathtrace-agent-pipeline.ts");
 const { parseVisionExtractionText } = jiti(
-  "../src/lib/vision-extraction-parser.ts",
+  "../src/lib/image-diagnosis/vision-extraction-parser.ts",
 );
 
 const request = {

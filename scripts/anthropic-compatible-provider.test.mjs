@@ -7,7 +7,7 @@ const {
   createAnthropicCompatibleVisionProvider,
   createVisionProvider,
   createVisionProviderConfigFromEnv,
-} = jiti("../src/lib/anthropic-compatible-provider.ts");
+} = jiti("../src/lib/providers/anthropic-compatible-provider.ts");
 
 const calls = [];
 const okFetch = async (url, init) => {

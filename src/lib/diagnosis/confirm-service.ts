@@ -1,32 +1,32 @@
 import {
   createAnalysisProvider,
   createAnalysisProviderConfigFromEnv,
-} from "@/lib/analysis-provider";
-import { createDiagnoseError } from "@/lib/diagnose-api";
+} from "@/lib/providers/analysis-provider";
+import { createDiagnoseError } from "@/lib/diagnosis/diagnose-api";
 import {
   assessExtractionEvidence,
   parseFollowUpAnswer,
-} from "@/lib/diagnosis-evidence";
-import { parseConfirmedExtractionDraft } from "@/lib/image-confirmation";
+} from "@/lib/diagnosis/diagnosis-evidence";
+import { parseConfirmedExtractionDraft } from "@/lib/image-diagnosis/image-confirmation";
 import {
   createImageConfirmationFingerprint,
   verifyImageConfirmationToken,
-} from "@/lib/image-confirmation-token";
-import { persistDiagnosisIfNeeded } from "@/lib/diagnose-service";
-import { runImageMathTraceAgent } from "@/lib/image-diagnosis-pipeline";
-import { isRecord } from "@/lib/utils";
-import type { DiagnosisPersistenceRepository } from "@/lib/diagnosis-persistence";
+} from "@/lib/image-diagnosis/image-confirmation-token";
+import { persistDiagnosisIfNeeded } from "@/lib/diagnosis/diagnose-service";
+import { runImageMathTraceAgent } from "@/lib/image-diagnosis/image-diagnosis-pipeline";
+import { isRecord } from "@/lib/shared/utils";
+import type { DiagnosisPersistenceRepository } from "@/lib/persistence/diagnosis-persistence";
 import type {
   AnalysisEnhancementDraft,
   AnalysisProvider,
   AnalysisProviderContext,
-} from "@/lib/analysis-provider";
+} from "@/lib/providers/analysis-provider";
 import type {
   ConfirmationAction,
   FollowUpAnswerDraft,
-} from "@/lib/diagnosis-evidence";
-import type { DiagnoseServiceResult } from "@/lib/diagnose-service";
-import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
+} from "@/lib/diagnosis/diagnosis-evidence";
+import type { DiagnoseServiceResult } from "@/lib/diagnosis/diagnose-service";
+import type { VisionExtractionDraft } from "@/lib/image-diagnosis/vision-extraction-parser";
 
 interface ConfirmImageDiagnosisRequest {
   request: {

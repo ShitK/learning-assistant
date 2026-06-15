@@ -5,21 +5,21 @@ import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 
-const { handleDiagnoseRequest } = jiti("../src/lib/diagnose-service.ts");
-const { handleConfirmRequest } = jiti("../src/lib/confirm-service.ts");
+const { handleDiagnoseRequest } = jiti("../src/lib/diagnosis/diagnose-service.ts");
+const { handleConfirmRequest } = jiti("../src/lib/diagnosis/confirm-service.ts");
 const {
   createDiagnosisPersistencePayload,
   createQuestionFingerprint,
   createSupabaseDiagnosisPersistenceRepository,
   persistDiagnosisResponse,
-} = jiti("../src/lib/diagnosis-persistence.ts");
+} = jiti("../src/lib/persistence/diagnosis-persistence.ts");
 const { runImageMathTraceAgent } = jiti(
-  "../src/lib/image-diagnosis-pipeline.ts",
+  "../src/lib/image-diagnosis/image-diagnosis-pipeline.ts",
 );
 const {
   createImageConfirmationFingerprint,
   createImageConfirmationToken,
-} = jiti("../src/lib/image-confirmation-token.ts");
+} = jiti("../src/lib/image-diagnosis/image-confirmation-token.ts");
 const { demoStudentProfile, mistakeHistory } = jiti(
   "../src/data/mathtrace-demo.ts",
 );

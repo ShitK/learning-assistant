@@ -12,7 +12,7 @@ const {
   selectUploadSizedDataUrl,
   stripDataUrlPrefix,
   validateImageFileMetadata,
-} = jiti("../src/lib/image-upload-client.ts");
+} = jiti("../src/lib/image-diagnosis/image-upload-client.ts");
 
 assert.equal(MAX_UPLOAD_IMAGE_BYTES, 1_000_000);
 assert.equal(TARGET_DIAGNOSIS_IMAGE_BYTES, 600_000);

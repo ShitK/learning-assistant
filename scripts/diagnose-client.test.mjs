@@ -14,12 +14,12 @@ const {
   requestConfirmedImageDiagnosis,
   requestImageExtractionReview,
   shouldPersistDiagnoseProfile,
-} = jiti("../src/lib/diagnose-client.ts");
+} = jiti("../src/lib/diagnosis/diagnose-client.ts");
 const {
   isDiagnoseImageExtractionResponse,
   isDiagnoseImageSuccessResponse,
 } = jiti(
-  "../src/lib/diagnose-api.ts",
+  "../src/lib/diagnosis/diagnose-api.ts",
 );
 
 const samplePayload = buildSampleDiagnosePayload({

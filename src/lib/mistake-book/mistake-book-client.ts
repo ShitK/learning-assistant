@@ -1,9 +1,9 @@
-import { isRecord } from "@/lib/utils";
+import { isRecord } from "@/lib/shared/utils";
 import type {
   EvidenceLevel,
   PersistenceEvidence,
   ProfileUpdateKind,
-} from "@/lib/diagnose-api";
+} from "@/lib/diagnosis/diagnose-api";
 import type { Severity } from "@/data/mathtrace-demo";
 
 export interface MistakeBookItemSummary {

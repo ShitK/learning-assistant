@@ -3,15 +3,15 @@ import { createHash } from "node:crypto";
 import {
   createSupabaseAdminClient,
   getSupabaseAdminConfig,
-} from "@/lib/supabase-admin";
-import { DUPLICATE_MISTAKE_BOOK_ITEM_WARNING } from "@/lib/persistence-warnings";
+} from "@/lib/persistence/supabase-admin";
+import { DUPLICATE_MISTAKE_BOOK_ITEM_WARNING } from "@/lib/shared/persistence-warnings";
 import type {
   DiagnoseImageSuccessResponse,
   DiagnoseSuccessResponse,
   EvidenceLevel,
   PersistenceEvidence,
   ProfileUpdateKind,
-} from "@/lib/diagnose-api";
+} from "@/lib/diagnosis/diagnose-api";
 
 export const DATABASE_NOT_CONFIGURED_WARNING =
   "数据库暂未配置，本次只返回诊断报告。";

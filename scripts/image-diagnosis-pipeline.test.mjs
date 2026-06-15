@@ -4,7 +4,7 @@ import { createJiti } from "jiti";
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 
 const { runImageMathTraceAgent } = jiti(
-  "../src/lib/image-diagnosis-pipeline.ts",
+  "../src/lib/image-diagnosis/image-diagnosis-pipeline.ts",
 );
 const { demoStudentProfile } = jiti("../src/data/mathtrace-demo.ts");
 

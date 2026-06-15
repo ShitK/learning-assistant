@@ -1,5 +1,5 @@
-import { isRecord } from "@/lib/utils";
-import { normalizeExtractedMathText } from "@/lib/math-extraction-normalizer";
+import { isRecord } from "@/lib/shared/utils";
+import { normalizeExtractedMathText } from "@/lib/math/math-extraction-normalizer";
 
 export type ExtractionConfidence = "high" | "medium" | "low";
 

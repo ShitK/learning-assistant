@@ -4,7 +4,7 @@ import {
   mistakeCauses,
   sampleDiagnoses,
 } from "@/data/mathtrace-demo";
-import { clampScore, isRecord } from "@/lib/utils";
+import { clampScore, isRecord } from "@/lib/shared/utils";
 import type {
   KnowledgePoint,
   MemoryDelta,
@@ -21,7 +21,7 @@ import type {
   MistakeDiagnosis,
   ParsedSampleDiagnoseRequest,
   RecognizedQuestion,
-} from "@/lib/diagnose-api";
+} from "@/lib/diagnosis/diagnose-api";
 
 export type AgentStageId =
   | "task_planning"

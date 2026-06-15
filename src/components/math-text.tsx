@@ -1,7 +1,7 @@
 import katex from "katex";
-import { parseMathText } from "@/lib/math-text-parser";
+import { parseMathText } from "@/lib/math/math-text-parser";
 import type { ReactElement, ReactNode } from "react";
-import type { MathTextPart } from "@/lib/math-text-parser";
+import type { MathTextPart } from "@/lib/math/math-text-parser";
 
 interface MathTextProps {
   text: string;

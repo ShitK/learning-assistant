@@ -6,14 +6,14 @@ const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 const { demoStudentProfile, mistakeHistory, sampleDiagnoses } = jiti(
   "../src/data/mathtrace-demo.ts",
 );
-const { runMathTraceAgent } = jiti("../src/lib/mathtrace-agent-pipeline.ts");
+const { runMathTraceAgent } = jiti("../src/lib/diagnosis/mathtrace-agent-pipeline.ts");
 const { runImageMathTraceAgent } = jiti(
-  "../src/lib/image-diagnosis-pipeline.ts",
+  "../src/lib/image-diagnosis/image-diagnosis-pipeline.ts",
 );
 const {
   createStandardSolutionBlocks,
   createStandardSolutionDisplayText,
-} = jiti("../src/lib/diagnosis-view-model.ts");
+} = jiti("../src/lib/diagnosis/diagnosis-view-model.ts");
 
 const baseRequest = {
   student_id: "demo_student_001",

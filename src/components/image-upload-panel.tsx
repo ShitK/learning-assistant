@@ -5,8 +5,8 @@ import type { ChangeEvent, DragEvent, ReactElement } from "react";
 import {
   getImageUploadErrorMessage,
   prepareImageForDiagnosis,
-} from "@/lib/image-upload-client";
-import type { PreparedImageUpload } from "@/lib/image-upload-client";
+} from "@/lib/image-diagnosis/image-upload-client";
+import type { PreparedImageUpload } from "@/lib/image-diagnosis/image-upload-client";
 
 export interface ImageUploadPanelProps {
   selectedImage: PreparedImageUpload | null;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { createDiagnoseError } from "@/lib/diagnose-api";
-import { handleConfirmRequest } from "@/lib/confirm-service";
-import type { DiagnoseApiResponse } from "@/lib/diagnose-api";
+import { createDiagnoseError } from "@/lib/diagnosis/diagnose-api";
+import { handleConfirmRequest } from "@/lib/diagnosis/confirm-service";
+import type { DiagnoseApiResponse } from "@/lib/diagnosis/diagnose-api";
 
 export async function POST(
   request: Request,

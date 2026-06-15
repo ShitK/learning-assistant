@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import {
   handleMistakeBookDeleteRequest,
   handleMistakeBookRequest,
-} from "@/lib/mistake-book-service";
-import type { MistakeBookApiResponse } from "@/lib/mistake-book-service";
+} from "@/lib/mistake-book/mistake-book-service";
+import type { MistakeBookApiResponse } from "@/lib/mistake-book/mistake-book-service";
 
 export async function GET(
   request: Request,

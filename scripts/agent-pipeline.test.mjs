@@ -14,9 +14,9 @@ const {
   planReview,
   buildDiagnoseResponse,
   runMathTraceAgent,
-} = jiti("../src/lib/mathtrace-agent-pipeline.ts");
+} = jiti("../src/lib/diagnosis/mathtrace-agent-pipeline.ts");
 const { POST } = jiti("../src/app/api/diagnose/route.ts");
-const { handleDiagnoseRequest } = jiti("../src/lib/diagnose-service.ts");
+const { handleDiagnoseRequest } = jiti("../src/lib/diagnosis/diagnose-service.ts");
 
 const { demoStudentProfile, sampleDiagnoses } = jiti(
   "../src/data/mathtrace-demo.ts",

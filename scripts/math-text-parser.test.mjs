@@ -3,7 +3,7 @@ import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 
-const { parseMathText } = jiti("../src/lib/math-text-parser.ts");
+const { parseMathText } = jiti("../src/lib/math/math-text-parser.ts");
 
 assert.deepEqual(parseMathText("解得$0<a<1$；"), [
   { kind: "text", value: "解得" },

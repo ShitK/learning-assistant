@@ -1,38 +1,38 @@
 import {
   createVisionProvider,
   createVisionProviderConfigFromEnv,
-} from "@/lib/anthropic-compatible-provider";
-import { createDiagnoseError, parseDiagnoseRequest } from "@/lib/diagnose-api";
+} from "@/lib/providers/anthropic-compatible-provider";
+import { createDiagnoseError, parseDiagnoseRequest } from "@/lib/diagnosis/diagnose-api";
 import {
   createImageConfirmationFingerprint,
   createImageConfirmationToken,
-} from "@/lib/image-confirmation-token";
+} from "@/lib/image-diagnosis/image-confirmation-token";
 import {
   DATABASE_NOT_CONFIGURED_WARNING,
   DATABASE_WRITE_FAILED_WARNING,
   DUPLICATE_MISTAKE_BOOK_ITEM_WARNING,
   persistDiagnosisResponse,
-} from "@/lib/diagnosis-persistence";
-import { parseImageInput } from "@/lib/image-input";
-import { runMathTraceAgent } from "@/lib/mathtrace-agent-pipeline";
-import { isRecord } from "@/lib/utils";
+} from "@/lib/persistence/diagnosis-persistence";
+import { parseImageInput } from "@/lib/image-diagnosis/image-input";
+import { runMathTraceAgent } from "@/lib/diagnosis/mathtrace-agent-pipeline";
+import { isRecord } from "@/lib/shared/utils";
 import type {
   DiagnoseApiResponse,
   DiagnoseImageExtractionResponse,
   DiagnoseImageSuccessResponse,
   DiagnoseSuccessResponse,
   ParsedImageDiagnoseRequest,
-} from "@/lib/diagnose-api";
+} from "@/lib/diagnosis/diagnose-api";
 import type {
   DiagnosisPersistenceRepository,
   DiagnosisPersistenceResult,
-} from "@/lib/diagnosis-persistence";
+} from "@/lib/persistence/diagnosis-persistence";
 import type {
   VisionExtractionInput,
   VisionExtractionProvider,
   VisionProviderError,
-} from "@/lib/anthropic-compatible-provider";
-import type { VisionExtractionDraft } from "@/lib/vision-extraction-parser";
+} from "@/lib/providers/anthropic-compatible-provider";
+import type { VisionExtractionDraft } from "@/lib/image-diagnosis/vision-extraction-parser";
 
 export interface DiagnoseServiceResult {
   status: number;

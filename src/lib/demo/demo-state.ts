@@ -1,6 +1,6 @@
 import { demoStudentProfile } from "@/data/mathtrace-demo";
 import type { StudentProfile } from "@/data/mathtrace-demo";
-import { isRecord } from "@/lib/utils";
+import { isRecord } from "@/lib/shared/utils";
 
 export const DEMO_STUDENT_PROFILE_STORAGE_KEY =
   "mathtrace.demoStudentProfile.v1";

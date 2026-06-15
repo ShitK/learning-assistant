@@ -7,7 +7,7 @@ const {
   parseVisionExtractionText,
   createVisionExtractionPrompt,
   VISION_STANDARD_SOLUTION_PLACEHOLDER,
-} = jiti("../src/lib/vision-extraction-parser.ts");
+} = jiti("../src/lib/image-diagnosis/vision-extraction-parser.ts");
 
 const validModelText = JSON.stringify({
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",

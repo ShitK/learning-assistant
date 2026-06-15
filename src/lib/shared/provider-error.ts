@@ -1,4 +1,4 @@
-import { isRecord } from "@/lib/utils";
+import { isRecord } from "@/lib/shared/utils";
 
 export type ProviderStage = "vision_llm" | "ocr";
 

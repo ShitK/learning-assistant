@@ -1,12 +1,12 @@
 import {
   createSupabaseAdminClient,
   getSupabaseAdminConfig,
-} from "@/lib/supabase-admin";
-import { isMistakeBookResponse } from "@/lib/mistake-book-client";
+} from "@/lib/persistence/supabase-admin";
+import { isMistakeBookResponse } from "@/lib/mistake-book/mistake-book-client";
 import type {
   MistakeBookItemSummary,
   MistakeBookResponse,
-} from "@/lib/mistake-book-client";
+} from "@/lib/mistake-book/mistake-book-client";
 
 export const DATABASE_READ_NOT_CONFIGURED_WARNING =
   "数据库暂未配置，错题本暂为空。";
