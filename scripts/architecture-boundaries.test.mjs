@@ -327,9 +327,9 @@ const domainBoundaryRules = [
   {
     from_dir: "src/lib/image-diagnosis/",
     forbidden_dirs: ["src/lib/diagnosis/"],
-    runtime_only: true,
+    runtime_only: false,
     message:
-      "image-diagnosis must not runtime-import diagnosis; move shared rules/helpers into shared modules.",
+      "image-diagnosis must not import diagnosis; move shared types/rules/helpers into shared modules.",
   },
 ];
 

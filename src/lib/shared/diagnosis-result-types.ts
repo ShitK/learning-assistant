@@ -3,7 +3,6 @@ import type {
   MemoryDelta,
   PracticeQuestion,
   ReviewPlan,
-  SampleDiagnosis,
   Severity,
   StudentProfile,
 } from "@/data/mathtrace-demo";

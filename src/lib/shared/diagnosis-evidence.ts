@@ -1,8 +1,4 @@
-import type {
-  ConfirmationAction,
-  FollowUpAnswerDraft,
-  FollowUpAnswerParseResult,
-} from "@/lib/shared/confirmation-types";
+import type { FollowUpAnswerParseResult } from "@/lib/shared/confirmation-types";
 import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
 
 export type {
