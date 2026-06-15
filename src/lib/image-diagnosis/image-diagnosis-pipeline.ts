@@ -25,7 +25,7 @@ import type {
   KnowledgeMapping,
   MistakeDiagnosis,
 } from "@/lib/diagnosis/diagnose-api";
-import type { AnalysisEnhancementDraft } from "@/lib/providers/analysis-provider";
+import type { AnalysisEnhancementDraft } from "@/lib/shared/analysis-provider-types";
 import type {
   ConfirmationAction,
   EvidenceAssessment,

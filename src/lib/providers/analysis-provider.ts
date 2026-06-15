@@ -1,10 +1,20 @@
 import { isRecord } from "@/lib/shared/utils";
-import type { DiagnoseErrorCode } from "@/lib/diagnosis/diagnose-api";
 import type {
-  ConfirmationAction,
-  FollowUpAnswerDraft,
-} from "@/lib/diagnosis/diagnosis-evidence";
+  AnalysisProvider,
+  AnalysisProviderContext,
+  AnalysisProviderError,
+  AnalysisProviderResult,
+} from "@/lib/shared/analysis-provider-types";
+import type { FollowUpAnswerDraft } from "@/lib/shared/confirmation-types";
 import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
+
+export type {
+  AnalysisEnhancementDraft,
+  AnalysisProvider,
+  AnalysisProviderContext,
+  AnalysisProviderError,
+  AnalysisProviderResult,
+} from "@/lib/shared/analysis-provider-types";
 
 export interface AnalysisProviderConfig {
   protocol: "openai";
@@ -14,45 +24,6 @@ export interface AnalysisProviderConfig {
   provider_name: string;
   timeout_ms: number;
   fetch_fn?: typeof fetch;
-}
-
-export interface AnalysisEnhancementDraft {
-  expected_diagnosis: string;
-  step_analysis: string[];
-  solution_highlights: string[];
-  standard_solution: string;
-  warnings: string[];
-}
-
-export interface AnalysisProvider {
-  analyzeConfirmedExtraction(
-    extraction: VisionExtractionDraft,
-    context?: AnalysisProviderContext,
-  ): Promise<AnalysisProviderResult>;
-}
-
-export interface AnalysisProviderContext {
-  confirmation_action: ConfirmationAction;
-  follow_up_answer?: FollowUpAnswerDraft;
-}
-
-export type AnalysisProviderResult =
-  | { ok: true; value: AnalysisEnhancementDraft }
-  | { ok: false; error: AnalysisProviderError };
-
-export interface AnalysisProviderError {
-  code: DiagnoseErrorCode;
-  message: string;
-  recoverable: boolean;
-  failure_kind:
-    | "not_configured"
-    | "http_error"
-    | "invalid_json"
-    | "invalid_output"
-    | "network_failed"
-    | "timeout";
-  provider_name?: string;
-  http_status?: number;
 }
 
 type AnalysisProviderConfigResult =

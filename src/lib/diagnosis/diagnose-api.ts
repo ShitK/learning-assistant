@@ -1,5 +1,6 @@
 import { sampleDiagnoses } from "@/data/mathtrace-demo";
 import { isRecord } from "@/lib/shared/utils";
+import type { DiagnoseErrorCode } from "@/lib/shared/diagnose-error";
 import type {
   EvidenceLevel,
   PersistenceEvidence,
@@ -27,6 +28,7 @@ export type {
   ProblemRiskFollowUp,
   ProfileUpdateKind,
 } from "@/lib/diagnosis/diagnosis-evidence";
+export type { DiagnoseErrorCode } from "@/lib/shared/diagnose-error";
 
 export type DiagnoseTaskType = "sample_diagnosis" | "image_diagnosis";
 
@@ -147,19 +149,6 @@ export interface DiagnoseImageExtractionResponse {
   fallback_used: false;
   warnings: string[];
 }
-
-export type DiagnoseErrorCode =
-  | "invalid_json"
-  | "invalid_request"
-  | "missing_sample_question_id"
-  | "unknown_sample_question_id"
-  | "missing_image"
-  | "invalid_image"
-  | "image_too_large"
-  | "model_not_configured"
-  | "model_timeout"
-  | "model_request_failed"
-  | "model_invalid_output";
 
 export interface DiagnoseErrorResponse {
   error: {
