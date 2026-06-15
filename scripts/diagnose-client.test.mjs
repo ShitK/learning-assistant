@@ -596,4 +596,34 @@ const malformedProfileImageResponse = {
 
 assert.equal(isDiagnoseImageSuccessResponse(malformedProfileImageResponse), false);
 
+const missingGradeProfileImageResponse = {
+  ...highConfidenceImageResponse,
+  student_profile: {
+    ...demoStudentProfile,
+  },
+};
+
+delete missingGradeProfileImageResponse.student_profile.grade;
+
+assert.equal(isDiagnoseImageSuccessResponse(missingGradeProfileImageResponse), false);
+
+const infinitePriorityProfileImageResponse = {
+  ...highConfidenceImageResponse,
+  student_profile: {
+    ...demoStudentProfile,
+    gaokao_focus: [
+      {
+        knowledge_point: "parameter_classification",
+        reason: "priority 不是有限数字。",
+        priority: Number.POSITIVE_INFINITY,
+      },
+    ],
+  },
+};
+
+assert.equal(
+  isDiagnoseImageSuccessResponse(infinitePriorityProfileImageResponse),
+  false,
+);
+
 console.log("diagnose client regression test passed");

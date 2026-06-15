@@ -48,7 +48,34 @@ assert.deepEqual(
   parseStoredStudentProfile(
     JSON.stringify({
       ...updatedProfile,
+      grade: undefined,
+    }),
+  ),
+  demoStudentProfile,
+);
+assert.deepEqual(
+  parseStoredStudentProfile(
+    JSON.stringify({
+      ...updatedProfile,
       mastery_scores: ["bad-score"],
+    }),
+  ),
+  demoStudentProfile,
+);
+assert.deepEqual(
+  parseStoredStudentProfile(
+    JSON.stringify({
+      ...updatedProfile,
+      weak_modules: ["derivative_monotonicity", 123],
+    }),
+  ),
+  demoStudentProfile,
+);
+assert.deepEqual(
+  parseStoredStudentProfile(
+    JSON.stringify({
+      ...updatedProfile,
+      review_priority: ["parameter_classification", null],
     }),
   ),
   demoStudentProfile,

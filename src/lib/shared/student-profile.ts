@@ -3,20 +3,18 @@ import type { MemoryDelta, StudentProfile } from "@/data/mathtrace-demo";
 
 const DEMO_UPDATED_AT = "2026-05-29T22:00:00+08:00";
 
-// 注意：此实现与 diagnose-api.ts 中的 isStudentProfile 不完全相同。
-// diagnose-api.ts 额外校验 grade 字段，用于 API 请求入口的严格校验；
-// 此处保留 mathtrace-agent-pipeline.ts 当前行为，不校验 grade，避免影响样本/图片诊断流程。
 export function isStudentProfile(value: unknown): value is StudentProfile {
   return (
     isRecord(value) &&
     typeof value.student_id === "string" &&
+    typeof value.grade === "string" &&
     value.subject === "math" &&
     isNumberRecord(value.mastery_scores) &&
     isNumberRecord(value.frequent_mistake_causes) &&
-    Array.isArray(value.weak_modules) &&
-    Array.isArray(value.review_priority) &&
+    isStringArray(value.weak_modules) &&
+    isStringArray(value.review_priority) &&
     typeof value.recent_trend === "string" &&
-    Array.isArray(value.gaokao_focus) &&
+    isGaokaoFocus(value.gaokao_focus) &&
     typeof value.created_at === "string" &&
     typeof value.updated_at === "string"
   );
@@ -66,5 +64,25 @@ function isNumberRecord(value: unknown): value is Record<string, number> {
     return false;
   }
 
-  return Object.values(value).every((item) => typeof item === "number");
+  return Object.values(value).every(
+    (item) => typeof item === "number" && Number.isFinite(item),
+  );
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isGaokaoFocus(value: unknown): value is StudentProfile["gaokao_focus"] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.knowledge_point === "string" &&
+        typeof item.reason === "string" &&
+        typeof item.priority === "number" &&
+        Number.isFinite(item.priority),
+    )
+  );
 }

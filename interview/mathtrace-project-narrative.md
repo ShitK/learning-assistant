@@ -249,6 +249,8 @@ API route 位于 `src/app/api/diagnose/route.ts`。它只负责：
 
 错误响应使用 recoverable 结构，而不是直接 throw 或返回不稳定字符串。这样前端可以根据错误类型展示“切回样例题”“重新上传图片”等可恢复操作。
 
+后来我把 `StudentProfile` 的运行时校验口径也收敛到 shared guard。虽然当前产品仍固定 `demo_student_001`，但画像对象会从 localStorage、API 响应和诊断 pipeline 多个入口流动，所以“只有一个学生”不等于“不需要画像校验”。统一后的 guard 会检查 `grade`、`subject`、掌握度分数、错因频次、复习优先级和高考关注项结构；损坏的本地画像会回退到 demo 默认画像，模型或接口返回的坏画像会被 response guard 拒绝，避免长期学习状态被半截 JSON、旧格式或异常数字污染。
+
 ### 性能收益（如适用）
 
 `/api/diagnose` 采用“一次请求返回完整诊断结果”的设计，避免前端串行调用多个接口来模拟 Agent 步骤。这样减少了网络往返次数，也降低了前端状态同步复杂度。

@@ -1,4 +1,5 @@
 import { sampleDiagnoses } from "@/data/mathtrace-demo";
+import { isStudentProfile } from "@/lib/shared/student-profile";
 import { isRecord } from "@/lib/shared/utils";
 import type { DiagnoseErrorCode } from "@/lib/shared/diagnose-error";
 import type {
@@ -480,43 +481,6 @@ function isMemoryDelta(value: unknown): value is MemoryDelta {
   );
 }
 
-function isStudentProfile(value: unknown): value is StudentProfile {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.student_id === "string" &&
-    typeof value.grade === "string" &&
-    value.subject === "math" &&
-    isNumberRecord(value.mastery_scores) &&
-    isNumberRecord(value.frequent_mistake_causes) &&
-    Array.isArray(value.weak_modules) &&
-    value.weak_modules.every(isString) &&
-    Array.isArray(value.review_priority) &&
-    value.review_priority.every(isString) &&
-    typeof value.recent_trend === "string" &&
-    Array.isArray(value.gaokao_focus) &&
-    value.gaokao_focus.every(isGaokaoFocusItem) &&
-    typeof value.created_at === "string" &&
-    typeof value.updated_at === "string"
-  );
-}
-
-function isGaokaoFocusItem(
-  value: unknown,
-): value is StudentProfile["gaokao_focus"][number] {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.knowledge_point === "string" &&
-    typeof value.reason === "string" &&
-    typeof value.priority === "number"
-  );
-}
-
 function isPracticeQuestion(value: unknown): value is PracticeQuestion {
   if (!isRecord(value)) {
     return false;
@@ -673,6 +637,8 @@ function isAgentStep(value: unknown): value is AgentStep {
   );
 }
 
+// 注意：此 helper 仅服务 isMemoryDelta，暂不扩展 memory_delta 的数字边界。
+// StudentProfile 已改用 shared guard，那里会拒绝 NaN / Infinity。
 function isNumberRecord(value: unknown): value is Record<string, number> {
   if (!isRecord(value)) {
     return false;
