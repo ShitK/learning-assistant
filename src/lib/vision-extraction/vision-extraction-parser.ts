@@ -6,9 +6,6 @@ import type {
   VisionExtractionDraft,
 } from "@/lib/vision-extraction/vision-extraction-types";
 
-export const VISION_STANDARD_SOLUTION_PLACEHOLDER =
-  "标准解法将在确认后由分析模型生成。";
-
 export interface VisionExtractionParseError {
   code: "model_invalid_output";
   message: string;
@@ -44,7 +41,6 @@ const ALLOWED_KEYS = new Set([
   "question_text",
   "student_answer",
   "student_solution_steps",
-  "standard_solution_draft",
   "extraction_confidence",
   "warnings",
 ]);
@@ -105,15 +101,6 @@ export function parseVisionExtractionText(text: string): VisionExtractionParseRe
 
   const parserWarnings: string[] = [];
 
-  const standardSolutionDraft = isNonEmptyString(parsed.standard_solution_draft)
-    ? normalizeExtractedMathText(parsed.standard_solution_draft.trim())
-    : VISION_STANDARD_SOLUTION_PLACEHOLDER;
-  if (!isNonEmptyString(parsed.standard_solution_draft)) {
-    parserWarnings.push(
-      "视觉模型未返回标准解法草稿，确认后将由分析模型生成标准解法。",
-    );
-  }
-
   const extractionConfidence = isExtractionConfidence(parsed.extraction_confidence)
     ? parsed.extraction_confidence
     : "low";
@@ -161,7 +148,6 @@ export function parseVisionExtractionText(text: string): VisionExtractionParseRe
       student_solution_steps: normalized.student_solution_steps.map((step) =>
         normalizeExtractedMathText(step),
       ),
-      standard_solution_draft: standardSolutionDraft,
       extraction_confidence: normalized.extraction_confidence,
       warnings: normalized.warnings,
     },
@@ -292,7 +278,6 @@ function createDebugSummary(
     field_lengths: {
       question_text: getStringLength(value, "question_text"),
       student_answer: getStringLength(value, "student_answer"),
-      standard_solution_draft: getStringLength(value, "standard_solution_draft"),
     },
     list_lengths: {
       student_solution_steps: getListLength(value, "student_solution_steps"),

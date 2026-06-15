@@ -109,9 +109,8 @@ export function createProblemRiskFollowUp(input: {
     problem_type: inferProblemType(input.extraction.question_text),
     knowledge_points: input.knowledge_points,
     common_stuck_points: commonStuckPoints,
-    standard_solution_summary: summarizeStandardSolution(
-      input.extraction.standard_solution_draft,
-    ),
+    standard_solution_summary:
+      "标准解法将在确认后由文本分析模型或本地规则生成。",
     prompt: "你主要卡在哪里？",
   };
 }
@@ -166,20 +165,6 @@ function inferProblemType(questionText: string): string {
   }
 
   return "数学综合题";
-}
-
-function summarizeStandardSolution(standardSolutionDraft: string): string {
-  const trimmed = standardSolutionDraft.trim();
-
-  if (trimmed.length === 0) {
-    return "标准解法将在确认后由分析模型生成。";
-  }
-
-  if (trimmed.length <= 80) {
-    return trimmed;
-  }
-
-  return `${trimmed.slice(0, 80)}...`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

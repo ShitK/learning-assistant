@@ -181,7 +181,6 @@ const providerResult = await provider.analyzeConfirmedExtraction({
   question_text: "题干",
   student_answer: "学生答案",
   student_solution_steps: ["步骤"],
-  standard_solution_draft: "标准解法草稿",
   extraction_confidence: "high",
   warnings: [],
 });
@@ -214,10 +213,6 @@ assert.equal(
 assert.equal(
   requests[0].body.messages[0].content.includes("独立生成 standard_solution"),
   true,
-);
-assert.equal(
-  requests[0].body.messages[1].content.includes("标准解法草稿："),
-  false,
 );
 assert.equal(
   requests[0].body.messages[1].content.includes(
@@ -262,7 +257,6 @@ await endpointProvider.analyzeConfirmedExtraction({
   question_text: "题干",
   student_answer: "学生答案",
   student_solution_steps: ["步骤"],
-  standard_solution_draft: "标准解法草稿",
   extraction_confidence: "high",
   warnings: [],
 });

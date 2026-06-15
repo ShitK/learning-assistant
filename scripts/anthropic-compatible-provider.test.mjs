@@ -22,7 +22,6 @@ const okFetch = async (url, init) => {
             question_text: "题干",
             student_answer: "学生答案",
             student_solution_steps: ["步骤一"],
-            standard_solution_draft: "标准解法草稿",
             extraction_confidence: "medium",
             warnings: [],
           }),
@@ -85,7 +84,6 @@ const openAIProvider = createVisionProvider({
                 question_text: "题干",
                 student_answer: "学生答案",
                 student_solution_steps: ["步骤一"],
-                standard_solution_draft: "标准解法草稿",
                 extraction_confidence: "medium",
                 warnings: [],
               }),
@@ -150,7 +148,6 @@ const rawBase64ImageProvider = createVisionProvider({
                 question_text: "题干",
                 student_answer: "学生答案",
                 student_solution_steps: ["步骤一"],
-                standard_solution_draft: "标准解法草稿",
                 extraction_confidence: "medium",
                 warnings: [],
               }),
@@ -327,7 +324,6 @@ const retryProvider = createAnthropicCompatibleVisionProvider({
               question_text: "题干",
               student_answer: "学生答案",
               student_solution_steps: ["步骤一"],
-              standard_solution_draft: "补齐后的标准解法草稿",
               extraction_confidence: "medium",
               warnings: [],
             }),
@@ -345,10 +341,6 @@ const retryResult = await retryProvider.extractQuestionFromImage({
   student_profile_summary: "demo profile",
 });
 assert.equal(retryResult.ok, true);
-assert.equal(
-  retryResult.value.standard_solution_draft,
-  "标准解法将在确认后由分析模型生成。",
-);
 assert.equal(retryCalls.length, 1);
 
 const retryWithForbiddenTextValueCalls = [];
@@ -390,7 +382,6 @@ const retryWithForbiddenTextValueProvider =
                 question_text: "题干",
                 student_answer: "本次不涉及 memory_delta: 保持现状",
                 student_solution_steps: ["步骤一"],
-                standard_solution_draft: "补齐后的标准解法草稿",
                 extraction_confidence: "medium",
                 warnings: [],
               }),
@@ -429,7 +420,6 @@ const forbiddenRetryProvider = createAnthropicCompatibleVisionProvider({
               question_text: "题干",
               student_answer: "学生答案",
               student_solution_steps: ["步骤一"],
-              standard_solution_draft: "标准解法草稿",
               extraction_confidence: "medium",
               warnings: [],
               memory_delta: { should_persist: true },

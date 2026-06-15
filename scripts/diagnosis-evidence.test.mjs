@@ -13,7 +13,6 @@ const sufficient = assessExtractionEvidence({
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
   student_answer: "$f'(x)=3x^2-3a$，只得到 $x=\\sqrt a$。",
   student_solution_steps: ["求导正确", "只写一个临界点", "没有讨论 $a\\le 0$"],
-  standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
   extraction_confidence: "high",
   warnings: [],
 });
@@ -28,7 +27,6 @@ const problemOnly = assessExtractionEvidence({
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
   student_answer: "未识别到学生答案",
   student_solution_steps: [],
-  standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
   extraction_confidence: "low",
   warnings: ["没有识别到学生作答区域。"],
 });
@@ -43,7 +41,6 @@ const problemOnlyWithoutStandardSolutionDraft = assessExtractionEvidence({
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
   student_answer: "未识别到学生答案",
   student_solution_steps: [],
-  standard_solution_draft: "",
   extraction_confidence: "low",
   warnings: ["没有识别到学生作答区域。"],
 });
@@ -61,7 +58,6 @@ const insufficient = assessExtractionEvidence({
   question_text: "",
   student_answer: "未识别到学生答案",
   student_solution_steps: [],
-  standard_solution_draft: "",
   extraction_confidence: "low",
   warnings: [],
 });
@@ -75,7 +71,6 @@ const followUp = createProblemRiskFollowUp({
     question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
     student_answer: "未识别到学生答案",
     student_solution_steps: [],
-    standard_solution_draft: "先求导，再按 $a\\le 0$ 和 $a>0$ 分类讨论。",
     extraction_confidence: "low",
     warnings: [],
   },

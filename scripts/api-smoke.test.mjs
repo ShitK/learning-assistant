@@ -73,7 +73,6 @@ const fakeVisionProvider = {
         question_text: "已知函数 $f(x)=\\ln x-ax+1$，讨论单调性。",
         student_answer: "只写了求导。",
         student_solution_steps: ["求导得到 $f'(x)=1/x-a$。"],
-        standard_solution_draft: "先求导，再按 $a\\le 0$ 与 $a>0$ 分类讨论。",
         extraction_confidence: "high",
         warnings: [],
       },
@@ -95,6 +94,18 @@ const extractionResult = await handleDiagnoseRequest(
 assert.equal(extractionResult.status, 200);
 assert.equal(extractionResult.body.stage, "extraction_review");
 assert.equal(isDiagnoseImageExtractionResponse(extractionResult.body), true);
+assert.deepEqual(
+  Object.keys(extractionResult.body.recognized_question).sort(),
+  [
+    "extraction_confidence",
+    "id",
+    "module",
+    "question_text",
+    "student_answer",
+    "student_solution_steps",
+    "title",
+  ].sort(),
+);
 assert.equal("memory_delta" in extractionResult.body, false);
 assert.equal("student_profile" in extractionResult.body, false);
 assert.equal(typeof extractionResult.body.confirmation_token, "string");
@@ -191,17 +202,28 @@ function jsonRequest(body) {
 }
 
 function createConfirmedExtractionDraft(extractionResponse) {
-  return {
+  const confirmedExtraction = {
     question_text: extractionResponse.recognized_question.question_text,
     student_answer: extractionResponse.recognized_question.student_answer,
     student_solution_steps:
       extractionResponse.recognized_question.student_solution_steps,
-    standard_solution_draft:
-      extractionResponse.recognized_question.standard_solution_draft,
     extraction_confidence:
       extractionResponse.recognized_question.extraction_confidence,
     warnings: extractionResponse.warnings,
   };
+
+  assert.deepEqual(
+    Object.keys(confirmedExtraction).sort(),
+    [
+      "extraction_confidence",
+      "question_text",
+      "student_answer",
+      "student_solution_steps",
+      "warnings",
+    ].sort(),
+  );
+
+  return confirmedExtraction;
 }
 
 function createProblemOnlyVisionProvider() {
@@ -213,8 +235,6 @@ function createProblemOnlyVisionProvider() {
           question_text: "已知函数 $f(x)=\\ln x-ax+1$，讨论单调性。",
           student_answer: "未识别到学生答案",
           student_solution_steps: [],
-          standard_solution_draft:
-            "先求导，再按 $a\\le 0$ 与 $a>0$ 分类讨论。",
           extraction_confidence: "low",
           warnings: ["未识别到清晰学生步骤。"],
         },

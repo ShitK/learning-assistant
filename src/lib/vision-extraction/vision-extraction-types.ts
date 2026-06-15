@@ -4,7 +4,6 @@ export interface VisionExtractionDraft {
   question_text: string;
   student_answer: string;
   student_solution_steps: string[];
-  standard_solution_draft: string;
   extraction_confidence: ExtractionConfidence;
   warnings: string[];
 }
@@ -19,7 +18,6 @@ export interface VisionExtractionDebugSummary {
   field_lengths: {
     question_text?: number;
     student_answer?: number;
-    standard_solution_draft?: number;
   };
   list_lengths: {
     student_solution_steps?: number;

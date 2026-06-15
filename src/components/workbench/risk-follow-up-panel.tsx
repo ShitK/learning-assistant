@@ -167,7 +167,7 @@ export function createEditableDraftRiskFollowUp(
         related_mistake_cause: "method_error",
       },
     ],
-    standard_solution_summary: "标准解法将在确认后由分析模型生成。",
+    standard_solution_summary: "标准解法将在确认后由文本分析模型或本地规则生成。",
     prompt: "你主要卡在哪里？",
   };
 }

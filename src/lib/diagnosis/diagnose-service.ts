@@ -201,7 +201,6 @@ function buildImageExtractionResponse(input: {
       question_text: input.extraction.question_text,
       student_answer: input.extraction.student_answer,
       student_solution_steps: input.extraction.student_solution_steps,
-      standard_solution_draft: input.extraction.standard_solution_draft,
       extraction_confidence: input.extraction.extraction_confidence,
     },
     requires_confirmation: true,
@@ -224,7 +223,6 @@ function hashExtractionDraft(extraction: VisionExtractionDraft): string {
       question_text: extraction.question_text,
       student_answer: extraction.student_answer,
       student_solution_steps: extraction.student_solution_steps,
-      standard_solution_draft: extraction.standard_solution_draft,
       extraction_confidence: extraction.extraction_confidence,
     }),
   );

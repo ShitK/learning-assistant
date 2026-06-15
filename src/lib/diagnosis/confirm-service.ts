@@ -28,6 +28,14 @@ import type {
 import type { DiagnoseServiceResult } from "@/lib/diagnosis/diagnose-service";
 import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
 
+const PROBLEM_ONLY_EXTRACTION_KEYS = new Set([
+  "question_text",
+  "student_answer",
+  "student_solution_steps",
+  "extraction_confidence",
+  "warnings",
+]);
+
 interface ConfirmImageDiagnosisRequest {
   request: {
     student_id: string;
@@ -273,12 +281,12 @@ function parseProblemOnlyExtractionDraft(
     return { ok: false, message: "confirmed_extraction 必须是对象。" };
   }
 
-  if (!isNonEmptyString(value.question_text)) {
-    return { ok: false, message: "题干不能为空。" };
+  if (hasUnexpectedKey(value, PROBLEM_ONLY_EXTRACTION_KEYS)) {
+    return { ok: false, message: "confirmed_extraction 包含未声明字段。" };
   }
 
-  if (!isNonEmptyString(value.standard_solution_draft)) {
-    return { ok: false, message: "标准解法草稿不能为空。" };
+  if (!isNonEmptyString(value.question_text)) {
+    return { ok: false, message: "题干不能为空。" };
   }
 
   if (!isExtractionConfidence(value.extraction_confidence)) {
@@ -304,7 +312,6 @@ function parseProblemOnlyExtractionDraft(
           ? value.student_answer.trim()
           : "未识别到学生答案",
       student_solution_steps: steps.value,
-      standard_solution_draft: value.standard_solution_draft.trim(),
       extraction_confidence: value.extraction_confidence,
       warnings: warnings.value,
     },
@@ -368,4 +375,13 @@ function forceNonPersistForTokenMismatch(
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function hasUnexpectedKey(
+  value: Record<string, unknown>,
+  allowedKeys: Set<string>,
+): boolean {
+  return Object.keys(value).some((key) => {
+    return !allowedKeys.has(key);
+  });
 }

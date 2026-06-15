@@ -247,7 +247,7 @@ function buildAnalysisSystemPrompt(): string {
   return [
     "你是高中数学错题诊断文本分析助手。",
     "你只能基于用户已确认的题干、学生答案和学生步骤增强报告表达。",
-    "你需要独立生成 standard_solution，不要依赖图片识别阶段的标准解法草稿。",
+    "你需要独立生成 standard_solution；图片识别阶段只提供题干、学生答案和学生步骤。",
     "必须输出严格 json 对象，不要输出 markdown 解释文字。",
     "JSON 字段必须且只能包含 expected_diagnosis、step_analysis、solution_highlights、standard_solution、warnings。",
     "step_analysis、solution_highlights、warnings 必须是字符串数组。",

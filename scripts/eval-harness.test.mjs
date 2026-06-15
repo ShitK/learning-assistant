@@ -68,7 +68,6 @@ const forbiddenModelOutput = parseVisionExtractionText(
     question_text: "题干",
     student_answer: "学生答案",
     student_solution_steps: ["步骤"],
-    standard_solution_draft: "标准解法",
     extraction_confidence: "high",
     warnings: [],
     memory_delta: {

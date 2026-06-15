@@ -74,12 +74,6 @@ assert.equal(
 );
 
 assert.equal(
-  workbenchUiSource.includes("标准解法草稿"),
-  false,
-  "识别结果确认 UI 不应再展示视觉模型生成的标准解法草稿。",
-);
-
-assert.equal(
   workbenchUiSource.includes("解题步骤"),
   true,
   "识别结果确认 UI 仍应保留学生步骤输入能力。",

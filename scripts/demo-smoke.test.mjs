@@ -41,11 +41,11 @@ const problemOnlyExtraction = {
     "已知函数 $f(x)=\\ln x-ax+1$，求单调区间，并讨论零点个数。",
   student_answer: "未识别到学生答案",
   student_solution_steps: [],
-  standard_solution_draft:
-    "**(1)** 求导得 $f'(x)=\\frac{1}{x}-a$，定义域为 $(0,+\\infty)$。\n- 当 $a\\le 0$ 时恒增。\n由 $f(\\frac{1}{a})= -\\ln a>0$ 得 $0<a<1$，即$\\ln a<0$。",
   extraction_confidence: "low",
   warnings: ["未识别到清晰学生步骤。"],
 };
+const rawStandardSolutionText =
+  "**(1)** 求导得 $f'(x)=\\frac{1}{x}-a$，定义域为 $(0,+\\infty)$。\n- 当 $a\\le 0$ 时恒增。\n由 $f(\\frac{1}{a})= -\\ln a>0$ 得 $0<a<1$，即$\\ln a<0$。";
 const followUpAnswer = {
   selected_stuck_point_id: "classification_missing",
   custom_text: null,
@@ -113,10 +113,10 @@ assert.equal(
 );
 
 const displayText = createStandardSolutionDisplayText(
-  problemOnlyExtraction.standard_solution_draft,
+  rawStandardSolutionText,
 );
 const blocks = createStandardSolutionBlocks(
-  problemOnlyExtraction.standard_solution_draft,
+  rawStandardSolutionText,
 );
 const joinedBlocks = blocks.map((block) => block.text).join("\n");
 

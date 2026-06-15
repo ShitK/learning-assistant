@@ -27,7 +27,6 @@ const provider = {
         question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
         student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
         student_solution_steps: ["求导", "只写一个临界点"],
-        standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
         extraction_confidence: "high",
         warnings: [],
       },
@@ -90,7 +89,6 @@ const confirmResult = await handleConfirmRequest({
     question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
     student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
     student_solution_steps: ["求导", "只写一个临界点"],
-    standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
     extraction_confidence: "high",
     warnings: [],
   },
@@ -111,7 +109,6 @@ const enhancedConfirmResult = await handleConfirmRequest(
       question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
       student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
       student_solution_steps: ["求导", "只写一个临界点"],
-      standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
       extraction_confidence: "high",
       warnings: [],
     },
@@ -168,7 +165,6 @@ const failedAnalysisConfirmResult = await handleConfirmRequest(
       question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
       student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
       student_solution_steps: ["求导", "只写一个临界点"],
-      standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
       extraction_confidence: "high",
       warnings: [],
     },
@@ -212,7 +208,6 @@ const confirmRouteResponse = await postConfirmJson({
     question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
     student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
     student_solution_steps: ["求导", "只写一个临界点"],
-    standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
     extraction_confidence: "high",
     warnings: [],
   },
@@ -233,7 +228,6 @@ const mismatchedConfirmResult = await handleConfirmRequest({
     question_text: "这是被替换的另一道题。",
     student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
     student_solution_steps: ["求导", "只写一个临界点"],
-    standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
     extraction_confidence: "high",
     warnings: [],
   },
@@ -264,7 +258,6 @@ const mismatchedAnalysisResult = await handleConfirmRequest(
       question_text: "这是被替换的另一道题。",
       student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
       student_solution_steps: ["求导", "只写一个临界点"],
-      standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
       extraction_confidence: "high",
       warnings: [],
     },
@@ -303,7 +296,6 @@ const missingTokenResult = await handleConfirmRequest({
     question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
     student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
     student_solution_steps: ["求导", "只写一个临界点"],
-    standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
     extraction_confidence: "high",
     warnings: [],
   },
@@ -322,7 +314,6 @@ const invalidTokenResult = await handleConfirmRequest({
     question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
     student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
     student_solution_steps: ["求导", "只写一个临界点"],
-    standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
     extraction_confidence: "high",
     warnings: [],
   },
@@ -337,7 +328,6 @@ const problemOnlyExtraction = {
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
   student_answer: "未识别到学生答案",
   student_solution_steps: [],
-  standard_solution_draft: "应先求导，再按参数分类讨论。",
   extraction_confidence: "low",
   warnings: ["没有识别到学生作答区域。"],
 };
@@ -392,7 +382,8 @@ const analyzedSkipFollowUpResult = await handleConfirmRequest(
     analysis_provider: {
       async analyzeConfirmedExtraction(extraction, context) {
         problemOnlyAnalysisCallCount += 1;
-        assert.equal(extraction.standard_solution_draft, "应先求导，再按参数分类讨论。");
+        assert.equal(extraction.question_text.trim().length > 0, true);
+        assert.equal(Array.isArray(extraction.student_solution_steps), true);
         assert.equal(context.confirmation_action, "skip_follow_up");
         assert.equal(context.follow_up_answer, undefined);
 
@@ -435,10 +426,9 @@ const extractionWithTechnicalWarning = {
   question_text: "已知函数 $f(x)=\\ln x-ax+1$。",
   student_answer: "未识别到学生答案",
   student_solution_steps: ["模型未识别到学生答案或具体解题步骤。"],
-  standard_solution_draft: "标准解法将在确认后由分析模型生成。",
   extraction_confidence: "low",
   warnings: [
-    "视觉模型未返回标准解法草稿，确认后将由分析模型生成标准解法。",
+    "模型未返回置信度，已按低置信度处理。",
     "未识别到清晰学生作答区域，请确认图片中包含学生答案或解题痕迹。",
   ],
 };
@@ -650,7 +640,6 @@ const lowConfidenceProvider = {
         question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
         student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
         student_solution_steps: ["求导", "只写一个临界点"],
-        standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
         extraction_confidence: "low",
         warnings: ["识别置信度较低。"],
       },
@@ -686,7 +675,6 @@ const lowConfidenceConfirmResult = await handleConfirmRequest({
     question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
     student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
     student_solution_steps: ["求导", "只写一个临界点"],
-    standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
     extraction_confidence: "high",
     warnings: ["识别置信度较低。"],
   },
@@ -713,7 +701,6 @@ const invalidConfirmResult = await handleConfirmRequest({
     question_text: "",
     student_answer: "学生答案",
     student_solution_steps: ["第一步"],
-    standard_solution_draft: "标准解法",
     extraction_confidence: "high",
     warnings: [],
   },
@@ -723,6 +710,34 @@ const invalidConfirmResult = await handleConfirmRequest({
 
 assert.equal(invalidConfirmResult.status, 400);
 assert.equal(invalidConfirmResult.body.error.code, "invalid_request");
+
+const extraFieldResult = parseConfirmedExtractionDraft({
+  question_text: "题干",
+  student_answer: "学生答案",
+  student_solution_steps: ["第一步"],
+  extraction_confidence: "high",
+  warnings: [],
+  unexpected_field: "模型不应输出这个字段",
+});
+
+assert.equal(extraFieldResult.ok, false);
+assert.equal(extraFieldResult.message, "confirmed_extraction 包含未声明字段。");
+
+const extraProblemOnlyFieldResult = await handleConfirmRequest({
+  student_id: "demo_student_001",
+  task_type: "confirmed_image_diagnosis",
+  confirmation_token: problemOnlyToken,
+  confirmation_action: "skip_follow_up",
+  confirmed_extraction: {
+    ...problemOnlyExtraction,
+    unexpected_field: "模型不应输出这个字段",
+  },
+  student_profile: demoStudentProfile,
+  mistake_history: [],
+});
+
+assert.equal(extraProblemOnlyFieldResult.status, 400);
+assert.equal(extraProblemOnlyFieldResult.body.error.code, "invalid_request");
 
 const invalidStepsResult = parseConfirmedExtractionDraft({
   question_text: "题干",
@@ -738,7 +753,6 @@ const invalidStepsResult = parseConfirmedExtractionDraft({
     "8",
     { text: "不允许对象数组" },
   ],
-  standard_solution_draft: "标准解法",
   extraction_confidence: "high",
   warnings: [],
 });
@@ -749,7 +763,6 @@ const invalidWarningsResult = parseConfirmedExtractionDraft({
   question_text: "题干",
   student_answer: "学生答案",
   student_solution_steps: ["第一步"],
-  standard_solution_draft: "标准解法",
   extraction_confidence: "high",
   warnings: ["1", "2", "3", "4", "5", { text: "不允许对象数组" }],
 });
@@ -760,7 +773,6 @@ const longStepsResult = parseConfirmedExtractionDraft({
   question_text: "题干",
   student_answer: "学生答案",
   student_solution_steps: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
-  standard_solution_draft: "标准解法",
   extraction_confidence: "high",
   warnings: [],
 });
@@ -772,7 +784,6 @@ const longWarningsResult = parseConfirmedExtractionDraft({
   question_text: "题干",
   student_answer: "学生答案",
   student_solution_steps: ["第一步"],
-  standard_solution_draft: "标准解法",
   extraction_confidence: "high",
   warnings: ["1", "2", "3", "4", "5", "6"],
 });

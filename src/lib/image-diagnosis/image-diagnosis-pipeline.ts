@@ -635,7 +635,6 @@ function joinExtractionText(extraction: VisionExtractionDraft): string {
     extraction.question_text,
     extraction.student_answer,
     extraction.student_solution_steps.join("\n"),
-    extraction.standard_solution_draft,
   ].join("\n");
 }
 

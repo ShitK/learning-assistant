@@ -297,7 +297,6 @@ const extractionReviewDraft = createEditableExtractionDraft({
     question_text: "已识别题干。",
     student_answer: "未识别到学生答案",
     student_solution_steps: [],
-    standard_solution_draft: "先求导，再分类讨论。",
     extraction_confidence: "low",
   },
   warnings: [
@@ -343,8 +342,8 @@ assert.equal(
   "当前显示的是上一次成功图片诊断结果，本次图片诊断未生成新报告。原因：模型输出的 student_solution_steps 不合法。",
 );
 assert.equal(
-  createRetainedReportNotice(sampleView, "模型输出缺少 standard_solution_draft。"),
-  "当前显示的是样例题结果，本次图片诊断未生成新报告。原因：模型输出缺少 standard_solution_draft。",
+  createRetainedReportNotice(sampleView, "模型输出缺少 student_answer。"),
+  "当前显示的是样例题结果，本次图片诊断未生成新报告。原因：模型输出缺少 student_answer。",
 );
 assert.equal(
   createExtractionReviewRetainedReportNotice(imageView),
@@ -429,7 +428,6 @@ const extractionReviewResponse = {
     question_text: "求函数单调区间。",
     student_answer: "单调递增",
     student_solution_steps: ["求导", "直接判断"],
-    standard_solution_draft: "先求导，再判断导数符号。",
     extraction_confidence: "high",
   },
   requires_confirmation: true,
@@ -445,7 +443,6 @@ assert.equal(draft.confirmation_token, "confirm_token_1");
 assert.equal(draft.question_text, "求函数单调区间。");
 assert.equal(draft.student_answer, "单调递增");
 assert.equal(draft.steps_text, "求导\n直接判断");
-assert.equal(draft.standard_solution_draft, "先求导，再判断导数符号。");
 assert.equal(draft.extraction_confidence, "high");
 assert.deepEqual(draft.warnings, ["请确认定义域。"]);
 assert.equal(draft.can_persist_after_confirmation, true);
@@ -464,7 +461,6 @@ assert.deepEqual(createVisionExtractionDraftFromEditableDraft(draft), {
   question_text: "求函数单调区间。",
   student_answer: "单调递增",
   student_solution_steps: ["求导", "直接判断"],
-  standard_solution_draft: "先求导，再判断导数符号。",
   extraction_confidence: "high",
   warnings: ["请确认定义域。"],
 });
@@ -494,7 +490,6 @@ assert.equal(
 assert.equal(
   canConfirmEditableExtractionDraft({
     ...draft,
-    standard_solution_draft: " ",
   }),
   true,
 );

@@ -440,7 +440,7 @@ Parser 明确要求模型输出 JSON，并校验字段：
 - `extraction_confidence`
 - `warnings`
 
-当前内部类型仍保留 `standard_solution_draft`，但它只是 `/api/confirm` 旧 payload、确认 token 和既有测试的兼容字段。视觉模型缺失它时，parser 会填入“确认后由分析模型生成”的占位内容；最终报告里的 `standard_solution` 由 DeepSeek/text analysis provider 基于确认后的题干、学生答案和步骤生成。
+后续我把过渡期的标准解法兼容字段彻底移除了：视觉模型的输出契约只保留题干、学生答案、学生步骤、置信度和 warning。这样确认 payload、token fingerprint、debug summary 和前端预览都不再携带标准解法过渡字段，面试里可以清楚解释为“视觉模型负责看图，文本分析模型负责解题”。最终报告里的 `standard_solution` 仍由 DeepSeek/text analysis provider 基于确认后的题干、学生答案和步骤生成。
 
 这层可以概括成“结构化输出保证”。我没有直接相信模型会稳定返回想要的格式，因为同一个图片抽取任务，模型可能这次返回 JSON，下次混入自然语言说明，或者把数组字段写成多行字符串。当前实现用两类机制控制这个风险：第一，在 prompt 中给出明确字段和示例，让模型模仿固定结构；第二，在代码层用 parser、字段白名单、类型校验和有限规范化强制收敛到 `VisionExtractionDraft`。如果输出越过边界，例如返回非法 JSON、缺少关键字段，或夹带 `memory_delta`、`student_profile` 这类越权字段，就不会进入后续诊断 pipeline。
 
@@ -1017,7 +1017,7 @@ P0 阶段我用 localStorage 是为了用最小成本展示“长期画像变化
 
 标准解法展示上，我没有继续让前端自动给每个句子编号。真实标准解法里经常已经有 `(1)`、`②` 这类引用关系，如果再叠一套 1-13 的 UI 编号，会打乱原来的证明逻辑。所以我只迁移原文已有编号到左侧 marker，没有编号的内容保持段落。
 
-公式渲染也是类似思路：前端正则只能做有限兜底，不能可靠理解所有数学文本。早期我把主约束放在图片抽取 prompt 的 `standard_solution_draft`，后来发现视觉模型生成标准解法既慢又容易不完整，所以小步收窄为：视觉模型只抽取题干和学生步骤，确认后由 text analysis provider 独立生成 `standard_solution`，并要求它用 `$...$` 或 `$$...$$` 标注数学表达式。这样比前端猜 `f'(x)`、`1/a`、`ln(1/a)` 哪些该包成公式更稳定，也减少视觉模型编造解法的风险。
+公式渲染也是类似思路：前端正则只能做有限兜底，不能可靠理解所有数学文本。早期我试过让图片抽取阶段携带标准解法过渡文本，后来发现视觉模型生成标准解法既慢又容易不完整，所以最终收窄为：视觉模型只抽取题干、学生答案和学生步骤，确认后由 text analysis provider 独立生成 `standard_solution`，并要求它用 `$...$` 或 `$$...$$` 标注数学表达式。这样比前端猜 `f'(x)`、`1/a`、`ln(1/a)` 哪些该包成公式更稳定，也减少视觉模型编造解法的风险。
 
 ### 可能被继续追问
 
@@ -1034,7 +1034,7 @@ P0 阶段我用 localStorage 是为了用最小成本展示“长期画像变化
 
 当前方案满足 P1 Demo 的安全边界，但还不是完整商业持久化。最明显的缺口是：无状态 token 不能区分“恶意篡改”和“用户合理编辑”。所以编辑后的报告可以用于即时学习，但不进入长期画像。
 
-标准解法格式化目前也保持保守：只识别有限的原文编号形态和常见裸公式，不追求完整 Markdown/LaTeX 自动修复。更可靠的演进方向是提升 text analysis provider prompt、后续引入更明确的结构化字段，例如 `standard_solution_steps`，并彻底移除过渡期的 `standard_solution_draft` 兼容字段，而不是让前端无限扩张正则。
+标准解法格式化目前也保持保守：只识别有限的原文编号形态和常见裸公式，不追求完整 Markdown/LaTeX 自动修复。更可靠的演进方向是继续提升 text analysis provider prompt，后续再评估是否引入更明确的结构化字段，例如 `standard_solution_steps`，而不是让前端无限扩张正则。
 
 后续如果引入数据库，应增加 `diagnosis_runs` 或 `image_extraction_drafts`，保存原始抽取、用户编辑版本、确认时间、确认人和最终 `memory_delta`。那时才能把“编辑后确认写入”做成真正可审计的长期记忆流程。
 
@@ -1123,7 +1123,7 @@ DeepSeek 这边也做了小的配置容错：`ANALYSIS_PROVIDER_BASE_URL` 既可
 
 公式渲染也有一个重要经验：前端不能无限猜裸公式。更可靠的策略是把约束前移到 prompt 和模型输出格式：视觉模型抽取题干、学生答案和学生步骤时要尽量用 LaTeX 包裹数学表达式；确认后的 text analysis provider 生成 `standard_solution` 时也必须用 `$...$` 或 `$$...$$` 包裹数学公式。前端 KaTeX 做渲染和有限兜底，但不承担完整数学解析器职责。
 
-这次小步清理还调整了标准解法来源：`standard_solution_draft` 暂时仍存在于内部 schema 里，但只作为兼容占位，不再展示给用户，也不再要求视觉模型生成。DeepSeek 在 `/api/confirm` 后根据用户确认的题干、学生答案和步骤独立生成最终 `standard_solution`。这样既保留了旧 confirm payload 的稳定性，也把后续“彻底删除 `standard_solution_draft`”留成一个可控的小迁移。
+这次清理还调整了标准解法来源：过渡期标准解法字段已从内部 schema、确认 payload、确认指纹和前端预览中删除，视觉模型只负责 OCR/结构化抽取。DeepSeek 在 `/api/confirm` 后根据用户确认的题干、学生答案和步骤独立生成最终 `standard_solution`。这样把“看图”和“解题”拆成两个模型职责，减少视觉模型编造或截断标准解法的风险。
 
 标准解法编号也做了调整。最初强行给每行加序号，看起来规整，但数学证明文本里原本的 `(1)`、`②` 可能是逻辑引用。后来改成只迁移原文已有编号到左侧 marker，普通段落不硬加编号，避免 UI 改变原答案逻辑。
 

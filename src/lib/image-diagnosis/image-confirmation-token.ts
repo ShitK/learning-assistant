@@ -128,7 +128,6 @@ function canonicalizeExtractionDraft(extraction: VisionExtractionDraft): string 
     question_text: extraction.question_text,
     student_answer: extraction.student_answer,
     student_solution_steps: extraction.student_solution_steps,
-    standard_solution_draft: extraction.standard_solution_draft,
     extraction_confidence: extraction.extraction_confidence,
   });
 }

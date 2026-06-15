@@ -120,7 +120,6 @@ assert.equal(
       present_fields: [
         "question_text",
         "student_solution_steps",
-        "standard_solution_draft",
         "extraction_confidence",
         "warnings",
       ],
@@ -138,7 +137,7 @@ assert.equal(
   }),
   [
     "没有识别到学生作答区域，请上传包含题干和学生解题痕迹的图片。",
-    "开发诊断：模型返回 JSON；已返回字段 question_text, student_solution_steps, standard_solution_draft, extraction_confidence, warnings；缺少字段 student_answer；题干长度 28；学生答案长度 0；学生步骤数量 2；warning 数量 1。",
+    "开发诊断：模型返回 JSON；已返回字段 question_text, student_solution_steps, extraction_confidence, warnings；缺少字段 student_answer；题干长度 28；学生答案长度 0；学生步骤数量 2；warning 数量 1。",
   ].join("\n"),
 );
 
@@ -158,7 +157,6 @@ assert.equal(
         "question_text",
         "student_answer",
         "student_solution_steps",
-        "standard_solution_draft",
         "extraction_confidence",
         "warnings",
       ],
@@ -168,7 +166,6 @@ assert.equal(
       field_lengths: {
         question_text: 30,
         student_answer: 8,
-        standard_solution_draft: 120,
       },
       list_lengths: {
         student_solution_steps: 10,
@@ -178,7 +175,7 @@ assert.equal(
   }),
   [
     "模型输出的 student_solution_steps 不合法。",
-    "开发诊断：模型返回 JSON；已返回字段 question_text, student_answer, student_solution_steps, standard_solution_draft, extraction_confidence, warnings；缺少字段 无；题干长度 30；学生答案长度 8；学生步骤数量 10；warning 数量 0。",
+    "开发诊断：模型返回 JSON；已返回字段 question_text, student_answer, student_solution_steps, extraction_confidence, warnings；缺少字段 无；题干长度 30；学生答案长度 8；学生步骤数量 10；warning 数量 0。",
   ].join("\n"),
 );
 
@@ -339,7 +336,6 @@ const extractionReviewResponse = {
     question_text: "求函数单调区间。",
     student_answer: "遗漏参数讨论。",
     student_solution_steps: ["求导", "直接判断"],
-    standard_solution_draft: "先求导，再分类讨论。",
     extraction_confidence: "medium",
   },
   requires_confirmation: true,
@@ -359,8 +355,6 @@ const confirmedExtractionDraft = {
   student_answer: extractionReviewResponse.recognized_question.student_answer,
   student_solution_steps:
     extractionReviewResponse.recognized_question.student_solution_steps,
-  standard_solution_draft:
-    extractionReviewResponse.recognized_question.standard_solution_draft,
   extraction_confidence:
     extractionReviewResponse.recognized_question.extraction_confidence,
   warnings: extractionReviewResponse.warnings,
@@ -380,8 +374,30 @@ assert.equal(
   extractionReviewResponse.confirmation_token,
 );
 assert.equal(
-  confirmPayload.confirmed_extraction.standard_solution_draft,
-  "先求导，再分类讨论。",
+  "student_solution_steps" in confirmPayload.confirmed_extraction,
+  true,
+);
+assert.deepEqual(
+  Object.keys(extractionReviewResponse.recognized_question).sort(),
+  [
+    "extraction_confidence",
+    "id",
+    "module",
+    "question_text",
+    "student_answer",
+    "student_solution_steps",
+    "title",
+  ].sort(),
+);
+assert.deepEqual(
+  Object.keys(confirmPayload.confirmed_extraction).sort(),
+  [
+    "extraction_confidence",
+    "question_text",
+    "student_answer",
+    "student_solution_steps",
+    "warnings",
+  ].sort(),
 );
 assert.deepEqual(confirmPayload.confirmed_extraction.warnings, []);
 
@@ -517,7 +533,7 @@ const malformedExtractionReviewResponse = {
   ...extractionReviewResponse,
   recognized_question: {
     ...extractionReviewResponse.recognized_question,
-    standard_solution_draft: null,
+    extraction_confidence: "certain",
   },
 };
 

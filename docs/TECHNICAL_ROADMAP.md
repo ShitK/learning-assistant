@@ -195,7 +195,6 @@ interface TextAnalysisEnhancementProvider {
     question_text: string;
     student_answer: string;
     student_solution_steps: string[];
-    standard_solution_draft: string;
   }): Promise<DiagnosisEnhancementDraft>;
 }
 
@@ -759,7 +758,7 @@ Supabase Storage（图片长期保存阶段再引入）
 - 图片压缩和大小校验。
 - Zod 或等价类型守卫校验模型输出。
 - 图片诊断输出韧性：parser 对常见 MiMo 字段值漂移做有界规范化，provider 对安全的结构化失败做一次修复重试，前端明确展示保留报告状态。
-- 图片识别确认：`/api/diagnose` 只返回识别草稿，前端允许编辑题干、学生答案、解题步骤和标准解法草稿；确认后通过 `/api/confirm` 生成完整报告。
+- 图片识别确认：`/api/diagnose` 只返回识别草稿，前端允许编辑题干、学生答案和解题步骤；确认后通过 `/api/confirm` 生成完整报告，标准解法由文本分析模型或本地规则生成。
 - OCR adapter 是后续独立扩展，不属于本次图片诊断输出韧性 hardening。
 
 交付：

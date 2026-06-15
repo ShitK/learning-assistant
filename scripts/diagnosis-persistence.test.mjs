@@ -320,7 +320,6 @@ const studentWorkExtraction = {
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
   student_answer: "只令 $f'(x)=0$ 得 $x=\\sqrt a$。",
   student_solution_steps: ["求导", "只写一个临界点"],
-  standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$。",
   extraction_confidence: "high",
   warnings: [],
 };
@@ -361,7 +360,6 @@ const problemOnlyExtraction = {
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
   student_answer: "未识别到学生答案",
   student_solution_steps: [],
-  standard_solution_draft: "应先求导，再按参数分类讨论。",
   extraction_confidence: "low",
   warnings: ["没有识别到学生作答区域。"],
 };
@@ -432,7 +430,6 @@ const insufficientResponse = runImageMathTraceAgent({
     question_text: "",
     student_answer: "只令 $f'(x)=0$。",
     student_solution_steps: ["求导"],
-    standard_solution_draft: "",
     extraction_confidence: "high",
     warnings: ["题干和标准解法不足。"],
   },

@@ -6,14 +6,12 @@ const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 const {
   parseVisionExtractionText,
   createVisionExtractionPrompt,
-  VISION_STANDARD_SOLUTION_PLACEHOLDER,
 } = jiti("../src/lib/vision-extraction/vision-extraction-parser.ts");
 
 const validModelText = JSON.stringify({
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
   student_answer: "$f'(x)=3x^2-3a$，只得到 $x=\\sqrt a$。",
   student_solution_steps: ["求导正确", "临界点遗漏 $-\\sqrt a$"],
-  standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$ 两类情况。",
   extraction_confidence: "high",
   warnings: [],
 });
@@ -31,7 +29,6 @@ const stringListModelText = JSON.stringify({
   student_answer: "$f'(x)=3x^2-3a$，只得到 $x=\\sqrt a$。",
   student_solution_steps:
     "1. 求导正确\n2. 临界点遗漏 $-\\sqrt a$\n3. 未讨论 $a\\le 0$",
-  standard_solution_draft: "应讨论 $a\\le 0$ 与 $a>0$ 两类情况。",
   extraction_confidence: "high",
   warnings: "",
 });
@@ -59,8 +56,6 @@ const rawMathModelText = JSON.stringify({
     "已知函数f(x)=lnx - a x + 1. (1)求f(x)的单调区间；(2)已知f(x)在(0,e)上有两个零点。",
   student_answer: "当a > 0时，f'(x)=1/x-a。",
   student_solution_steps: ["令f'(x)=0得x=1/a", "讨论区间(0,e)"],
-  standard_solution_draft:
-    "对f(x)求导，得到f'(x)=1/x-a，再分类讨论。",
   extraction_confidence: "medium",
   warnings: [],
 });
@@ -76,10 +71,6 @@ assert.equal(
   rawMathParsed.value.student_solution_steps[0].includes("$f'(x)=0$"),
   true,
 );
-assert.equal(
-  rawMathParsed.value.standard_solution_draft.includes("$f'(x)=1/x-a$"),
-  true,
-);
 
 const invalidJson = parseVisionExtractionText("```json\n{}\n```");
 assert.equal(invalidJson.ok, false);
@@ -90,7 +81,6 @@ const missingStudentAnswer = parseVisionExtractionText(
   JSON.stringify({
     question_text: "题干",
     student_solution_steps: ["步骤"],
-    standard_solution_draft: "解法",
     extraction_confidence: "low",
     warnings: ["未识别到学生作答区域"],
   }),
@@ -107,7 +97,6 @@ assert.deepEqual(missingStudentAnswer.error.debug_summary.missing_fields, [
 assert.deepEqual(missingStudentAnswer.error.debug_summary.present_fields, [
   "question_text",
   "student_solution_steps",
-  "standard_solution_draft",
   "extraction_confidence",
   "warnings",
 ]);
@@ -116,31 +105,31 @@ assert.equal(
   2,
 );
 
-const missingStandardSolutionDraft = parseVisionExtractionText(
+const forbiddenStandardSolutionDraft = parseVisionExtractionText(
   JSON.stringify({
     question_text: "题干",
     student_answer: "答案",
     student_solution_steps: ["步骤"],
+    unexpected_field: "视觉模型不应输出这个字段",
+    extraction_confidence: "high",
+    warnings: [],
   }),
 );
-assert.equal(missingStandardSolutionDraft.ok, true);
+assert.equal(forbiddenStandardSolutionDraft.ok, false);
 assert.equal(
-  missingStandardSolutionDraft.value.standard_solution_draft,
-  VISION_STANDARD_SOLUTION_PLACEHOLDER,
+  forbiddenStandardSolutionDraft.error.message,
+  "模型输出包含未声明字段。",
 );
-assert.equal(missingStandardSolutionDraft.value.extraction_confidence, "low");
-assert.deepEqual(missingStandardSolutionDraft.value.warnings, [
-  "视觉模型未返回标准解法草稿，确认后将由分析模型生成标准解法。",
-  "模型未返回置信度，已按低置信度处理。",
-  "模型返回的 warnings 格式不完整，已忽略。",
-]);
+assert.deepEqual(
+  forbiddenStandardSolutionDraft.error.debug_summary.extra_fields,
+  ["unexpected_field"],
+);
 
 const missingSteps = parseVisionExtractionText(
   JSON.stringify({
     question_text: "题干",
     student_answer: "答案",
     student_solution_steps: [],
-    standard_solution_draft: "解法",
     extraction_confidence: "medium",
     warnings: [],
   }),
@@ -159,7 +148,6 @@ const overconfidentMissingAnswer = parseVisionExtractionText(
     question_text: "题干",
     student_answer: "未识别到学生答案",
     student_solution_steps: ["求导"],
-    standard_solution_draft: "解法",
     extraction_confidence: "high",
     warnings: [],
   }),
@@ -175,7 +163,6 @@ const alternateMissingAnswerText = parseVisionExtractionText(
     question_text: "题干",
     student_answer: "未找到学生答案",
     student_solution_steps: ["求导"],
-    standard_solution_draft: "解法",
     extraction_confidence: "high",
     warnings: [],
   }),
@@ -191,7 +178,6 @@ const missingAnswerAndSteps = parseVisionExtractionText(
     question_text: "题干",
     student_answer: "未识别到学生答案",
     student_solution_steps: [],
-    standard_solution_draft: "解法",
     extraction_confidence: "high",
     warnings: ["图片手写内容较模糊"],
   }),
@@ -217,7 +203,6 @@ const objectStepItems = parseVisionExtractionText(
       { content: "3. 写出单调区间" },
       { value: "4. 对照零点条件" },
     ],
-    standard_solution_draft: "标准解法",
     extraction_confidence: "medium",
     warnings: [],
   }),
@@ -241,7 +226,6 @@ const noisyStepItems = parseVisionExtractionText(
       { text: "2. 讨论参数" },
       { unsupported: "忽略这个对象" },
     ],
-    standard_solution_draft: "标准解法",
     extraction_confidence: "medium",
     warnings: [],
   }),
@@ -262,7 +246,6 @@ const nestedStepItems = parseVisionExtractionText(
     question_text: "题干",
     student_answer: "答案",
     student_solution_steps: ["1. 求导", ["2. 讨论参数"]],
-    standard_solution_draft: "标准解法",
     extraction_confidence: "medium",
     warnings: [],
   }),
@@ -282,7 +265,6 @@ const duplicateWarnings = parseVisionExtractionText(
       { unsupported: "忽略这个对象" },
       { text: "2. 讨论参数" },
     ],
-    standard_solution_draft: "标准解法",
     extraction_confidence: "medium",
     warnings: [
       "模型警告 A",
@@ -310,7 +292,6 @@ const overlongStepItems = parseVisionExtractionText(
     student_solution_steps: Array.from({ length: 10 }, (_item, index) => {
       return `步骤${index + 1}`;
     }),
-    standard_solution_draft: "标准解法",
     extraction_confidence: "medium",
     warnings: [],
   }),
@@ -339,7 +320,6 @@ const memoryDeltaAttempt = parseVisionExtractionText(
     question_text: "题干",
     student_answer: "答案",
     student_solution_steps: ["步骤"],
-    standard_solution_draft: "解法",
     extraction_confidence: "medium",
     warnings: [],
     memory_delta: { should_persist: true },
@@ -359,14 +339,15 @@ assert.equal(
   true,
 );
 assert.equal(
+  prompt.includes("标准解法会在用户确认后由文本分析模型生成"),
+  true,
+);
+assert.equal(
   prompt.includes(
     "question_text、student_answer、student_solution_steps 中的数学表达式都必须使用 LaTeX",
   ),
   true,
 );
-assert.equal(prompt.includes("standard_solution_draft 必须始终输出"), false);
-assert.equal(prompt.includes("standard_solution_draft 内的数学公式"), false);
-assert.equal(prompt.includes('"standard_solution_draft"'), false);
 assert.equal(prompt.includes("\\frac{1}{a}"), true);
 assert.equal(prompt.includes("\\ln a"), true);
 

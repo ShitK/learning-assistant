@@ -4,11 +4,23 @@ import type {
   VisionExtractionDraft,
 } from "@/lib/vision-extraction/vision-extraction-types";
 
+const CONFIRMED_EXTRACTION_KEYS = new Set([
+  "question_text",
+  "student_answer",
+  "student_solution_steps",
+  "extraction_confidence",
+  "warnings",
+]);
+
 export function parseConfirmedExtractionDraft(
   value: unknown,
 ): { ok: true; value: VisionExtractionDraft } | { ok: false; message: string } {
   if (!isRecord(value)) {
     return { ok: false, message: "confirmed_extraction 必须是对象。" };
+  }
+
+  if (hasUnexpectedKey(value, CONFIRMED_EXTRACTION_KEYS)) {
+    return { ok: false, message: "confirmed_extraction 包含未声明字段。" };
   }
 
   if (!isNonEmptyString(value.question_text)) {
@@ -17,10 +29,6 @@ export function parseConfirmedExtractionDraft(
 
   if (!isNonEmptyString(value.student_answer)) {
     return { ok: false, message: "学生答案不能为空。" };
-  }
-
-  if (!isNonEmptyString(value.standard_solution_draft)) {
-    return { ok: false, message: "标准解法草稿不能为空。" };
   }
 
   if (!isExtractionConfidence(value.extraction_confidence)) {
@@ -43,7 +51,6 @@ export function parseConfirmedExtractionDraft(
       question_text: value.question_text.trim(),
       student_answer: value.student_answer.trim(),
       student_solution_steps: steps.value,
-      standard_solution_draft: value.standard_solution_draft.trim(),
       extraction_confidence: value.extraction_confidence,
       warnings: warnings.value,
     },
@@ -91,4 +98,13 @@ function isExtractionConfidence(
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function hasUnexpectedKey(
+  value: Record<string, unknown>,
+  allowedKeys: Set<string>,
+): boolean {
+  return Object.keys(value).some((key) => {
+    return !allowedKeys.has(key);
+  });
 }

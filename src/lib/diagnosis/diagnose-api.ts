@@ -82,7 +82,6 @@ export interface ImageExtractionReviewDraft {
   question_text: string;
   student_answer: string;
   student_solution_steps: string[];
-  standard_solution_draft: string;
   extraction_confidence: "high" | "medium" | "low";
 }
 
@@ -429,7 +428,6 @@ function isImageExtractionReviewDraft(
     typeof value.student_answer === "string" &&
     Array.isArray(value.student_solution_steps) &&
     value.student_solution_steps.every(isString) &&
-    typeof value.standard_solution_draft === "string" &&
     (value.extraction_confidence === "high" ||
       value.extraction_confidence === "medium" ||
       value.extraction_confidence === "low")
