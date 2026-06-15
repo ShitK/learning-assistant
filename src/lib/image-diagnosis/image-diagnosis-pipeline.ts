@@ -24,7 +24,7 @@ import type {
   ImageRecognizedQuestion,
   KnowledgeMapping,
   MistakeDiagnosis,
-} from "@/lib/diagnosis/diagnose-api";
+} from "@/lib/shared/diagnosis-result-types";
 import type { AnalysisEnhancementDraft } from "@/lib/shared/analysis-provider-types";
 import type {
   ConfirmationAction,
