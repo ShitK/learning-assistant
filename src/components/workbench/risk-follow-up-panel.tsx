@@ -207,4 +207,3 @@ function isUnrecognizedStudentAnswer(value: string): boolean {
     value,
   );
 }
-

@@ -32,4 +32,3 @@ export function HeaderBar({ mode }: { mode: DiagnosisMode }): ReactElement {
     </header>
   );
 }
-

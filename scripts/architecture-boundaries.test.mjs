@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import ts from "typescript";
 
 const allowedRootLibFiles = new Set([]);
@@ -55,6 +55,15 @@ const allowedLibImportPrefixes = [
 const sourceFiles = await listFiles("src", (filePath) =>
   /\.(ts|tsx)$/.test(filePath),
 );
+const sourceFileSet = new Set(sourceFiles);
+const sourceByFilePath = new Map(
+  await Promise.all(
+    sourceFiles.map(async (filePath) => [
+      filePath,
+      await readFile(filePath, "utf8"),
+    ]),
+  ),
+);
 
 function createSourceFile(filePath, source) {
   return ts.createSourceFile(
@@ -105,6 +114,93 @@ function getImportSources(source, filePath) {
   return importSources;
 }
 
+function hasRuntimeImportClause(importClause) {
+  if (!importClause) {
+    return true;
+  }
+
+  if (importClause.isTypeOnly) {
+    return false;
+  }
+
+  if (importClause.name) {
+    return true;
+  }
+
+  if (!importClause.namedBindings) {
+    return true;
+  }
+
+  if (ts.isNamespaceImport(importClause.namedBindings)) {
+    return true;
+  }
+
+  return importClause.namedBindings.elements.some((element) => !element.isTypeOnly);
+}
+
+function getRuntimeImportSources(source, filePath) {
+  const sourceFile = createSourceFile(filePath, source);
+  const importSources = [];
+
+  function visit(node) {
+    if (
+      ts.isImportDeclaration(node) &&
+      node.moduleSpecifier &&
+      isStringLike(node.moduleSpecifier) &&
+      hasRuntimeImportClause(node.importClause)
+    ) {
+      importSources.push(node.moduleSpecifier.text);
+    }
+
+    if (
+      ts.isExportDeclaration(node) &&
+      !node.isTypeOnly &&
+      node.moduleSpecifier &&
+      isStringLike(node.moduleSpecifier)
+    ) {
+      importSources.push(node.moduleSpecifier.text);
+    }
+
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      isStringLike(node.arguments[0])
+    ) {
+      importSources.push(node.arguments[0].text);
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return importSources;
+}
+
+function resolveSourceFile(importSource, fromFilePath) {
+  if (importSource.startsWith("@/")) {
+    return resolveSourceFileCandidate(join("src", importSource.slice(2)));
+  }
+
+  if (importSource.startsWith(".")) {
+    return resolveSourceFileCandidate(join(dirname(fromFilePath), importSource));
+  }
+
+  return null;
+}
+
+function resolveSourceFileCandidate(basePath) {
+  const candidates = [
+    basePath,
+    `${basePath}.ts`,
+    `${basePath}.tsx`,
+    join(basePath, "index.ts"),
+    join(basePath, "index.tsx"),
+  ];
+
+  return candidates.find((candidate) => sourceFileSet.has(candidate)) ?? null;
+}
+
 function isClientComponentSource(source, filePath) {
   const sourceFile = createSourceFile(filePath, source);
   const firstStatement = sourceFile.statements[0];
@@ -118,7 +214,7 @@ function isClientComponentSource(source, filePath) {
 }
 
 for (const filePath of sourceFiles) {
-  const source = await readFile(filePath, "utf8");
+  const source = sourceByFilePath.get(filePath);
   const oldFlatLibImports = getImportSources(source, filePath).filter((importSource) => {
     if (!importSource.startsWith("@/lib/")) {
       return false;
@@ -139,17 +235,53 @@ for (const filePath of sourceFiles) {
 const clientComponentFiles = [];
 
 for (const filePath of sourceFiles) {
-  const source = await readFile(filePath, "utf8");
+  const source = sourceByFilePath.get(filePath);
   if (isClientComponentSource(source, filePath)) {
     clientComponentFiles.push(filePath);
   }
 }
 
-for (const filePath of clientComponentFiles) {
-  const source = await readFile(filePath, "utf8");
-  const importSources = getImportSources(source, filePath);
+const clientReachableFiles = collectClientReachableFiles(clientComponentFiles);
+
+function collectClientReachableFiles(clientRoots) {
+  const reachableFiles = new Set();
+  const pendingFiles = [...clientRoots];
+
+  while (pendingFiles.length > 0) {
+    const filePath = pendingFiles.pop();
+    if (!filePath || reachableFiles.has(filePath)) {
+      continue;
+    }
+
+    reachableFiles.add(filePath);
+
+    const source = sourceByFilePath.get(filePath);
+    for (const importSource of getRuntimeImportSources(source, filePath)) {
+      const resolvedFile = resolveSourceFile(importSource, filePath);
+      if (resolvedFile && !reachableFiles.has(resolvedFile)) {
+        pendingFiles.push(resolvedFile);
+      }
+    }
+  }
+
+  return [...reachableFiles].sort();
+}
+
+for (const filePath of clientReachableFiles) {
+  const source = sourceByFilePath.get(filePath);
+  const importSources = getRuntimeImportSources(source, filePath);
   const uncommentedSource = stripComments(source);
 
+  assert.equal(
+    filePath.startsWith("src/lib/persistence/"),
+    false,
+    `${filePath} must not be in the client component runtime graph.`,
+  );
+  assert.equal(
+    filePath.startsWith("src/lib/providers/"),
+    false,
+    `${filePath} must not be in the client component runtime graph.`,
+  );
   assert.equal(
     importSources.some((importSource) =>
       importSource.startsWith("@/lib/persistence/"),
