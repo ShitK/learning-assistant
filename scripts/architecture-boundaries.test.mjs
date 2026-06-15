@@ -44,6 +44,7 @@ assert.deepEqual(
 const allowedLibImportPrefixes = [
   "@/lib/shared/",
   "@/lib/math/",
+  "@/lib/vision-extraction/",
   "@/lib/providers/",
   "@/lib/diagnosis/",
   "@/lib/image-diagnosis/",
@@ -306,4 +307,48 @@ for (const filePath of clientReachableFiles) {
     false,
     `${filePath} must not read service role key.`,
   );
+}
+
+const domainBoundaryRules = [
+  {
+    from_dir: "src/lib/providers/",
+    forbidden_prefixes: ["@/lib/diagnosis/", "@/lib/image-diagnosis/"],
+    runtime_only: false,
+    message:
+      "providers must depend only on shared contracts, not diagnosis or image-diagnosis domains.",
+  },
+  {
+    from_dir: "src/lib/image-diagnosis/",
+    forbidden_prefixes: ["@/lib/providers/"],
+    runtime_only: false,
+    message:
+      "image-diagnosis must depend on shared provider result types, not provider implementations.",
+  },
+  {
+    from_dir: "src/lib/image-diagnosis/",
+    forbidden_prefixes: ["@/lib/diagnosis/"],
+    runtime_only: true,
+    message:
+      "image-diagnosis must not runtime-import diagnosis; move shared rules/helpers into shared modules.",
+  },
+];
+
+for (const rule of domainBoundaryRules) {
+  for (const filePath of sourceFiles.filter((item) =>
+    item.startsWith(rule.from_dir),
+  )) {
+    const source = sourceByFilePath.get(filePath);
+    const importSources = rule.runtime_only
+      ? getRuntimeImportSources(source, filePath)
+      : getImportSources(source, filePath);
+    const forbiddenImports = importSources.filter((importSource) =>
+      rule.forbidden_prefixes.some((prefix) => importSource.startsWith(prefix)),
+    );
+
+    assert.deepEqual(
+      forbiddenImports,
+      [],
+      `${filePath}: ${rule.message} Found: ${forbiddenImports.join(", ")}`,
+    );
+  }
 }
