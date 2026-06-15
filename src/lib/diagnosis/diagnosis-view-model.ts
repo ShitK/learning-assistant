@@ -19,10 +19,8 @@ import {
   joinEditableStepsText,
   splitEditableStepsText,
 } from "@/lib/image-diagnosis/image-confirmation";
-import {
-  VISION_STANDARD_SOLUTION_PLACEHOLDER,
-  type VisionExtractionDraft,
-} from "@/lib/image-diagnosis/vision-extraction-parser";
+import { VISION_STANDARD_SOLUTION_PLACEHOLDER } from "@/lib/vision-extraction/vision-extraction-parser";
+import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
 
 export interface DiagnosisViewModel {
   source: "sample" | "image";

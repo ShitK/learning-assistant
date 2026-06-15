@@ -31,7 +31,7 @@ import type {
   EvidenceAssessment,
   FollowUpAnswerDraft,
 } from "@/lib/diagnosis/diagnosis-evidence";
-import type { VisionExtractionDraft } from "@/lib/image-diagnosis/vision-extraction-parser";
+import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
 
 const IMAGE_AGENT_STEPS: AgentStep[] = [
   {

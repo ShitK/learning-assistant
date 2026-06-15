@@ -12,7 +12,7 @@ const { runImageMathTraceAgent } = jiti(
 );
 const { runMathTraceAgent } = jiti("../src/lib/diagnosis/mathtrace-agent-pipeline.ts");
 const { parseVisionExtractionText } = jiti(
-  "../src/lib/image-diagnosis/vision-extraction-parser.ts",
+  "../src/lib/vision-extraction/vision-extraction-parser.ts",
 );
 
 const request = {

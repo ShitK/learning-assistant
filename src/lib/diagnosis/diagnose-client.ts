@@ -19,7 +19,7 @@ import type {
   SampleQuestionId,
   StudentProfile,
 } from "@/data/mathtrace-demo";
-import type { VisionExtractionDraft } from "@/lib/image-diagnosis/vision-extraction-parser";
+import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
 
 export interface SampleDiagnosePayload {
   student_id: string;

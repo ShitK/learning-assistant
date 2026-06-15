@@ -17,7 +17,7 @@ import type {
   StudentProfile,
 } from "@/data/mathtrace-demo";
 import type { ProviderFailureDebug } from "@/lib/shared/provider-error";
-import type { VisionExtractionDebugSummary } from "@/lib/image-diagnosis/vision-extraction-parser";
+import type { VisionExtractionDebugSummary } from "@/lib/vision-extraction/vision-extraction-types";
 
 export type {
   ConfirmationAction,

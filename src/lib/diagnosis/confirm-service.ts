@@ -26,7 +26,7 @@ import type {
   FollowUpAnswerDraft,
 } from "@/lib/diagnosis/diagnosis-evidence";
 import type { DiagnoseServiceResult } from "@/lib/diagnosis/diagnose-service";
-import type { VisionExtractionDraft } from "@/lib/image-diagnosis/vision-extraction-parser";
+import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
 
 interface ConfirmImageDiagnosisRequest {
   request: {

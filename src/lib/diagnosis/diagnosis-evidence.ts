@@ -1,4 +1,4 @@
-import type { VisionExtractionDraft } from "@/lib/image-diagnosis/vision-extraction-parser";
+import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
 
 export type EvidenceLevel =
   | "student_work_sufficient"

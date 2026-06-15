@@ -1,12 +1,12 @@
 import {
   createVisionExtractionPrompt,
   parseVisionExtractionText,
-} from "@/lib/image-diagnosis/vision-extraction-parser";
+} from "@/lib/vision-extraction/vision-extraction-parser";
 import { isRecord } from "@/lib/shared/utils";
 import type {
   VisionExtractionDebugSummary,
   VisionExtractionDraft,
-} from "@/lib/image-diagnosis/vision-extraction-parser";
+} from "@/lib/vision-extraction/vision-extraction-types";
 import type {
   ProviderFailureDebug,
   ProviderFailureKind,

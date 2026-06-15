@@ -32,7 +32,7 @@ import type {
   VisionExtractionProvider,
   VisionProviderError,
 } from "@/lib/providers/anthropic-compatible-provider";
-import type { VisionExtractionDraft } from "@/lib/image-diagnosis/vision-extraction-parser";
+import type { VisionExtractionDraft } from "@/lib/vision-extraction/vision-extraction-types";
 
 export interface DiagnoseServiceResult {
   status: number;

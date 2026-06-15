@@ -2,7 +2,7 @@ import { isRecord } from "@/lib/shared/utils";
 import type {
   ExtractionConfidence,
   VisionExtractionDraft,
-} from "@/lib/image-diagnosis/vision-extraction-parser";
+} from "@/lib/vision-extraction/vision-extraction-types";
 
 export function parseConfirmedExtractionDraft(
   value: unknown,
