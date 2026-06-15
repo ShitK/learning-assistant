@@ -159,6 +159,41 @@
 - 发现可扩展想法时记录为 roadmap，不要直接实现。
 - 页面优先服务 3-5 分钟演示：样例题诊断、Agent 步骤、错因报告、画像变化、变式题、7 天建议。
 
+### 7.7 架构先行与模块边界
+
+涉及目录结构、模块边界、数据契约、模型 provider、数据库、学生画像、localStorage、确认链路或持久化策略的任务，默认先写 plan，不直接实现。
+
+计划中必须说明：
+
+- 目标是什么。
+- 明确不做什么。
+- 涉及哪些文件和模块。
+- 数据如何流动。
+- 哪些已有行为不能被破坏。
+- 如何验证没有行为回归。
+
+架构清理必须保持小步、单主题、可验证。不要为了“更工程化”一次性做大范围目录重组、抽象升级或风格调整。
+
+当前项目模块边界：
+
+- `app/api/**`：只作为 HTTP 入口，负责请求解析、状态码、错误响应和调用 service；不要写复杂业务规则。
+- `components/**`：负责展示、交互和状态连接；不要直接访问数据库、模型 provider、文件系统或 service role key。
+- `src/lib/shared/**`：只能放 browser-safe、无副作用、跨模块复用的类型、常量、类型守卫和纯函数；禁止依赖 provider、persistence、server-only 环境变量或 Node-only API。
+- `src/lib/providers/**`：只封装外部模型协议差异；不能决定 `memory_delta`、`student_profile` 或持久化策略。
+- `src/lib/vision-extraction/**`：只负责图片抽取契约、parser、debug summary 和 provider 输入输出边界；视觉模型不得输出画像、错因频次、`memory_delta` 或最终标准解法。
+- `src/lib/diagnosis/**`：负责确定性诊断 pipeline、证据策略、画像增量和确认流程编排。
+- `src/lib/persistence/**`：只封装数据库读写、RPC payload 和服务端持久化边界；不要承载错因诊断规则。
+- `src/lib/demo/**`：只负责 demo 状态恢复、localStorage 包装和本地演示状态，不代表云端完整学生画像。
+
+当前项目架构红线：
+
+- `sample_diagnosis` 是稳定演示路径，不能被数据库、真实模型 provider 或架构重构破坏。
+- 前端不能直连 Supabase，也不能读取 service role key。
+- 模型输出一律视为不可信输入，必须经过 parser、字段白名单、类型守卫或业务规则收口。
+- 文本分析模型只能增强展示文本，不能决定画像写入。
+- `StudentProfile` 运行时校验以 shared guard 为准，不要再复制多套画像校验逻辑。
+- localStorage 目前只是 demo 画像恢复来源，不等于完整云端学生画像。
+
 ## 8. 文档维护约束
 
 项目采用轻量文档策略：文档服务于开发决策、协作理解和后续维护，不为形式完整而创建空文档或无实际内容的文档。
