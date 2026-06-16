@@ -18,6 +18,9 @@ const {
   isMistakeBookResponse,
   requestMistakeBookItems,
 } = jiti("./src/lib/mistake-book/mistake-book-client.ts");
+const { PROFILE_SYNC_FAILED_WARNING } = jiti(
+  "./src/lib/student-profile/student-profile-service.ts",
+);
 const { DELETE, GET } = jiti("./src/app/api/mistake-book/route.ts");
 
 const itemId = "11111111-1111-4111-8111-111111111111";
@@ -111,21 +114,64 @@ assert.deepEqual(failingResult.body, {
 assert.equal(JSON.stringify(failingResult.body).includes("service role"), false);
 
 const deleteRepository = createRecordingRepository([item]);
+const deleteProfileRepository = createRecordingProfileRepository([
+  {
+    id: "event-1",
+    created_at: "2026-06-17T08:00:00+08:00",
+    memory_delta: memoryDelta(),
+  },
+]);
 const deleteSuccessResult = await handleMistakeBookDeleteRequest(
   { student_id: "demo_student_001", item_id: itemId },
-  { repository: deleteRepository },
+  {
+    repository: deleteRepository,
+    student_profile_repository: deleteProfileRepository,
+  },
 );
 
 assert.equal(deleteSuccessResult.status, 200);
 assert.deepEqual(deleteRepository.deleteCalls, [
   { student_id: "demo_student_001", item_id: itemId },
 ]);
+assert.deepEqual(deleteProfileRepository.calls, [
+  ["list", "demo_student_001"],
+  ["upsert", "demo_student_001", 1, "event-1"],
+]);
 assert.deepEqual(deleteSuccessResult.body, {
   student_id: "demo_student_001",
   item_id: itemId,
   deleted: true,
   is_database_configured: true,
+  profile_sync_status: "synced",
   warnings: [],
+});
+
+const deleteSyncFailureProfileRepository = createRecordingProfileRepository([
+  {
+    id: "bad-event",
+    created_at: "2026-06-17T08:00:00+08:00",
+    memory_delta: { should_persist: true },
+  },
+]);
+const deleteSyncFailureResult = await handleMistakeBookDeleteRequest(
+  { student_id: "demo_student_001", item_id: itemId },
+  {
+    repository: createRecordingRepository([item]),
+    student_profile_repository: deleteSyncFailureProfileRepository,
+  },
+);
+
+assert.equal(deleteSyncFailureResult.status, 200);
+assert.deepEqual(deleteSyncFailureProfileRepository.calls, [
+  ["list", "demo_student_001"],
+]);
+assert.deepEqual(deleteSyncFailureResult.body, {
+  student_id: "demo_student_001",
+  item_id: itemId,
+  deleted: true,
+  is_database_configured: true,
+  profile_sync_status: "failed",
+  warnings: [PROFILE_SYNC_FAILED_WARNING],
 });
 
 const deleteInvalidStudentResult = await handleMistakeBookDeleteRequest(
@@ -147,7 +193,10 @@ assert.equal(deleteInvalidItemResult.body.error.code, "invalid_request");
 
 const deleteDisabledResult = await handleMistakeBookDeleteRequest(
   { student_id: "demo_student_001", item_id: itemId },
-  { repository: createDisabledMistakeBookRepository() },
+  {
+    repository: createDisabledMistakeBookRepository(),
+    student_profile_repository: createFailingProfileRepository(),
+  },
 );
 
 assert.equal(deleteDisabledResult.status, 200);
@@ -156,12 +205,17 @@ assert.deepEqual(deleteDisabledResult.body, {
   item_id: itemId,
   deleted: false,
   is_database_configured: false,
+  profile_sync_status: "skipped_database_not_configured",
   warnings: [DATABASE_DELETE_NOT_CONFIGURED_WARNING],
 });
 
+const deleteFailingProfileRepository = createFailingProfileRepository();
 const deleteFailingResult = await handleMistakeBookDeleteRequest(
   { student_id: "demo_student_001", item_id: itemId },
-  { repository: createFailingRepository() },
+  {
+    repository: createFailingRepository(),
+    student_profile_repository: deleteFailingProfileRepository,
+  },
 );
 
 assert.equal(deleteFailingResult.status, 200);
@@ -170,8 +224,10 @@ assert.deepEqual(deleteFailingResult.body, {
   item_id: itemId,
   deleted: false,
   is_database_configured: true,
+  profile_sync_status: "failed",
   warnings: [DATABASE_DELETE_FAILED_WARNING],
 });
+assert.deepEqual(deleteFailingProfileRepository.calls, []);
 assert.equal(
   JSON.stringify(deleteFailingResult.body).includes("service role"),
   false,
@@ -205,6 +261,10 @@ assert.equal(deleteRouteBody.student_id, "demo_student_001");
 assert.equal(deleteRouteBody.item_id, itemId);
 assert.equal(deleteRouteBody.deleted, false);
 assert.equal(deleteRouteBody.is_database_configured, false);
+assert.equal(
+  deleteRouteBody.profile_sync_status,
+  "skipped_database_not_configured",
+);
 assert.deepEqual(deleteRouteBody.warnings, [
   DATABASE_DELETE_NOT_CONFIGURED_WARNING,
 ]);
@@ -499,8 +559,32 @@ await assert.rejects(
       student_id: "demo_student_001",
       item_id: itemId,
     }),
-  /错题本删除失败。/,
+  /错题本删除返回格式异常。/,
 );
+
+for (const profile_sync_status of [
+  "synced",
+  "skipped_database_not_configured",
+  "failed",
+]) {
+  const acceptedDeleteResult = await deleteMistakeBookItem({
+    fetcher: async () =>
+      new Response(
+        JSON.stringify({
+          ...deleteSuccessResult.body,
+          profile_sync_status,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    student_id: "demo_student_001",
+    item_id: itemId,
+  });
+
+  assert.equal(acceptedDeleteResult.profile_sync_status, profile_sync_status);
+}
 
 await assert.rejects(
   () =>
@@ -538,6 +622,52 @@ function createFailingRepository() {
     async deleteItem() {
       throw new Error("service role key leaked");
     },
+  };
+}
+
+function createRecordingProfileRepository(events) {
+  return {
+    is_database_configured: true,
+    calls: [],
+    async listMemoryEvents(studentId) {
+      this.calls.push(["list", studentId]);
+      return events;
+    },
+    async upsertProjectedProfile(input) {
+      this.calls.push([
+        "upsert",
+        input.student_id,
+        input.event_count,
+        input.last_memory_event_id,
+      ]);
+    },
+  };
+}
+
+function createFailingProfileRepository() {
+  return {
+    is_database_configured: true,
+    calls: [],
+    async listMemoryEvents() {
+      this.calls.push("list");
+      throw new Error("profile repository should not be called");
+    },
+    async upsertProjectedProfile() {
+      this.calls.push("upsert");
+      throw new Error("profile repository should not be called");
+    },
+  };
+}
+
+function memoryDelta(overrides = {}) {
+  return {
+    should_persist: true,
+    rationale: "删除错题后重建云端画像。",
+    knowledge_mastery_changes: {},
+    mistake_cause_changes: {},
+    review_priority_changes: [],
+    is_repeated_mistake: false,
+    ...overrides,
   };
 }
 

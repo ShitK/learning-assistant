@@ -4,6 +4,7 @@ import type {
   PersistenceEvidence,
   ProfileUpdateKind,
 } from "@/lib/diagnosis/diagnose-api";
+import type { ProfileSyncStatus } from "@/lib/student-profile/student-profile-service";
 import type { Severity } from "@/data/mathtrace-demo";
 
 export interface MistakeBookItemSummary {
@@ -34,6 +35,7 @@ export interface MistakeBookDeleteResponse {
   item_id: string;
   deleted: boolean;
   is_database_configured: boolean;
+  profile_sync_status: ProfileSyncStatus;
   warnings: string[];
 }
 
@@ -134,6 +136,7 @@ function isMistakeBookDeleteResponse(
     typeof value.item_id === "string" &&
     typeof value.deleted === "boolean" &&
     typeof value.is_database_configured === "boolean" &&
+    isProfileSyncStatus(value.profile_sync_status) &&
     isStringArray(value.warnings)
   );
 }
@@ -216,6 +219,14 @@ function isProfileUpdateKind(value: unknown): value is ProfileUpdateKind {
     value === "mistake_cause" ||
     value === "problem_type_focus" ||
     value === "none"
+  );
+}
+
+function isProfileSyncStatus(value: unknown): value is ProfileSyncStatus {
+  return (
+    value === "synced" ||
+    value === "skipped_database_not_configured" ||
+    value === "failed"
   );
 }
 

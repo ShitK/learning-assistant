@@ -3,6 +3,11 @@ import {
   getSupabaseAdminConfig,
 } from "@/lib/persistence/supabase-admin";
 import { isMistakeBookResponse } from "@/lib/mistake-book/mistake-book-client";
+import {
+  syncProjectedStudentProfile,
+  type ProfileSyncStatus,
+} from "@/lib/student-profile/student-profile-service";
+import type { StudentProfileProjectionRepository } from "@/lib/persistence/student-profile-persistence";
 import type {
   MistakeBookItemSummary,
   MistakeBookResponse,
@@ -44,6 +49,7 @@ export interface MistakeBookDeleteResponse {
   item_id: string;
   deleted: boolean;
   is_database_configured: boolean;
+  profile_sync_status: ProfileSyncStatus;
   warnings: string[];
 }
 
@@ -148,6 +154,7 @@ export async function handleMistakeBookDeleteRequest(
   body: unknown,
   options: {
     repository?: MistakeBookRepository;
+    student_profile_repository?: StudentProfileProjectionRepository;
   } = {},
 ): Promise<{ status: number; body: MistakeBookApiResponse }> {
   const parsedRequest = parseMistakeBookDeleteRequest(body);
@@ -165,12 +172,17 @@ export async function handleMistakeBookDeleteRequest(
           item_id: parsedRequest.value.item_id,
           deleted: false,
           is_database_configured: false,
+          profile_sync_status: "skipped_database_not_configured",
           warnings: [DATABASE_DELETE_NOT_CONFIGURED_WARNING],
         },
       };
     }
 
     await repository.deleteItem(parsedRequest.value);
+    const profileSync = await syncProjectedStudentProfile(
+      parsedRequest.value.student_id,
+      options.student_profile_repository,
+    );
 
     return {
       status: 200,
@@ -179,7 +191,8 @@ export async function handleMistakeBookDeleteRequest(
         item_id: parsedRequest.value.item_id,
         deleted: true,
         is_database_configured: true,
-        warnings: [],
+        profile_sync_status: profileSync.status,
+        warnings: "warning" in profileSync ? [profileSync.warning] : [],
       },
     };
   } catch {
@@ -190,6 +203,7 @@ export async function handleMistakeBookDeleteRequest(
         item_id: parsedRequest.value.item_id,
         deleted: false,
         is_database_configured: true,
+        profile_sync_status: "failed",
         warnings: [DATABASE_DELETE_FAILED_WARNING],
       },
     };
