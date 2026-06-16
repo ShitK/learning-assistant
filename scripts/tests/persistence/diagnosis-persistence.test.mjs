@@ -5,7 +5,10 @@ import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
 const jiti = createProjectJiti();
 
-const { handleDiagnoseRequest } = jiti("./src/lib/diagnosis/diagnose-service.ts");
+const {
+  handleDiagnoseRequest,
+  persistDiagnosisIfNeeded,
+} = jiti("./src/lib/diagnosis/diagnose-service.ts");
 const { handleConfirmRequest } = jiti("./src/lib/diagnosis/confirm-service.ts");
 const {
   createDiagnosisPersistencePayload,
@@ -22,6 +25,9 @@ const {
 } = jiti("./src/lib/image-diagnosis/image-confirmation-token.ts");
 const { demoStudentProfile, mistakeHistory } = jiti(
   "./src/data/mathtrace-demo.ts",
+);
+const { PROFILE_SYNC_FAILED_WARNING } = jiti(
+  "./src/lib/student-profile/student-profile-service.ts",
 );
 
 const samplePayload = {
@@ -140,6 +146,53 @@ assert.equal(samplePayloadJson.includes("a".repeat(1200)), false);
   assert.ok(
     result.body.warnings.includes("云端画像同步失败，本次操作已保留。"),
   );
+}
+
+{
+  const existingWarning = "已有本地诊断提示。";
+  const result = await persistDiagnosisIfNeeded(
+    {
+      status: 200,
+      body: {
+        ...sampleResult.body,
+        warnings: [existingWarning, PROFILE_SYNC_FAILED_WARNING],
+      },
+    },
+    createRecordingRepository({ status: "persisted" }),
+    {
+      is_database_configured: true,
+      async listMemoryEvents() {
+        return [
+          {
+            id: "bad",
+            created_at: "2026-06-17T00:00:00.000Z",
+            memory_delta: { should_persist: true },
+          },
+        ];
+      },
+      async upsertProjectedProfile() {
+        throw new Error("must not write invalid profile");
+      },
+    },
+  );
+
+  assert.deepEqual(result.body.warnings, [
+    existingWarning,
+    PROFILE_SYNC_FAILED_WARNING,
+  ]);
+}
+
+{
+  for (const status of ["failed", "disabled"]) {
+    const profileSyncCalls = [];
+    const result = await handleDiagnoseRequest(samplePayload, {
+      persistence_repository: createRecordingRepository({ status }),
+      student_profile_repository: createFailingSyncRepository(profileSyncCalls),
+    });
+
+    assert.equal(result.status, 200);
+    assert.deepEqual(profileSyncCalls, []);
+  }
 }
 
 const normalizedQuestionText = "已知函数$f(x)=x^3-3ax+1$讨论单调性";
@@ -512,6 +565,27 @@ assert.equal(submitResult.status, 200);
 assert.equal(submitResult.body.memory_delta.should_persist, false);
 assert.equal(submitRepository.calls.length, 0);
 
+{
+  const profileSyncCalls = [];
+  const result = await handleConfirmRequest(
+    createConfirmPayload(problemOnlyExtraction, {
+      confirmation_action: "submit_stuck_point",
+      follow_up_answer: {
+        selected_stuck_point_id: "classification_missing",
+        custom_text: null,
+      },
+    }),
+    {
+      persistence_repository: createRecordingRepository({ status: "persisted" }),
+      student_profile_repository: createFailingSyncRepository(profileSyncCalls),
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.memory_delta.should_persist, false);
+  assert.deepEqual(profileSyncCalls, []);
+}
+
 const insufficientResponse = runImageMathTraceAgent({
   request: {
     student_id: "demo_student_001",
@@ -631,6 +705,43 @@ try {
 process.env.SUPABASE_URL = "not-a-url";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "local-test-key";
 try {
+  const malformedProfileSyncSample = await handleDiagnoseRequest(samplePayload, {
+    persistence_repository: createRecordingRepository({ status: "persisted" }),
+  });
+  assert.equal(malformedProfileSyncSample.status, 200);
+  assert.equal(
+    malformedProfileSyncSample.body.warnings.includes(
+      PROFILE_SYNC_FAILED_WARNING,
+    ),
+    true,
+  );
+  assert.equal(
+    JSON.stringify(malformedProfileSyncSample.body.warnings).includes(
+      "local-test-key",
+    ),
+    false,
+  );
+
+  const malformedProfileSyncConfirm = await handleConfirmRequest(
+    createConfirmPayload(studentWorkExtraction),
+    {
+      persistence_repository: createRecordingRepository({ status: "persisted" }),
+    },
+  );
+  assert.equal(malformedProfileSyncConfirm.status, 200);
+  assert.equal(
+    malformedProfileSyncConfirm.body.warnings.includes(
+      PROFILE_SYNC_FAILED_WARNING,
+    ),
+    true,
+  );
+  assert.equal(
+    JSON.stringify(malformedProfileSyncConfirm.body.warnings).includes(
+      "local-test-key",
+    ),
+    false,
+  );
+
   const malformedConfigSample = await handleDiagnoseRequest(samplePayload);
   assert.equal(malformedConfigSample.status, 200);
   assert.equal(
@@ -683,6 +794,19 @@ function createRecordingRpcClient(result) {
     async rpc(name, params) {
       this.calls.push({ name, params });
       return result;
+    },
+  };
+}
+
+function createFailingSyncRepository(calls) {
+  return {
+    is_database_configured: true,
+    async listMemoryEvents() {
+      calls.push("list");
+      throw new Error("profile sync should not run");
+    },
+    async upsertProjectedProfile() {
+      calls.push("upsert");
     },
   };
 }

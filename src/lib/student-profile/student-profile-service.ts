@@ -100,20 +100,22 @@ export function projectStudentProfileFromEvents(
 
 export async function syncProjectedStudentProfile(
   student_id: string,
-  repository: StudentProfileProjectionRepository = createDefaultStudentProfileRepository(),
+  repository?: StudentProfileProjectionRepository,
 ): Promise<ProfileSyncResult> {
-  if (!repository.is_database_configured) {
-    return { status: "skipped_database_not_configured" };
-  }
-
   try {
-    const events = await repository.listMemoryEvents(student_id);
+    const activeRepository =
+      repository ?? createDefaultStudentProfileRepository();
+    if (!activeRepository.is_database_configured) {
+      return { status: "skipped_database_not_configured" };
+    }
+
+    const events = await activeRepository.listMemoryEvents(student_id);
     const projection = projectStudentProfileFromEvents(events);
     if (projection.status === "failed") {
       return projection;
     }
 
-    await repository.upsertProjectedProfile({
+    await activeRepository.upsertProjectedProfile({
       student_id,
       profile: projection.profile,
       event_count: projection.event_count,
