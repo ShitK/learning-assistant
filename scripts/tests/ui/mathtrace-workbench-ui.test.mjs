@@ -214,8 +214,28 @@ assert.match(
 );
 assert.match(
   source,
+  /const cloudProfileRefreshRequestIdRef = useRef\(0\);/,
+  "云端画像刷新应使用 request id ref 防止旧请求覆盖新状态。",
+);
+assert.match(
+  source,
+  /const cloudProfileRefreshRequestId =\s*\+\+cloudProfileRefreshRequestIdRef\.current;/,
+  "每次云端画像刷新应递增并捕获当前 request id。",
+);
+assert.match(
+  source,
+  /if \(\s*cloudProfileRefreshRequestId !== cloudProfileRefreshRequestIdRef\.current\s*\) \{\s*return;\s*\}\s*if \(cloudProfile\.profile\)/,
+  "应用云端画像前应先丢弃过期请求结果。",
+);
+assert.match(
+  source,
   /if \(cloudProfile\.profile\)/,
   "云端画像为空时不应覆盖本地 fallback。",
+);
+assert.match(
+  source,
+  /setSessionStudentProfile\(cloudProfile\.profile\)/,
+  "最新云端画像应更新 session profile state。",
 );
 assert.match(
   source,
@@ -235,6 +255,16 @@ assert.equal(
   ).length,
   1,
   "云端画像 localStorage 写入只能出现在有效 profile 分支内。",
+);
+assert.match(
+  source,
+  /try \{[\s\S]*const cloudProfile = await requestCloudStudentProfile\(\);[\s\S]*\} catch \{\s*\}/,
+  "云端画像读取失败应保持 best-effort，不写入 apiErrorMessage。",
+);
+assert.match(
+  source,
+  /function handleResetProfile\(\): void \{[\s\S]*cloudProfileRefreshRequestIdRef\.current \+= 1;[\s\S]*clearStoredStudentProfile\(window\.localStorage\);/,
+  "重置画像应作废旧的云端刷新请求，避免旧响应覆盖 demo profile。",
 );
 assert.match(
   source,

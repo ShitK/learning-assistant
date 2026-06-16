@@ -131,6 +131,7 @@ export function MathTraceWorkbench(): ReactElement {
     string | null
   >(null);
   const isDiagnosisRequestLockedRef = useRef(false);
+  const cloudProfileRefreshRequestIdRef = useRef(0);
   const isTimelineRunning =
     isTimelineAnimating && completedStepCount < diagnosisView.steps.length;
   const isDiagnosing = isRequestPending || isTimelineRunning;
@@ -160,8 +161,17 @@ export function MathTraceWorkbench(): ReactElement {
       return;
     }
 
+    const cloudProfileRefreshRequestId =
+      ++cloudProfileRefreshRequestIdRef.current;
+
     try {
       const cloudProfile = await requestCloudStudentProfile();
+      if (
+        cloudProfileRefreshRequestId !== cloudProfileRefreshRequestIdRef.current
+      ) {
+        return;
+      }
+
       if (cloudProfile.profile) {
         setSessionStudentProfile(cloudProfile.profile);
         writeStoredStudentProfile(window.localStorage, cloudProfile.profile);
@@ -429,6 +439,7 @@ export function MathTraceWorkbench(): ReactElement {
       return;
     }
 
+    cloudProfileRefreshRequestIdRef.current += 1;
     clearStoredStudentProfile(window.localStorage);
     setSessionStudentProfile(demoStudentProfile);
     setProfilePreview({
