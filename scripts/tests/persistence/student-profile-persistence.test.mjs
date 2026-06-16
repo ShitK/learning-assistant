@@ -9,6 +9,7 @@ const migrationStatements = migrationSql
   .split(";")
   .map((statement) => statement.replace(/\s+/g, " ").trim())
   .filter(Boolean);
+const forbiddenStudentProfileGrantRoles = ["anon", "authenticated", "public"];
 
 assert.equal(
   migrationSql.includes("create table if not exists public.student_profiles"),
@@ -54,24 +55,59 @@ assert.equal(
   ),
   true,
 );
-assert.equal(
-  hasStudentProfileGrantToRole("anon"),
-  false,
+assert.deepEqual(findForbiddenStudentProfileGrants(migrationStatements), []);
+assert.deepEqual(
+  findForbiddenStudentProfileGrants([
+    "grant select on public.student_profiles to anon",
+    "grant select on public.student_profiles to authenticated",
+    "grant select on public.student_profiles to service_role, public",
+    "grant select on all tables in schema public to anon",
+  ]),
+  [
+    "grant select on public.student_profiles to anon",
+    "grant select on public.student_profiles to authenticated",
+    "grant select on public.student_profiles to service_role, public",
+    "grant select on all tables in schema public to anon",
+  ],
 );
-assert.equal(
-  hasStudentProfileGrantToRole("authenticated"),
-  false,
+assert.deepEqual(
+  findForbiddenStudentProfileGrants([
+    "grant select, insert, update on public.student_profiles to service_role",
+  ]),
+  [],
 );
 
 console.log("student profile persistence tests passed");
 
-function hasStudentProfileGrantToRole(role) {
-  const rolePattern = new RegExp(`\\bto\\b.*\\b${role}\\b`, "i");
-
-  return migrationStatements.some(
+function findForbiddenStudentProfileGrants(statements) {
+  return statements.filter(
     (statement) =>
-      /^grant\b/i.test(statement) &&
-      /\bon\s+(?:table\s+)?public\.student_profiles\b/i.test(statement) &&
-      rolePattern.test(statement),
+      isStudentProfileRelatedGrant(statement) &&
+      forbiddenStudentProfileGrantRoles.some((role) =>
+        grantStatementTargetsRole(statement, role),
+      ),
   );
+}
+
+function isStudentProfileRelatedGrant(statement) {
+  return (
+    /^grant\b/i.test(statement) &&
+    (/\bon\s+(?:table\s+)?public\.student_profiles\b/i.test(statement) ||
+      /\bon\s+all\s+tables\s+in\s+schema\s+public\b/i.test(statement))
+  );
+}
+
+function grantStatementTargetsRole(statement, role) {
+  const roleList = statement
+    .match(/\bto\b\s+(.+)$/i)?.[1]
+    .replace(/\bwith\s+grant\s+option\b.*$/i, "");
+
+  if (!roleList) {
+    return false;
+  }
+
+  return roleList
+    .split(",")
+    .map((targetRole) => targetRole.trim().replace(/^"|"$/g, ""))
+    .some((targetRole) => targetRole.toLowerCase() === role);
 }
