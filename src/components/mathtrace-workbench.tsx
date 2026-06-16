@@ -198,7 +198,11 @@ export function MathTraceWorkbench(): ReactElement {
       return;
     }
 
-    void refreshCloudStudentProfile();
+    const timeoutId = window.setTimeout(() => {
+      void refreshCloudStudentProfile();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [hasHydrated, refreshCloudStudentProfile]);
 
   const handleDeleteMistakeBookItem = useCallback(

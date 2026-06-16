@@ -273,6 +273,11 @@ assert.match(
 );
 assert.match(
   source,
+  /useEffect\(\(\) => \{\s*if \(!hasHydrated\) \{\s*return;\s*\}\s*const timeoutId = window\.setTimeout\(\(\) => \{\s*void refreshCloudStudentProfile\(\);\s*\}, 0\);\s*return \(\) => window\.clearTimeout\(timeoutId\);\s*\}, \[hasHydrated, refreshCloudStudentProfile\]\);/,
+  "初始云端画像 hydration 应延迟触发，避免 effect 内同步调用可 setState 的 callback。",
+);
+assert.match(
+  source,
   /createSampleDiagnosisViewModel\([\s\S]*diagnosis\.warnings,[\s\S]*\)[\s\S]*await refreshMistakeBook\(\);\s*await refreshCloudStudentProfile\(\);\s*return;/,
   "sample_diagnosis 成功后应等待错题本刷新，再等待云端画像刷新。",
 );
