@@ -1,6 +1,6 @@
 # 错因地图 MathTrace 技术路径文档
 
-更新日期：2026-05-31
+更新日期：2026-06-17
 适用范围：从黑客松 P0 Demo 扩展到可长期使用的高中数学错题诊断产品。
 
 ## 1. 文档目标
@@ -25,7 +25,7 @@
 - 前端已经能通过接口触发诊断，并用返回的 `student_profile` 展示画像变化。
 - P1 后端具备 `image_diagnosis` 服务端路径：通用 vision provider adapter，支持通过 `VISION_PROVIDER_*` 切换 Anthropic-compatible 与 OpenAI-compatible provider；模型只做图片抽取，`/api/diagnose` 先返回可编辑 `extraction_review` 草稿，用户确认后再由 `/api/confirm` 复用确定性 Pipeline。
 - P1 前端具备图片上传入口、预览、客户端校验和压缩、识别结果编辑确认表单、可恢复错误态，以及未确认/低置信度/确认令牌不匹配不写入 localStorage 的保护。
-- P1.7 正在引入 Supabase Postgres 数据底座：确认后的诊断可写入 `students`、`diagnosis_runs`、`mistake_book_items` 和 `memory_events`，并支持只读错题本 MVP；未配置 Supabase 时 demo 主流程仍稳定运行。
+- P1.7/P1.8 已引入 Supabase Postgres 数据底座：确认后的诊断可写入 `students`、`diagnosis_runs`、`mistake_book_items` 和 `memory_events`，`student_profiles` 保存从 gated `memory_events` 投影出的当前画像快照，并支持只读错题本 MVP；未配置 Supabase 时 demo 主流程仍稳定运行。
 
 当前还没有完成：
 
@@ -33,7 +33,7 @@
 - 真正的 Agent 内部编排模块。
 - 用户登录、权限、老师端、班级端。
 - 动态生成变式练习。
-- 真实登录、RLS 用户策略、老师端、RAG、pgvector、完整云端学生画像迁移和长期回放。
+- 真实登录、RLS 用户策略、老师端、RAG、pgvector/Milvus、多用户云端画像和长期回放。
 
 ## 3. 总体架构目标
 
@@ -107,6 +107,7 @@ P1 已新增确认接口，其他接口不要太早拆散：
 ```text
 POST /api/confirm
 GET /api/mistake-book?student_id=demo_student_001
+GET /api/student-profile?student_id=demo_student_001
 POST /api/practice-attempts
 GET /api/profile
 GET /api/history
@@ -120,7 +121,7 @@ GET /api/history
 - 错误响应必须稳定，包括 `invalid_request`、`invalid_json`、`missing_image`、`invalid_image`、`image_too_large`、`model_not_configured`、`model_timeout`、`model_request_failed`、`model_invalid_output` 等。
 - Provider/OCR 可观测性边界：P1 不保存原始 provider 响应，也不记录图片内容。请求失败只暴露安全元数据 `provider_debug`，用于区分 `http_error`、`invalid_json`、`empty_text_content`、`network_failed` 和 `timeout`。其中 `empty_text_content` 表示 provider HTTP/JSON 响应成功，但响应体没有可解析的文本内容。未来 OCR provider 接入时应复用这一错误结构，而不是新增一套前端不可识别的错误通道。
 - 图片确认边界：`/api/diagnose` 的 `image_diagnosis` 成功响应只包含 `extraction_review` 草稿和 `confirmation_token`；`/api/confirm` 接收用户确认后的草稿并返回完整图片诊断。生产环境需要 `MATHTRACE_CONFIRM_SECRET` 签名确认令牌；未确认、低置信度或令牌指纹不匹配的结果不能写入长期画像。
-- 数据库访问边界：P1.7 前端只调用 Next API，不直连 Supabase；`SUPABASE_SERVICE_ROLE_KEY` 只允许服务端读取。Supabase 未配置或写入失败时，诊断报告仍返回，错题本接口返回稳定空列表或安全错误，不泄露 secret、完整图片 base64 或 provider payload。
+- 数据库访问边界：P1.7/P1.8 前端只调用 Next API，不直连 Supabase；`SUPABASE_SERVICE_ROLE_KEY` 只允许服务端读取。Supabase 未配置或写入失败时，诊断报告仍返回，错题本接口返回稳定空列表或安全错误，`/api/student-profile` 返回 `profile=null` fallback，不泄露 secret、完整图片 base64 或 provider payload。
 
 Zod 是 TypeScript-first 的 schema validation 工具，适合在 TypeScript 项目里同时获得运行时校验和静态类型推导。参考：[Zod](https://zod.dev/)。
 
@@ -221,7 +222,8 @@ interface StructuredGenerationProvider {
 P0：localStorage + mock 数据
 P1.5/P1.6：继续用 localStorage 表达 demo 画像，完善可信写入边界和 smoke
 P1.7：Supabase Postgres 数据底座，写入 diagnosis run、错题本条目和 memory event
-P2：Supabase Auth/RLS 用户策略、完整云端画像和对象存储
+P1.8：student_profiles 当前画像快照，从 gated memory_events 投影重建
+P2：Supabase Auth/RLS 用户策略、多用户云端画像和对象存储
 P3：加入 pgvector 做相似错题召回
 ```
 
@@ -238,13 +240,14 @@ Supabase RLS 用于控制行级权限。官方文档强调暴露给 API 的 sche
 
 ### 5.2 核心表设计
 
-P1.7 先落四张表，覆盖确认后的诊断记录、只读错题本和画像事件：
+P1.7 先落四张表，覆盖确认后的诊断记录、只读错题本和画像事件；P1.8 再补当前画像快照：
 
 ```text
 students
 diagnosis_runs
 mistake_book_items
 memory_events
+student_profiles
 ```
 
 关键设计：
@@ -253,13 +256,13 @@ memory_events
 - `diagnosis_runs` 保存一次诊断运行的结构化快照，用 `client_diagnosis_id` 承接现有 API 的诊断 ID。
 - `mistake_book_items` 保存只读错题本条目，字段以题干、学生答案、标准解法、知识点、错因、严重度和诊断摘要为主。
 - `memory_events` 保存画像变化事件，独立记录 `knowledge_mastery_changes`、`mistake_cause_changes`、`review_priority_changes` 和 rationale，便于后续解释画像变化。
+- `student_profiles` 保存当前画像快照/read model，从 `memory_events` 中 `should_persist=true` 的受控事件投影得到，附带 `event_count` 和 `last_memory_event_id` 便于追踪快照来源。
 - `sample_diagnosis` 是 demo 自动确认路径，也会在 `memory_delta.should_persist=true` 时尝试写入。
-- 不保存完整图片 base64；localStorage 暂时继续作为 demo 画像恢复来源，不迁移完整画像。
+- 不保存完整图片 base64；localStorage 暂时继续作为 demo fallback，云端画像读取失败或尚未生成时不破坏演示。
 
 长期产品再补齐这些表：
 
 ```text
-student_profiles
 practice_questions
 practice_attempts
 review_plans
@@ -273,7 +276,7 @@ mistake_taxonomy
 - `mistake_book_items` 是当前阶段的错题本条目；长期可扩展为更完整的 `mistake_records`。
 - `diagnosis_runs` 保存一次诊断过程，包括输入、输出、模型版本、置信度和错误信息。
 - `memory_events` 保存画像变化的增量事件，而不是只保存最终分数；长期可按需要聚合为 `memory_deltas` 或直接驱动 profile rebuild。
-- `student_profiles` 保存当前聚合后的学习画像。
+- `student_profiles` 当前只服务 `demo_student_001` / `math` 的聚合画像读取；长期需要扩展为真实多用户画像，并接入 Auth/RLS 策略。
 - `practice_attempts` 保存学生做变式题后的结果，用于画像回升或复发判断。
 
 示例：
@@ -577,6 +580,7 @@ UI
   -> 开始诊断
   -> 标准解法和错因报告可见
   -> 画像变化显示正确
+  -> 先从 localStorage/demo 恢复画像，再通过 /api/student-profile best-effort 刷新云端画像
   -> image_diagnosis 上传、预览、识别草稿确认
   -> confirmed_image_diagnosis 成功渲染
   -> problem_only 图片显示快速追问、跳过和确认写入
@@ -606,6 +610,17 @@ npm run test:smoke
   -> 图片识别草稿不包含画像写入字段
   -> problem_only 追问、跳过、提交草稿、确认写入四个动作稳定
   -> 标准解法展示不暴露 Markdown/LaTeX 残留
+```
+
+P1.8 新增画像投影测试，重点不是端到端数据库性能，而是云端 read model 的边界：
+
+```text
+npm test
+  -> student_profiles migration 只授予 service_role 读写权限
+  -> 从 should_persist=true 的 memory_events 顺序投影 StudentProfile
+  -> 无效 memory_delta 不写入 student_profiles，只返回同步 warning
+  -> /api/student-profile 未配置、未生成或读取失败时返回 profile=null fallback
+  -> 工作台只能通过 browser-safe HTTP client 读取云端画像，不 import Supabase
 ```
 
 ## 10. 可观测性与评估
@@ -850,7 +865,34 @@ Supabase Storage（图片长期保存阶段再引入）
 - 不存完整图片 base64；localStorage 暂时继续作为 demo 画像恢复，不迁移完整画像。
 - `sample_diagnosis` 稳定路径不破坏。
 
-后续 Phase 3.x 再补 Supabase Auth、RLS 用户策略、云端 `student_profiles` 聚合、对象存储和 pgvector 相似错题召回。
+### Phase 3.1：P1.8 云端当前画像快照
+
+目标：在不引入登录、RLS 用户策略或 RAG 的前提下，把当前学生画像从纯 localStorage fallback 推进到服务端可读的结构化快照。
+
+技术：
+
+- `student_profiles` 表作为当前画像 read model。
+- 从 `memory_events` 读取 `memory_delta.should_persist=true` 的门控事件，按时间顺序投影重建画像。
+- shared `StudentProfile` guard 作为投影后的运行时校验。
+- `GET /api/student-profile` 作为浏览器唯一读取入口。
+- 诊断持久化成功和错题删除成功后 best-effort 同步画像；同步失败只返回 warning。
+
+交付：
+
+- `student_profiles`。
+- `src/lib/student-profile/student-profile-service.ts`。
+- `src/lib/persistence/student-profile-persistence.ts`。
+- `src/app/api/student-profile/route.ts`。
+- `src/lib/student-profile/student-profile-client.ts`。
+
+验收：
+
+- `student_profiles` 是当前画像快照，不是事实源；事实源仍是 `memory_events`、`diagnosis_runs` 和 `mistake_book_items`。
+- 当前仍固定 `demo_student_001` 和 `math`，不做登录、真实多用户、老师端、RAG、pgvector 或 Milvus。
+- 前端不直连 Supabase；工作台先从 localStorage/demo 恢复，再 best-effort 读取云端画像。
+- 成功持久化诊断或成功删除错题后同步投影画像；同步失败不破坏诊断、删除和 `sample_diagnosis` 主路径。
+
+后续 Phase 3.x 再补 Supabase Auth、面向用户的 RLS 策略、多用户画像、对象存储和 pgvector 相似错题召回。
 
 ### Phase 4：练习闭环
 

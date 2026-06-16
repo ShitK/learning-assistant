@@ -1459,7 +1459,7 @@ P1.7 的数据库表保持很少：
 4. 服务端验证 `student_id` 固定为 `demo_student_001`，`item_id` 必须是 uuid，再用 service role 在后端执行删除。
 5. 数据库删除 `mistake_book_items` 后，相关 `memory_events` 通过外键级联删除；`diagnosis_runs` 保留，作为“这次诊断曾发生过”的审计证据。
 
-当前没有存的内容也要说清楚：不存完整图片 base64，不存图片文件，不存真实用户账号，不存完整云端 `student_profiles` 聚合表，不存 `practice_attempts`，也没有 `pgvector` 或 Milvus 向量记忆。localStorage 暂时仍负责 demo 学生画像恢复；Postgres 负责可审计的诊断运行、错题本条目和画像事件。
+P1.7 当时没有存的内容也要说清楚：不存完整图片 base64，不存图片文件，不存真实用户账号，不存完整云端 `student_profiles` 聚合表，不存 `practice_attempts`，也没有 `pgvector` 或 Milvus 向量记忆。localStorage 暂时仍负责 demo 学生画像恢复；Postgres 负责可审计的诊断运行、错题本条目和画像事件。P1.8 后续补的是一个小型当前画像 read model，不改变 P1.7 的事件审计边界。
 
 ### 技术决策与取舍
 
@@ -1509,7 +1509,7 @@ P1.7 的主要收益不是响应速度，而是稳定性和数据可追溯性。
 ### 可能被继续追问
 
 - 如果未来有真实学生账号，RLS 策略怎么设计？
-- `student_profiles` 什么时候从 localStorage 迁移到云端聚合表？
+- P1.8 的 `student_profiles` read model 未来怎么扩展成真实多用户画像？
 - 如果数据库写入成功但前端刷新失败，错题本如何保持一致？
 - `memory_events` 未来如何支持回滚或重建画像？
 - 题目 fingerprint 会不会误判重复？如何控制误删风险？
@@ -1519,9 +1519,9 @@ P1.7 的主要收益不是响应速度，而是稳定性和数据可追溯性。
 
 ### 反思与后续优化
 
-当前 P1.7 仍然是数据底座 MVP，不是生产级多用户系统。已知缺口包括：尚无真实登录，尚无面向用户的 RLS 策略，新增去重/删除 migration 仍需应用到 Supabase，尚未做 pgvector/RAG，错题本支持展示和删除但还不是完整复习工作流，也没有把完整 `student_profile` 云端聚合出来。
+当前 P1.7 仍然是数据底座 MVP，不是生产级多用户系统。已知缺口包括：尚无真实登录，尚无面向用户的 RLS 策略，新增去重/删除 migration 仍需应用到 Supabase，尚未做 pgvector/RAG，错题本支持展示和删除但还不是完整复习工作流；完整云端画像迁移在 P1.7 当时仍留到后续。
 
-后续更合理的演进是：先把 Supabase migration 在真实项目中 apply 并验证；再引入 Auth 和 RLS 用户策略；然后增加云端 `student_profiles` 聚合或由 `memory_events` 重建画像；最后再做 pgvector 相似错题召回、RAG 和老师端授权视图。
+后续更合理的演进是：先把 Supabase migration 在真实项目中 apply 并验证；再引入 Auth 和 RLS 用户策略；然后把 P1.8 的 demo 画像 read model 扩展成真实多用户画像；最后再做 pgvector 相似错题召回、RAG 和老师端授权视图。
 
 ### 项目中的真实证据
 
@@ -1559,11 +1559,95 @@ P1.7 的主要收益不是响应速度，而是稳定性和数据可追溯性。
 
 ---
 
+## 14. P1.8 云端当前画像快照
+
+### 当前状态
+
+P1.8 已在当前分支实现并进入文档收口。这个阶段新增 `student_profiles` 表，用来保存 `demo_student_001` 在 `math` 学科下的当前学生画像快照。它不是完整账号系统，也不是新的记忆事实源，而是从受控 `memory_events` 投影出来的 read model。
+
+前端现在仍先从 localStorage 或 demo 默认画像恢复，保证页面立刻可用；随后通过 `GET /api/student-profile` best-effort 拉取云端画像。诊断成功持久化后、错题本删除成功后，服务端会尝试重新从 `memory_events` 同步 `student_profiles`。如果数据库未配置、读取失败或同步失败，系统只返回 warning 或 fallback，不破坏诊断、删除和 `sample_diagnosis` 稳定路径。
+
+### 功能价值
+
+这个阶段解决的是“长期画像在哪里读”的问题。P1.7 已经把诊断事实、错题条目和画像变化事件沉淀到 Postgres，但工作台刷新时仍主要依赖 localStorage。P1.8 加上当前画像快照后，面试时可以更清楚地讲：历史证据保存在 `memory_events`，当前 UI 读取的画像来自 `student_profiles`，二者职责不同。
+
+它也让项目从“有事件历史”推进到“可以云端恢复当前画像”，但仍保持黑客松 demo 的范围：固定 `demo_student_001`，不做登录、多用户、老师端、RAG、pgvector 或 Milvus。
+
+### 关键设计
+
+`student_profiles` 的来源不是模型输出，也不是前端上传的整包画像。服务端先读取 `memory_events`，只接受 `memory_delta.should_persist === true` 且字段通过校验的事件，再按 `created_at` 和 `id` 顺序把这些增量合并到 demo 初始画像上。投影结果还要通过 shared `StudentProfile` guard 校验，校验失败就不写快照，只返回“云端画像同步失败” warning。
+
+这几张表的分工要讲清楚：
+
+- `diagnosis_runs` 保存一次诊断运行的完整审计快照，回答“这次 Agent 运行发生了什么”。
+- `mistake_book_items` 保存题目级错题本条目，回答“现在错题本里有哪些题”。
+- `memory_events` 保存每次画像变化的原因和增量，回答“为什么画像会变”。
+- `student_profiles` 保存当前画像快照，回答“工作台现在该展示哪份云端画像”。
+
+前端读取边界也很窄：浏览器只 import browser-safe 的 `requestCloudStudentProfile()`，请求 `/api/student-profile?student_id=demo_student_001`；Supabase admin client 和 `SUPABASE_SERVICE_ROLE_KEY` 只在服务端 persistence 层使用。reset 画像时会递增 refresh id，避免旧的云端请求回来后覆盖用户刚重置的 demo 状态。
+
+### 技术决策与取舍
+
+我没有把 `student_profiles` 做成完整用户画像系统，而是先做“当前快照”。原因是当前阶段还没有登录和真实 RLS 用户策略，如果直接承诺多用户云端画像，会把权限、数据隔离和迁移问题提前放大。现在这个 read model 只支持 `demo_student_001` 和 `math`，service role only，刚好覆盖演示和面试叙事需要。
+
+我也没有用 pgvector、Milvus 或 RAG 来存画像。学生画像是结构化学习状态，应该由确定性规则从诊断证据合并出来；向量库适合后续召回相似错题，不能替代掌握度、错因次数、复习优先级这些结构化字段。
+
+另一个取舍是保留 localStorage。云端画像是 best-effort 增强，不是页面启动的硬依赖。这样即使 Supabase 未配置或网络失败，demo 仍能立刻展示本地画像，`sample_diagnosis` 也不会被数据库状态拖垮。
+
+### 面试官可能怎么问
+
+1. `student_profiles` 和 `memory_events` 有什么区别？
+2. 为什么不直接每次覆盖云端 `student_profiles`，还要保留事件表？
+3. 如果删除错题后画像要变，怎么保证当前画像同步？
+4. 为什么前端不直接读 Supabase？
+5. 这个方案是不是已经等于完整云端学生画像？
+6. 为什么不用 Milvus 或 pgvector 存学生记忆？
+7. localStorage 和云端画像同时存在，会不会冲突？
+
+### 推荐回答
+
+我会这样回答：
+
+P1.8 里我把“事件历史”和“当前画像”拆开了。`memory_events` 是事实历史，记录每次画像变化的原因、证据和增量；`student_profiles` 是从这些事件投影出来的当前快照，主要服务工作台读取和 demo 恢复。这样既能快速读当前画像，也不会丢掉“为什么变成这样”的审计链。
+
+我没有让模型或前端直接写 `student_profiles`。诊断 pipeline 先生成受控 `memory_delta`，持久化成功后服务端从 `memory_events` 重建画像，再用 shared `StudentProfile` guard 校验后 upsert。删除错题后，因为对应的 `memory_events` 会变化，服务端也会重新同步快照。
+
+前端只能通过 `/api/student-profile` 读画像，不能 import Supabase 或 service role key。localStorage 仍保留为 demo fallback：页面先恢复本地状态，云端画像回来后再刷新；如果云端失败，就继续用本地 demo 画像。这保证了演示稳定性。
+
+这还不是完整商业记忆系统。现在仍固定 `demo_student_001`，没有登录、真实多用户、老师端、RLS 用户策略，也没有 RAG、pgvector 或 Milvus。P1.8 只是把当前画像快照补上，下一步才是把这个 read model 扩展到真实用户和权限体系。
+
+### 项目中的真实证据
+
+- 代码：
+  - `supabase/migrations/20260617000000_p18_student_profiles.sql`
+  - `src/lib/student-profile/student-profile-service.ts`
+  - `src/lib/persistence/student-profile-persistence.ts`
+  - `src/app/api/student-profile/route.ts`
+  - `src/lib/student-profile/student-profile-client.ts`
+  - `src/components/mathtrace-workbench.tsx`
+  - `src/lib/diagnosis/diagnose-service.ts`
+  - `src/lib/mistake-book/mistake-book-service.ts`
+- 测试：
+  - `scripts/tests/persistence/student-profile-persistence.test.mjs`
+  - `scripts/tests/persistence/diagnosis-persistence.test.mjs`
+  - `scripts/tests/persistence/mistake-book-api.test.mjs`
+  - `scripts/tests/ui/mathtrace-workbench-ui.test.mjs`
+  - `scripts/run-tests.mjs`
+- 文档：
+  - `docs/superpowers/specs/2026-05-28-math-mistake-agent-prd.md`
+  - `docs/TECHNICAL_ROADMAP.md`
+  - `interview/mathtrace-project-narrative.md`
+- 验证：
+  - `npm test`
+  - `git diff --check`
+
+---
+
 ## 后续可追加的阶段
 
 这些阶段还没有完全完成，后续实现后可以继续按同一模板追加：
 
-- 真实云端 migration apply、Auth/RLS 用户策略和云端 `student_profiles` 聚合。
+- 真实云端 migration apply、Auth/RLS 用户策略和多用户画像。
 - 数据库支持的图片确认草稿版本审计。
 - 动态生成变式练习题。
 - Kimi / GLM / DeepSeek provider 的生产级 telemetry 与审计。
@@ -1575,28 +1659,28 @@ P1.7 的主要收益不是响应速度，而是稳定性和数据可追溯性。
 
 ### LLM 安全边界
 
-重点阶段：5、7、9、10、11、12、13。核心表达：模型只做抽取或确认后文本增强，不直接写画像；所有模型输出先过 JSON parser 和业务边界校验；只有学生步骤或用户确认构成足够证据时才写具体错因；数据库写入也必须经过服务端确认和证据策略。
+重点阶段：5、7、9、10、11、12、13、14。核心表达：模型只做抽取或确认后文本增强，不直接写画像；所有模型输出先过 JSON parser 和业务边界校验；只有学生步骤或用户确认构成足够证据时才写具体错因；数据库写入也必须经过服务端确认和证据策略，云端当前画像也只能从受控 `memory_events` 投影。
 
 ### Demo 稳定性
 
-重点阶段：1、2、6、9、10、11、12、13。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像；P1.6a 用 `npm run test:smoke` 和浏览器 checklist 锁住合并前主路径；P1.7 未配置数据库时仍保持 demo 可运行。
+重点阶段：1、2、6、9、10、11、12、13、14。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像；P1.6a 用 `npm run test:smoke` 和浏览器 checklist 锁住合并前主路径；P1.7/P1.8 未配置数据库时仍保持 demo 可运行。
 
 ### Agent 工程化
 
-重点阶段：4、5、13。核心表达：先用确定性 pipeline 表达 Agent 流程，再逐步把适合的环节替换为模型或工具调用；长期记忆先用结构化 diagnosis run 和 memory event 作为 Agent 可追溯上下文。
+重点阶段：4、5、13、14。核心表达：先用确定性 pipeline 表达 Agent 流程，再逐步把适合的环节替换为模型或工具调用；长期记忆先用结构化 diagnosis run 和 memory event 作为 Agent 可追溯上下文，再用 `student_profiles` 提供当前画像 read model。
 
 ### 前端状态管理
 
-重点阶段：2、6、7、11、12、13。核心表达：单页工作台用 React state 足够；localStorage 只做 P0/P1 演示状态恢复；前端只在服务端 `memory_delta.should_persist=true` 且响应 guard 通过时持久化；P1.7 前端不直连数据库，只通过 Next API 读取错题本。
+重点阶段：2、6、7、11、12、13、14。核心表达：单页工作台用 React state 足够；localStorage 只做 P0/P1 演示状态恢复；前端只在服务端 `memory_delta.should_persist=true` 且响应 guard 通过时持久化；P1.7/P1.8 前端不直连数据库，只通过 Next API 读取错题本和云端画像。
 
 ### 测试策略
 
-重点阶段：3、4、5、6、7、9、10、11、12、13。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界；P1.6a 用 smoke 测试验证 Demo 主路径和 API contract 是否仍能跑通；P1.7 需要覆盖数据库未配置、fake repo 写入和只读错题本 API。
+重点阶段：3、4、5、6、7、9、10、11、12、13、14。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界；P1.6a 用 smoke 测试验证 Demo 主路径和 API contract 是否仍能跑通；P1.7/P1.8 需要覆盖数据库未配置、fake repo 写入、只读错题本 API 和云端画像投影/读取。
 
 ### 性能收益
 
-重点阶段：1、2、3、4、5、6、7、8、9、10、11、12、13。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退、`npm run test:eval`、`npm run test:smoke` 和数据库未配置 no-op 降级。
+重点阶段：1、2、3、4、5、6、7、8、9、10、11、12、13、14。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退、`npm run test:eval`、`npm run test:smoke`、数据库未配置 no-op 降级和 `student_profiles` 当前画像快照读取。
 
 ### 范围控制
 
-重点阶段：1、8、11、13。核心表达：不提前做登录、老师端、RAG 和复杂 Agent 框架；先验证错因诊断闭环和可信写入边界，再用 P1.7 引入最小数据库底座，后续逐步演进。
+重点阶段：1、8、11、13、14。核心表达：不提前做登录、老师端、RAG 和复杂 Agent 框架；先验证错因诊断闭环和可信写入边界，再用 P1.7/P1.8 引入最小数据库底座和当前画像快照，后续逐步演进。
