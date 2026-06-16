@@ -5,8 +5,10 @@ import {
 } from "@/data/mathtrace-demo";
 import {
   createDefaultStudentProfileRepository,
+  DEMO_STUDENT_ID,
   type ProfileMemoryEvent,
   type StudentProfileProjectionRepository,
+  type StudentProfileReadRepository,
 } from "@/lib/persistence/student-profile-persistence";
 import {
   applyMemoryDeltaToProfile,
@@ -16,6 +18,12 @@ import { isRecord } from "@/lib/shared/utils";
 
 export const PROFILE_SYNC_FAILED_WARNING =
   "云端画像同步失败，本次操作已保留。";
+export const PROFILE_READ_NOT_CONFIGURED_WARNING =
+  "数据库暂未配置，继续使用本地 demo 画像。";
+export const PROFILE_READ_FAILED_WARNING =
+  "云端画像暂时读取失败，继续使用本地 demo 画像。";
+export const PROFILE_NOT_FOUND_WARNING =
+  "云端画像暂未生成，继续使用本地 demo 画像。";
 
 export type ProfileSyncStatus =
   | "synced"
@@ -42,6 +50,27 @@ export type ProfileSyncResult =
   | { status: "synced" }
   | { status: "skipped_database_not_configured" }
   | { status: "failed"; warning: typeof PROFILE_SYNC_FAILED_WARNING };
+
+export interface CloudStudentProfileResponse {
+  student_id: string;
+  profile: StudentProfile | null;
+  source: "cloud" | "fallback";
+  is_database_configured: boolean;
+  warnings: string[];
+}
+
+export interface StudentProfileErrorResponse {
+  error: {
+    code: "invalid_request";
+    message: string;
+    recoverable: true;
+  };
+}
+
+export interface StudentProfileRequestResult {
+  status: number;
+  body: CloudStudentProfileResponse | StudentProfileErrorResponse;
+}
 
 export function projectStudentProfileFromEvents(
   events: ProfileMemoryEvent[],
@@ -100,6 +129,49 @@ export async function syncProjectedStudentProfile(
   }
 }
 
+export async function handleStudentProfileRequest(
+  searchParams: URLSearchParams | Record<string, string | undefined>,
+  repository: StudentProfileReadRepository = createDefaultStudentProfileRepository(),
+): Promise<StudentProfileRequestResult> {
+  const student_id = getSearchParam(searchParams, "student_id") ?? DEMO_STUDENT_ID;
+  if (student_id !== DEMO_STUDENT_ID) {
+    return {
+      status: 400,
+      body: {
+        error: {
+          code: "invalid_request",
+          message: "当前 demo 只支持 demo_student_001。",
+          recoverable: true,
+        },
+      },
+    };
+  }
+
+  if (!repository.is_database_configured) {
+    return fallbackProfileResponse(false, PROFILE_READ_NOT_CONFIGURED_WARNING);
+  }
+
+  try {
+    const profile = await repository.readCurrentProfile(student_id);
+    if (profile === null) {
+      return fallbackProfileResponse(true, PROFILE_NOT_FOUND_WARNING);
+    }
+
+    return {
+      status: 200,
+      body: {
+        student_id,
+        profile,
+        source: "cloud",
+        is_database_configured: true,
+        warnings: [],
+      },
+    };
+  } catch {
+    return fallbackProfileResponse(true, PROFILE_READ_FAILED_WARNING);
+  }
+}
+
 function compareMemoryEvents(
   left: ProfileMemoryEvent,
   right: ProfileMemoryEvent,
@@ -152,6 +224,33 @@ function isFiniteNumberRecord(
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function getSearchParam(
+  searchParams: URLSearchParams | Record<string, string | undefined>,
+  key: string,
+): string | undefined {
+  if (searchParams instanceof URLSearchParams) {
+    return searchParams.get(key) ?? undefined;
+  }
+
+  return searchParams[key];
+}
+
+function fallbackProfileResponse(
+  is_database_configured: boolean,
+  warning: string,
+): StudentProfileRequestResult {
+  return {
+    status: 200,
+    body: {
+      student_id: DEMO_STUDENT_ID,
+      profile: null,
+      source: "fallback",
+      is_database_configured,
+      warnings: [warning],
+    },
+  };
 }
 
 function failedProjection(): FailedStudentProfileProjection {

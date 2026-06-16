@@ -3,6 +3,7 @@ import {
   createSupabaseAdminClient,
   getSupabaseAdminConfig,
 } from "@/lib/persistence/supabase-admin";
+import { isStudentProfile } from "@/lib/shared/student-profile";
 import { isRecord } from "@/lib/shared/utils";
 
 export const DEMO_STUDENT_ID = "demo_student_001";
@@ -28,6 +29,11 @@ export interface StudentProfileProjectionRepository {
   ): Promise<void>;
 }
 
+export interface StudentProfileReadRepository {
+  is_database_configured: boolean;
+  readCurrentProfile(student_id: string): Promise<StudentProfile | null>;
+}
+
 export interface SupabaseStudentProfileClient {
   from(table: "memory_events"): SupabaseMemoryEventsTable;
   from(table: "student_profiles"): SupabaseStudentProfilesTable;
@@ -50,13 +56,24 @@ interface SupabaseMemoryEventsOrderQuery
 }
 
 interface SupabaseStudentProfilesTable {
+  select(columns: "profile"): SupabaseStudentProfilesSelectQuery;
   upsert(
     payload: Record<string, unknown>,
     options: { onConflict: string },
   ): PromiseLike<{ error: unknown }>;
 }
 
-export function createDefaultStudentProfileRepository(): StudentProfileProjectionRepository {
+interface SupabaseStudentProfilesSelectQuery {
+  eq(
+    column: "student_id",
+    value: string,
+  ): {
+    maybeSingle(): PromiseLike<{ data: unknown; error: unknown }>;
+  };
+}
+
+export function createDefaultStudentProfileRepository(): StudentProfileProjectionRepository &
+  StudentProfileReadRepository {
   const config = getSupabaseAdminConfig();
   if (!config.ok) {
     return createDisabledStudentProfileRepository();
@@ -70,7 +87,7 @@ export function createDefaultStudentProfileRepository(): StudentProfileProjectio
 
 export function createSupabaseStudentProfileRepository(
   client: SupabaseStudentProfileClient,
-): StudentProfileProjectionRepository {
+): StudentProfileProjectionRepository & StudentProfileReadRepository {
   return {
     is_database_configured: true,
     async listMemoryEvents(student_id) {
@@ -110,16 +127,41 @@ export function createSupabaseStudentProfileRepository(
         throw error;
       }
     },
+    async readCurrentProfile(student_id) {
+      const { data, error } = await client
+        .from("student_profiles")
+        .select("profile")
+        .eq("student_id", student_id)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data === null) {
+        return null;
+      }
+
+      if (!isRecord(data) || !isStudentProfile(data.profile)) {
+        throw new Error("Expected student_profiles row to include a valid profile.");
+      }
+
+      return data.profile;
+    },
   };
 }
 
-export function createDisabledStudentProfileRepository(): StudentProfileProjectionRepository {
+export function createDisabledStudentProfileRepository(): StudentProfileProjectionRepository &
+  StudentProfileReadRepository {
   return {
     is_database_configured: false,
     async listMemoryEvents() {
       return [];
     },
     async upsertProjectedProfile() {},
+    async readCurrentProfile() {
+      return null;
+    },
   };
 }
 

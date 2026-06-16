@@ -6,12 +6,20 @@ import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 const jiti = createProjectJiti();
 const { demoStudentProfile } = jiti("./src/data/mathtrace-demo.ts");
 const {
+  handleStudentProfileRequest,
   projectStudentProfileFromEvents,
   syncProjectedStudentProfile,
+  PROFILE_NOT_FOUND_WARNING,
+  PROFILE_READ_FAILED_WARNING,
+  PROFILE_READ_NOT_CONFIGURED_WARNING,
   PROFILE_SYNC_FAILED_WARNING,
 } = jiti("./src/lib/student-profile/student-profile-service.ts");
-const { createSupabaseStudentProfileRepository } = jiti(
-  "./src/lib/persistence/student-profile-persistence.ts",
+const {
+  createDisabledStudentProfileRepository,
+  createSupabaseStudentProfileRepository,
+} = jiti("./src/lib/persistence/student-profile-persistence.ts");
+const { requestCloudStudentProfile } = jiti(
+  "./src/lib/student-profile/student-profile-client.ts",
 );
 
 const migrationSql = readFileSync(
@@ -223,6 +231,77 @@ assert.deepEqual(
   assert.deepEqual(calls, ["list", ["upsert", 1, "event-1", "高二"]]);
 }
 {
+  const result = await handleStudentProfileRequest(
+    new URLSearchParams("student_id=demo_student_001"),
+    createDisabledStudentProfileRepository(),
+  );
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, {
+    student_id: "demo_student_001",
+    profile: null,
+    source: "fallback",
+    is_database_configured: false,
+    warnings: [PROFILE_READ_NOT_CONFIGURED_WARNING],
+  });
+}
+{
+  const result = await handleStudentProfileRequest(
+    new URLSearchParams("student_id=demo_student_001"),
+    createReadRepository(demoStudentProfile),
+  );
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, {
+    student_id: "demo_student_001",
+    profile: demoStudentProfile,
+    source: "cloud",
+    is_database_configured: true,
+    warnings: [],
+  });
+}
+{
+  const result = await handleStudentProfileRequest(
+    new URLSearchParams("student_id=demo_student_001"),
+    createReadRepository(null),
+  );
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, {
+    student_id: "demo_student_001",
+    profile: null,
+    source: "fallback",
+    is_database_configured: true,
+    warnings: [PROFILE_NOT_FOUND_WARNING],
+  });
+}
+{
+  const result = await handleStudentProfileRequest(
+    new URLSearchParams("student_id=student_002"),
+    createReadRepository(demoStudentProfile),
+  );
+
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error.code, "invalid_request");
+  assert.equal(result.body.error.recoverable, true);
+}
+{
+  const result = await handleStudentProfileRequest(
+    new URLSearchParams("student_id=demo_student_001"),
+    createFailingReadRepository(),
+  );
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, {
+    student_id: "demo_student_001",
+    profile: null,
+    source: "fallback",
+    is_database_configured: true,
+    warnings: [PROFILE_READ_FAILED_WARNING],
+  });
+  assert.equal(JSON.stringify(result.body).includes("service role"), false);
+}
+{
   const calls = [];
   const result = await syncProjectedStudentProfile("demo_student_001", {
     is_database_configured: true,
@@ -284,6 +363,37 @@ assert.deepEqual(
 {
   const calls = [];
   const repository = createSupabaseStudentProfileRepository(
+    createFakeStudentProfileClient({
+      calls,
+      listRows: [],
+      readRow: { profile: demoStudentProfile },
+    }),
+  );
+
+  const profile = await repository.readCurrentProfile("demo_student_001");
+
+  assert.deepEqual(profile, demoStudentProfile);
+  assert.deepEqual(calls, [
+    ["from", "student_profiles"],
+    ["select", "profile"],
+    ["eq", "student_id", "demo_student_001"],
+    ["maybeSingle"],
+  ]);
+}
+{
+  const repository = createSupabaseStudentProfileRepository(
+    createFakeStudentProfileClient({
+      calls: [],
+      listRows: [],
+      readRow: { profile: { ...demoStudentProfile, subject: "science" } },
+    }),
+  );
+
+  await assert.rejects(() => repository.readCurrentProfile("demo_student_001"));
+}
+{
+  const calls = [];
+  const repository = createSupabaseStudentProfileRepository(
     createFakeStudentProfileClient({ calls, listRows: [] }),
   );
 
@@ -310,6 +420,69 @@ assert.deepEqual(
   assert.equal(typeof calls[1][1].updated_at, "string");
   assert.deepEqual(calls[1][2], { onConflict: "student_id" });
 }
+{
+  const requests = [];
+  const result = await requestCloudStudentProfile({
+    fetcher: async (url, init) => {
+      requests.push({ url, init });
+
+      return new Response(
+        JSON.stringify({
+          student_id: "demo_student_001",
+          profile: demoStudentProfile,
+          source: "cloud",
+          is_database_configured: true,
+          warnings: [],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    },
+    student_id: "demo_student_001",
+  });
+
+  assert.deepEqual(result.profile, demoStudentProfile);
+  assert.equal(
+    requests[0].url,
+    "/api/student-profile?student_id=demo_student_001",
+  );
+  assert.deepEqual(requests[0].init, { method: "GET", cache: "no-store" });
+}
+await assert.rejects(
+  () =>
+    requestCloudStudentProfile({
+      fetcher: async () =>
+        new Response(
+          JSON.stringify({
+            student_id: "demo_student_001",
+            profile: demoStudentProfile,
+            source: "cloud",
+            is_database_configured: true,
+            warnings: null,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      student_id: "demo_student_001",
+    }),
+  /云端画像响应格式无效。/,
+);
+await assert.rejects(
+  () =>
+    requestCloudStudentProfile({
+      fetcher: async () =>
+        new Response(JSON.stringify({ error: { code: "invalid_request" } }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+      student_id: "student_002",
+    }),
+  /云端画像暂时读取失败。/,
+);
 
 console.log("student profile persistence tests passed");
 
@@ -358,7 +531,26 @@ function memoryDelta(overrides = {}) {
   };
 }
 
-function createFakeStudentProfileClient({ calls, listRows }) {
+function createReadRepository(profile) {
+  return {
+    is_database_configured: true,
+    async readCurrentProfile(studentId) {
+      assert.equal(studentId, "demo_student_001");
+      return profile;
+    },
+  };
+}
+
+function createFailingReadRepository() {
+  return {
+    is_database_configured: true,
+    async readCurrentProfile() {
+      throw new Error("service role key leaked");
+    },
+  };
+}
+
+function createFakeStudentProfileClient({ calls, listRows, readRow = null }) {
   return {
     from(tableName) {
       calls.push(["from", tableName]);
@@ -390,6 +582,23 @@ function createFakeStudentProfileClient({ calls, listRows }) {
       }
 
       return {
+        select(columns) {
+          calls.push(["select", columns]);
+
+          return {
+            eq(column, value) {
+              calls.push(["eq", column, value]);
+
+              return {
+                maybeSingle() {
+                  calls.push(["maybeSingle"]);
+
+                  return { data: readRow, error: null };
+                },
+              };
+            },
+          };
+        },
         upsert(payload, options) {
           calls.push(["upsert", payload, options]);
           return { error: null };
