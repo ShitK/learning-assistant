@@ -1526,24 +1526,24 @@ P1.7 的主要收益不是响应速度，而是稳定性和数据可追溯性。
 ### 项目中的真实证据
 
 - 代码：
-  - `src/lib/supabase-admin.ts`
-  - `src/lib/diagnosis-persistence.ts`
-  - `src/lib/mistake-book-service.ts`
-  - `src/lib/mistake-book-client.ts`
+  - `src/lib/persistence/supabase-admin.ts`
+  - `src/lib/persistence/diagnosis-persistence.ts`
+  - `src/lib/mistake-book/mistake-book-service.ts`
+  - `src/lib/mistake-book/mistake-book-client.ts`
   - `src/app/api/mistake-book/route.ts`
   - `src/components/mistake-book-panel.tsx`
-  - `src/lib/persistence-warnings.ts`
-  - `src/lib/diagnose-service.ts`
-  - `src/lib/confirm-service.ts`
+  - `src/lib/shared/persistence-warnings.ts`
+  - `src/lib/diagnosis/diagnose-service.ts`
+  - `src/lib/diagnosis/confirm-service.ts`
   - `supabase/migrations/20260611000000_p17_mistake_book.sql`
   - `supabase/migrations/20260611001000_p17_mistake_book_dedupe_delete.sql`
 - 测试：
-  - `scripts/diagnosis-persistence.test.mjs`
-  - `scripts/mistake-book-api.test.mjs`
-  - `scripts/mathtrace-workbench-ui.test.mjs`
-  - `scripts/diagnosis-view-model.test.mjs`
-  - `scripts/api-smoke.test.mjs`
-  - `scripts/demo-smoke.test.mjs`
+  - `scripts/tests/persistence/diagnosis-persistence.test.mjs`
+  - `scripts/tests/persistence/mistake-book-api.test.mjs`
+  - `scripts/tests/ui/mathtrace-workbench-ui.test.mjs`
+  - `scripts/tests/diagnosis/diagnosis-view-model.test.mjs`
+  - `scripts/tests/smoke/api-smoke.test.mjs`
+  - `scripts/tests/smoke/demo-smoke.test.mjs`
 - 文档：
   - `README.md`
   - `docs/superpowers/plans/2026-06-11-p17-supabase-mistake-book.md`
@@ -1563,7 +1563,7 @@ P1.7 的主要收益不是响应速度，而是稳定性和数据可追溯性。
 
 ### 当前状态
 
-P1.8 已在当前分支实现并进入文档收口。这个阶段新增 `student_profiles` 表，用来保存 `demo_student_001` 在 `math` 学科下的当前学生画像快照。它不是完整账号系统，也不是新的记忆事实源，而是从受控 `memory_events` 投影出来的 read model。
+P1.8 已实现并完成文档收口。这个阶段新增 `student_profiles` 表，用来保存 `demo_student_001` 在 `math` 学科下的当前学生画像快照。它不是完整账号系统，也不是新的记忆事实源，而是从受控 `memory_events` 投影出来的 read model。
 
 前端现在仍先从 localStorage 或 demo 默认画像恢复，保证页面立刻可用；随后通过 `GET /api/student-profile` best-effort 拉取云端画像。诊断成功持久化后、错题本删除成功后，服务端会尝试重新从 `memory_events` 同步 `student_profiles`。如果数据库未配置、读取失败或同步失败，系统只返回 warning 或 fallback，不破坏诊断、删除和 `sample_diagnosis` 稳定路径。
 
