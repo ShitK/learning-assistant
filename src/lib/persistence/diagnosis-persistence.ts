@@ -4,7 +4,11 @@ import {
   createSupabaseAdminClient,
   getSupabaseAdminConfig,
 } from "@/lib/persistence/supabase-admin";
-import { DUPLICATE_MISTAKE_BOOK_ITEM_WARNING } from "@/lib/shared/persistence-warnings";
+import {
+  DATABASE_NOT_CONFIGURED_WARNING,
+  DATABASE_WRITE_FAILED_WARNING,
+  DUPLICATE_MISTAKE_BOOK_ITEM_WARNING,
+} from "@/lib/shared/persistence-warnings";
 import type {
   DiagnoseImageSuccessResponse,
   DiagnoseSuccessResponse,
@@ -13,11 +17,11 @@ import type {
   ProfileUpdateKind,
 } from "@/lib/diagnosis/diagnose-api";
 
-export const DATABASE_NOT_CONFIGURED_WARNING =
-  "数据库暂未配置，本次只返回诊断报告。";
-export const DATABASE_WRITE_FAILED_WARNING =
-  "错题本写入失败，本次诊断报告已保留。";
-export { DUPLICATE_MISTAKE_BOOK_ITEM_WARNING };
+export {
+  DATABASE_NOT_CONFIGURED_WARNING,
+  DATABASE_WRITE_FAILED_WARNING,
+  DUPLICATE_MISTAKE_BOOK_ITEM_WARNING,
+};
 
 export interface DiagnosisPersistencePayload {
   p_student_id: string;

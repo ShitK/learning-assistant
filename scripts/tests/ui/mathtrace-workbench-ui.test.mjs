@@ -184,8 +184,8 @@ assert.match(
 );
 assert.match(
   source,
-  /await deleteMistakeBookItem[\s\S]*await refreshMistakeBook\(\);\s*await refreshCloudStudentProfile\(\);/,
-  "确认删除成功后应先刷新错题本，再刷新云端画像。",
+  /const deleteResult = await deleteMistakeBookItem[\s\S]*await refreshMistakeBook\(\);\s*if \(deleteResult\.profile_sync_status === "synced"\) \{\s*await refreshCloudStudentProfile\(\);\s*\}/,
+  "确认删除成功后只有云端画像同步成功才刷新云端画像。",
 );
 assert.equal(
   source.includes("await refreshMistakeBook();"),
@@ -268,8 +268,8 @@ assert.match(
 );
 assert.match(
   source,
-  /await refreshCloudStudentProfile\(\)/,
-  "诊断和删除成功路径应等待云端画像刷新。",
+  /shouldRefreshCloudStudentProfileAfterDiagnosis\(diagnosis\.warnings\)/,
+  "诊断成功路径应通过 warning predicate 判断是否刷新云端画像。",
 );
 assert.match(
   source,
@@ -278,18 +278,33 @@ assert.match(
 );
 assert.match(
   source,
-  /createSampleDiagnosisViewModel\([\s\S]*diagnosis\.warnings,[\s\S]*\)[\s\S]*await refreshMistakeBook\(\);\s*await refreshCloudStudentProfile\(\);\s*return;/,
-  "sample_diagnosis 成功后应等待错题本刷新，再等待云端画像刷新。",
+  /createSampleDiagnosisViewModel\([\s\S]*diagnosis\.warnings,[\s\S]*\)[\s\S]*await refreshMistakeBook\(\);\s*if \(shouldRefreshCloudStudentProfileAfterDiagnosis\(diagnosis\.warnings\)\) \{\s*await refreshCloudStudentProfile\(\);\s*\}\s*return;/,
+  "sample_diagnosis 成功后应只在云端画像可信时刷新云端画像。",
 );
 assert.match(
   source,
-  /requestConfirmedImageDiagnosis[\s\S]*await refreshMistakeBook\(\);\s*await refreshCloudStudentProfile\(\);/,
-  "图片确认写入成功后应等待错题本刷新，再等待云端画像刷新。",
+  /requestConfirmedImageDiagnosis[\s\S]*await refreshMistakeBook\(\);\s*if \(shouldRefreshCloudStudentProfileAfterDiagnosis\(diagnosis\.warnings\)\) \{\s*await refreshCloudStudentProfile\(\);\s*\}/,
+  "图片确认写入成功后应只在云端画像可信时刷新云端画像。",
 );
 assert.equal(
   source.includes("@/lib/shared/persistence-warnings"),
   true,
-  "工作台应从 browser-safe 共享模块读取重复错题提示文案。",
+  "工作台应从 browser-safe 共享模块读取持久化提示文案。",
+);
+assert.match(
+  source,
+  /DATABASE_NOT_CONFIGURED_WARNING,\s*DATABASE_WRITE_FAILED_WARNING,\s*DUPLICATE_MISTAKE_BOOK_ITEM_WARNING,\s*PROFILE_SYNC_FAILED_WARNING,/,
+  "工作台应 import browser-safe warning 常量，不能硬编码 stale-cloud 判断文案。",
+);
+assert.match(
+  source,
+  /function shouldRefreshCloudStudentProfileAfterDiagnosis\(\s*warnings: string\[\],\s*\): boolean \{[\s\S]*!warnings\.some\(\(warning\) =>\s*cloudProfileStaleWarnings\.includes\(warning\),[\s\S]*\);[\s\S]*\}/,
+  "诊断云端刷新 predicate 应拒绝会导致云端画像过期的 warning。",
+);
+assert.match(
+  source,
+  /const cloudProfileStaleWarnings: readonly string\[\] = \[[\s\S]*PROFILE_SYNC_FAILED_WARNING,[\s\S]*DATABASE_WRITE_FAILED_WARNING,[\s\S]*DATABASE_NOT_CONFIGURED_WARNING,[\s\S]*\];/,
+  "云端画像过期 warning 列表应覆盖 profile sync、DB 写入失败和 DB 未配置。",
 );
 assert.equal(
   /warnings\.includes\("本题已加入错题本。"\)/.test(source),

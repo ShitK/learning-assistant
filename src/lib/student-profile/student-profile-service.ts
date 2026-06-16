@@ -14,10 +14,10 @@ import {
   applyMemoryDeltaToProfile,
   isStudentProfile,
 } from "@/lib/shared/student-profile";
+import { PROFILE_SYNC_FAILED_WARNING } from "@/lib/shared/persistence-warnings";
 import { isRecord } from "@/lib/shared/utils";
 
-export const PROFILE_SYNC_FAILED_WARNING =
-  "云端画像同步失败，本次操作已保留。";
+export { PROFILE_SYNC_FAILED_WARNING };
 export const PROFILE_READ_NOT_CONFIGURED_WARNING =
   "数据库暂未配置，继续使用本地 demo 画像。";
 export const PROFILE_READ_FAILED_WARNING =

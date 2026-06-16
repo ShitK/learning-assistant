@@ -42,7 +42,12 @@ import {
   deleteMistakeBookItem,
   requestMistakeBookItems,
 } from "@/lib/mistake-book/mistake-book-client";
-import { DUPLICATE_MISTAKE_BOOK_ITEM_WARNING } from "@/lib/shared/persistence-warnings";
+import {
+  DATABASE_NOT_CONFIGURED_WARNING,
+  DATABASE_WRITE_FAILED_WARNING,
+  DUPLICATE_MISTAKE_BOOK_ITEM_WARNING,
+  PROFILE_SYNC_FAILED_WARNING,
+} from "@/lib/shared/persistence-warnings";
 import { requestCloudStudentProfile } from "@/lib/student-profile/student-profile-client";
 import {
   canConfirmEditableExtractionDraft,
@@ -69,6 +74,11 @@ import type { MistakeBookResponse } from "@/lib/mistake-book/mistake-book-client
 import type { PreparedImageUpload } from "@/lib/image-diagnosis/image-upload-client";
 
 const DEFAULT_SAMPLE_ID: SampleQuestionId = "sample_derivative_001";
+const cloudProfileStaleWarnings: readonly string[] = [
+  PROFILE_SYNC_FAILED_WARNING,
+  DATABASE_WRITE_FAILED_WARNING,
+  DATABASE_NOT_CONFIGURED_WARNING,
+];
 
 type MistakeBookPanelStatus = "loading" | "ready" | "error";
 
@@ -215,13 +225,15 @@ export function MathTraceWorkbench(): ReactElement {
       setMistakeBookErrorMessage(null);
 
       try {
-        await deleteMistakeBookItem({
+        const deleteResult = await deleteMistakeBookItem({
           fetcher: window.fetch.bind(window),
           student_id: "demo_student_001",
           item_id: itemId,
         });
         await refreshMistakeBook();
-        await refreshCloudStudentProfile();
+        if (deleteResult.profile_sync_status === "synced") {
+          await refreshCloudStudentProfile();
+        }
       } catch (error) {
         setMistakeBookStatus("error");
         setMistakeBookErrorMessage(
@@ -508,7 +520,9 @@ export function MathTraceWorkbench(): ReactElement {
           });
         }
         await refreshMistakeBook();
-        await refreshCloudStudentProfile();
+        if (shouldRefreshCloudStudentProfileAfterDiagnosis(diagnosis.warnings)) {
+          await refreshCloudStudentProfile();
+        }
         return;
       }
 
@@ -636,7 +650,9 @@ export function MathTraceWorkbench(): ReactElement {
         });
       }
       await refreshMistakeBook();
-      await refreshCloudStudentProfile();
+      if (shouldRefreshCloudStudentProfileAfterDiagnosis(diagnosis.warnings)) {
+        await refreshCloudStudentProfile();
+      }
     } catch (error) {
       const message =
         error instanceof Error
@@ -759,6 +775,14 @@ export function MathTraceWorkbench(): ReactElement {
 
 function hasDuplicateMistakeBookItemWarning(warnings: string[]): boolean {
   return warnings.includes(DUPLICATE_MISTAKE_BOOK_ITEM_WARNING);
+}
+
+function shouldRefreshCloudStudentProfileAfterDiagnosis(
+  warnings: string[],
+): boolean {
+  return !warnings.some((warning) =>
+    cloudProfileStaleWarnings.includes(warning),
+  );
 }
 
 function useHasHydrated(): boolean {
