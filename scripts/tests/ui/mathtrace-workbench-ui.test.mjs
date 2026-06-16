@@ -108,6 +108,16 @@ assert.equal(
   false,
   "工作台客户端组件不能 import Supabase 浏览器客户端。",
 );
+assert.doesNotMatch(
+  source,
+  /createSupabaseAdminClient|@supabase\/supabase-js/,
+  "工作台只能通过 HTTP client 读取云端画像，不能直接 import Supabase。",
+);
+assert.match(
+  source,
+  /import \{ requestCloudStudentProfile \} from "@\/lib\/student-profile\/student-profile-client";/,
+  "工作台应从 browser-safe HTTP client 读取云端画像。",
+);
 
 assert.equal(
   workbenchUiSource.includes("SUPABASE_SERVICE_ROLE_KEY"),
@@ -172,6 +182,11 @@ assert.match(
   /await deleteMistakeBookItem[\s\S]*await refreshMistakeBook\(\);/,
   "确认删除成功后应刷新错题本。",
 );
+assert.match(
+  source,
+  /await deleteMistakeBookItem[\s\S]*await refreshMistakeBook\(\);\s*await refreshCloudStudentProfile\(\);/,
+  "确认删除成功后应先刷新错题本，再刷新云端画像。",
+);
 assert.equal(
   source.includes("await refreshMistakeBook();"),
   true,
@@ -191,6 +206,50 @@ assert.match(
   source,
   /!hasDuplicateMistakeBookItemWarning\(diagnosis\.warnings\)/,
   "重复题不新增 memory_event 时，前端也不应重复写入 demo localStorage 画像。",
+);
+assert.match(
+  source,
+  /requestCloudStudentProfile/,
+  "工作台应在本地 demo fallback 后 best-effort 读取云端画像。",
+);
+assert.match(
+  source,
+  /if \(cloudProfile\.profile\)/,
+  "云端画像为空时不应覆盖本地 fallback。",
+);
+assert.match(
+  source,
+  /if \(cloudProfile\.profile\) \{[\s\S]*writeStoredStudentProfile\(window\.localStorage, cloudProfile\.profile\)[\s\S]*\}/,
+  "只有云端返回有效画像时才写入 localStorage。",
+);
+assert.match(
+  source,
+  /writeStoredStudentProfile\(window\.localStorage, cloudProfile\.profile\)/,
+  "云端返回画像后应同步写入 localStorage。",
+);
+assert.equal(
+  (
+    source.match(
+      /writeStoredStudentProfile\(window\.localStorage, cloudProfile\.profile\)/g,
+    ) ?? []
+  ).length,
+  1,
+  "云端画像 localStorage 写入只能出现在有效 profile 分支内。",
+);
+assert.match(
+  source,
+  /await refreshCloudStudentProfile\(\)/,
+  "诊断和删除成功路径应等待云端画像刷新。",
+);
+assert.match(
+  source,
+  /createSampleDiagnosisViewModel\([\s\S]*diagnosis\.warnings,[\s\S]*\)[\s\S]*await refreshMistakeBook\(\);\s*await refreshCloudStudentProfile\(\);\s*return;/,
+  "sample_diagnosis 成功后应等待错题本刷新，再等待云端画像刷新。",
+);
+assert.match(
+  source,
+  /requestConfirmedImageDiagnosis[\s\S]*await refreshMistakeBook\(\);\s*await refreshCloudStudentProfile\(\);/,
+  "图片确认写入成功后应等待错题本刷新，再等待云端画像刷新。",
 );
 assert.equal(
   source.includes("@/lib/shared/persistence-warnings"),

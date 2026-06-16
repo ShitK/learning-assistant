@@ -43,6 +43,7 @@ import {
   requestMistakeBookItems,
 } from "@/lib/mistake-book/mistake-book-client";
 import { DUPLICATE_MISTAKE_BOOK_ITEM_WARNING } from "@/lib/shared/persistence-warnings";
+import { requestCloudStudentProfile } from "@/lib/student-profile/student-profile-client";
 import {
   canConfirmEditableExtractionDraft,
   createEditableExtractionDraft,
@@ -154,6 +155,22 @@ export function MathTraceWorkbench(): ReactElement {
     }
   }, []);
 
+  const refreshCloudStudentProfile = useCallback(async (): Promise<void> => {
+    if (!hasHydrated) {
+      return;
+    }
+
+    try {
+      const cloudProfile = await requestCloudStudentProfile();
+      if (cloudProfile.profile) {
+        setSessionStudentProfile(cloudProfile.profile);
+        writeStoredStudentProfile(window.localStorage, cloudProfile.profile);
+      }
+    } catch {
+      // Demo fallback remains localStorage/demoStudentProfile; cloud recovery is best-effort.
+    }
+  }, [hasHydrated]);
+
   useEffect(() => {
     if (!hasHydrated) {
       return;
@@ -165,6 +182,14 @@ export function MathTraceWorkbench(): ReactElement {
 
     return () => window.clearTimeout(timeoutId);
   }, [hasHydrated, refreshMistakeBook]);
+
+  useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
+    void refreshCloudStudentProfile();
+  }, [hasHydrated, refreshCloudStudentProfile]);
 
   const handleDeleteMistakeBookItem = useCallback(
     async (itemId: string): Promise<void> => {
@@ -182,6 +207,7 @@ export function MathTraceWorkbench(): ReactElement {
           item_id: itemId,
         });
         await refreshMistakeBook();
+        await refreshCloudStudentProfile();
       } catch (error) {
         setMistakeBookStatus("error");
         setMistakeBookErrorMessage(
@@ -191,7 +217,7 @@ export function MathTraceWorkbench(): ReactElement {
         setDeletingMistakeBookItemId(null);
       }
     },
-    [deletingMistakeBookItemId, refreshMistakeBook],
+    [deletingMistakeBookItemId, refreshCloudStudentProfile, refreshMistakeBook],
   );
 
   useEffect(() => {
@@ -466,7 +492,8 @@ export function MathTraceWorkbench(): ReactElement {
             afterProfile: null,
           });
         }
-        void refreshMistakeBook();
+        await refreshMistakeBook();
+        await refreshCloudStudentProfile();
         return;
       }
 
@@ -594,6 +621,7 @@ export function MathTraceWorkbench(): ReactElement {
         });
       }
       await refreshMistakeBook();
+      await refreshCloudStudentProfile();
     } catch (error) {
       const message =
         error instanceof Error
