@@ -450,6 +450,33 @@ assert.deepEqual(
   );
   assert.deepEqual(requests[0].init, { method: "GET", cache: "no-store" });
 }
+{
+  const requests = [];
+  await requestCloudStudentProfile({
+    fetcher: async (url, init) => {
+      requests.push({ url, init });
+
+      return new Response(
+        JSON.stringify({
+          student_id: "demo_student_001",
+          profile: null,
+          source: "fallback",
+          is_database_configured: false,
+          warnings: [PROFILE_READ_NOT_CONFIGURED_WARNING],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    },
+  });
+
+  assert.equal(
+    requests[0].url,
+    "/api/student-profile?student_id=demo_student_001",
+  );
+}
 await assert.rejects(
   () =>
     requestCloudStudentProfile({

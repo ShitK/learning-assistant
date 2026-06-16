@@ -1,6 +1,8 @@
 import { clampScore, isRecord } from "@/lib/shared/utils";
 import type { MemoryDelta, StudentProfile } from "@/data/mathtrace-demo";
 
+export type { StudentProfile } from "@/data/mathtrace-demo";
+
 const DEMO_UPDATED_AT = "2026-05-29T22:00:00+08:00";
 
 export function isStudentProfile(value: unknown): value is StudentProfile {

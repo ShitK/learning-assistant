@@ -1,6 +1,10 @@
-import type { StudentProfile } from "@/data/mathtrace-demo";
-import { isStudentProfile } from "@/lib/shared/student-profile";
+import {
+  isStudentProfile,
+  type StudentProfile,
+} from "@/lib/shared/student-profile";
 import { isRecord } from "@/lib/shared/utils";
+
+const DEMO_STUDENT_ID = "demo_student_001";
 
 export interface CloudStudentProfileClientResponse {
   student_id: string;
@@ -12,18 +16,19 @@ export interface CloudStudentProfileClientResponse {
 
 export interface RequestCloudStudentProfileOptions {
   fetcher?: typeof fetch;
-  student_id: string;
+  student_id?: string;
 }
 
 export async function requestCloudStudentProfile(
-  options: RequestCloudStudentProfileOptions,
+  options: RequestCloudStudentProfileOptions = {},
 ): Promise<CloudStudentProfileClientResponse> {
   const fetcher = options.fetcher ?? fetch;
+  const studentId = options.student_id ?? DEMO_STUDENT_ID;
   let response: Response;
 
   try {
     response = await fetcher(
-      `/api/student-profile?student_id=${encodeURIComponent(options.student_id)}`,
+      `/api/student-profile?student_id=${encodeURIComponent(studentId)}`,
       {
         method: "GET",
         cache: "no-store",

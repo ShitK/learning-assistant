@@ -80,6 +80,7 @@ const allowedLibImportPrefixes = [
   "@/lib/image-diagnosis/",
   "@/lib/persistence/",
   "@/lib/mistake-book/",
+  "@/lib/student-profile/",
   "@/lib/demo/",
 ];
 
