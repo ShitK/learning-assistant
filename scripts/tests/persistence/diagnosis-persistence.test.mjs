@@ -73,6 +73,75 @@ const samplePayloadJson = JSON.stringify(sampleRepository.calls[0]);
 assert.equal(samplePayloadJson.includes("image_base64"), false);
 assert.equal(samplePayloadJson.includes("a".repeat(1200)), false);
 
+{
+  const profileSyncCalls = [];
+  const result = await handleDiagnoseRequest(samplePayload, {
+    persistence_repository: createRecordingRepository({ status: "persisted" }),
+    student_profile_repository: {
+      is_database_configured: true,
+      async listMemoryEvents(studentId) {
+        profileSyncCalls.push(["list", studentId]);
+        return [];
+      },
+      async upsertProjectedProfile(input) {
+        profileSyncCalls.push(["upsert", input.student_id, input.event_count]);
+      },
+    },
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(profileSyncCalls, [
+    ["list", "demo_student_001"],
+    ["upsert", "demo_student_001", 0],
+  ]);
+}
+
+{
+  const profileSyncCalls = [];
+  const result = await handleDiagnoseRequest(samplePayload, {
+    persistence_repository: createRecordingRepository({ status: "duplicate" }),
+    student_profile_repository: {
+      is_database_configured: true,
+      async listMemoryEvents() {
+        profileSyncCalls.push("list");
+        return [];
+      },
+      async upsertProjectedProfile() {
+        profileSyncCalls.push("upsert");
+      },
+    },
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(profileSyncCalls, []);
+}
+
+{
+  const result = await handleDiagnoseRequest(samplePayload, {
+    persistence_repository: createRecordingRepository({ status: "persisted" }),
+    student_profile_repository: {
+      is_database_configured: true,
+      async listMemoryEvents() {
+        return [
+          {
+            id: "bad",
+            created_at: "2026-06-17T00:00:00.000Z",
+            memory_delta: { should_persist: true },
+          },
+        ];
+      },
+      async upsertProjectedProfile() {
+        throw new Error("must not write invalid profile");
+      },
+    },
+  });
+
+  assert.equal(result.status, 200);
+  assert.ok(
+    result.body.warnings.includes("云端画像同步失败，本次操作已保留。"),
+  );
+}
+
 const normalizedQuestionText = "已知函数$f(x)=x^3-3ax+1$讨论单调性";
 const expectedQuestionFingerprint = createHash("sha256")
   .update(normalizedQuestionText)
@@ -338,6 +407,32 @@ assert.equal(
   "student_work",
 );
 assert.equal(studentWorkRepository.calls[0].p_profile_update_kind, "mistake_cause");
+
+{
+  const profileSyncCalls = [];
+  const confirmResult = await handleConfirmRequest(
+    createConfirmPayload(studentWorkExtraction),
+    {
+      persistence_repository: createRecordingRepository({ status: "persisted" }),
+      student_profile_repository: {
+        is_database_configured: true,
+        async listMemoryEvents(studentId) {
+          profileSyncCalls.push(["list", studentId]);
+          return [];
+        },
+        async upsertProjectedProfile(input) {
+          profileSyncCalls.push(["upsert", input.student_id, input.event_count]);
+        },
+      },
+    },
+  );
+
+  assert.equal(confirmResult.status, 200);
+  assert.deepEqual(profileSyncCalls, [
+    ["list", "demo_student_001"],
+    ["upsert", "demo_student_001", 0],
+  ]);
+}
 
 const duplicateConfirmRepository = createRecordingRepository({
   status: "duplicate",

@@ -16,6 +16,7 @@ import { persistDiagnosisIfNeeded } from "@/lib/diagnosis/diagnose-service";
 import { runImageMathTraceAgent } from "@/lib/image-diagnosis/image-diagnosis-pipeline";
 import { isRecord } from "@/lib/shared/utils";
 import type { DiagnosisPersistenceRepository } from "@/lib/persistence/diagnosis-persistence";
+import type { StudentProfileProjectionRepository } from "@/lib/persistence/student-profile-persistence";
 import type {
   AnalysisEnhancementDraft,
   AnalysisProvider,
@@ -58,6 +59,7 @@ export async function handleConfirmRequest(
   deps?: {
     analysis_provider?: AnalysisProvider;
     persistence_repository?: DiagnosisPersistenceRepository;
+    student_profile_repository?: StudentProfileProjectionRepository;
   },
 ): Promise<DiagnoseServiceResult> {
   const parsed = parseConfirmImageDiagnosisRequest(payload);
@@ -93,6 +95,7 @@ export async function handleConfirmRequest(
       }),
     },
     deps?.persistence_repository,
+    deps?.student_profile_repository,
   );
 }
 

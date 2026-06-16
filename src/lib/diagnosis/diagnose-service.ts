@@ -13,6 +13,10 @@ import {
   DUPLICATE_MISTAKE_BOOK_ITEM_WARNING,
   persistDiagnosisResponse,
 } from "@/lib/persistence/diagnosis-persistence";
+import {
+  PROFILE_SYNC_FAILED_WARNING,
+  syncProjectedStudentProfile,
+} from "@/lib/student-profile/student-profile-service";
 import { parseImageInput } from "@/lib/image-diagnosis/image-input";
 import { runMathTraceAgent } from "@/lib/diagnosis/mathtrace-agent-pipeline";
 import { isRecord } from "@/lib/shared/utils";
@@ -27,6 +31,7 @@ import type {
   DiagnosisPersistenceRepository,
   DiagnosisPersistenceResult,
 } from "@/lib/persistence/diagnosis-persistence";
+import type { StudentProfileProjectionRepository } from "@/lib/persistence/student-profile-persistence";
 import type {
   VisionExtractionInput,
   VisionExtractionProvider,
@@ -44,6 +49,7 @@ export async function handleDiagnoseRequest(
   deps?: {
     vision_provider?: VisionExtractionProvider;
     persistence_repository?: DiagnosisPersistenceRepository;
+    student_profile_repository?: StudentProfileProjectionRepository;
   },
 ): Promise<DiagnoseServiceResult> {
   const parsedRequest = parseDiagnoseRequest(payload);
@@ -62,6 +68,7 @@ export async function handleDiagnoseRequest(
           body: runMathTraceAgent(parsedRequest.value),
         },
         deps?.persistence_repository,
+        deps?.student_profile_repository,
       );
     } catch {
       return {
@@ -83,6 +90,7 @@ async function handleImageDiagnoseRequest(
   deps?: {
     vision_provider?: VisionExtractionProvider;
     persistence_repository?: DiagnosisPersistenceRepository;
+    student_profile_repository?: StudentProfileProjectionRepository;
   },
 ): Promise<DiagnoseServiceResult> {
   const parsedImage = parseImageInput({
@@ -158,6 +166,7 @@ async function handleImageDiagnoseRequest(
 export async function persistDiagnosisIfNeeded(
   result: DiagnoseServiceResult,
   repository?: DiagnosisPersistenceRepository,
+  studentProfileRepository?: StudentProfileProjectionRepository,
 ): Promise<DiagnoseServiceResult> {
   if (!isPersistableDiagnosisResponse(result.body)) {
     return result;
@@ -167,8 +176,23 @@ export async function persistDiagnosisIfNeeded(
     result.body,
     repository,
   );
-  const warning = getPersistenceWarning(persistenceResult);
-  if (!warning) {
+  const warnings: string[] = [];
+  const persistenceWarning = getPersistenceWarning(persistenceResult);
+  if (persistenceWarning) {
+    warnings.push(persistenceWarning);
+  }
+
+  if (persistenceResult.status === "persisted") {
+    const profileSync = await syncProjectedStudentProfile(
+      result.body.student_id,
+      studentProfileRepository,
+    );
+    if (profileSync.status === "failed") {
+      warnings.push(profileSync.warning ?? PROFILE_SYNC_FAILED_WARNING);
+    }
+  }
+
+  if (warnings.length === 0) {
     return result;
   }
 
@@ -176,7 +200,7 @@ export async function persistDiagnosisIfNeeded(
     ...result,
     body: {
       ...result.body,
-      warnings: appendUniqueWarning(result.body.warnings, warning),
+      warnings: appendUniqueWarnings(result.body.warnings, warnings),
     },
   };
 }
@@ -332,6 +356,13 @@ function getPersistenceWarning(
 
 function appendUniqueWarning(warnings: string[], warning: string): string[] {
   return warnings.includes(warning) ? warnings : [...warnings, warning];
+}
+
+function appendUniqueWarnings(
+  warnings: string[],
+  nextWarnings: string[],
+): string[] {
+  return nextWarnings.reduce(appendUniqueWarning, warnings);
 }
 
 function getSafeDebugSummary(error: VisionProviderError):
