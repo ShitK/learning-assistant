@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
 const {
   TARGET_DIAGNOSIS_IMAGE_BYTES,
@@ -12,7 +12,7 @@ const {
   selectUploadSizedDataUrl,
   stripDataUrlPrefix,
   validateImageFileMetadata,
-} = jiti("../src/lib/image-diagnosis/image-upload-client.ts");
+} = jiti("./src/lib/image-diagnosis/image-upload-client.ts");
 
 assert.equal(MAX_UPLOAD_IMAGE_BYTES, 1_000_000);
 assert.equal(TARGET_DIAGNOSIS_IMAGE_BYTES, 600_000);

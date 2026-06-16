@@ -41,6 +41,36 @@ assert.deepEqual(
   "src/lib 根目录不应继续平铺业务模块；请移动到 domain 子目录。",
 );
 
+const rootScriptEntries = await readdir("scripts", { withFileTypes: true });
+const rootTestFiles = rootScriptEntries
+  .filter((entry) => entry.isFile() && entry.name.endsWith(".test.mjs"))
+  .map((entry) => entry.name)
+  .sort();
+
+assert.deepEqual(
+  rootTestFiles,
+  [],
+  "scripts 根目录不应继续平铺测试脚本；请放到 scripts/tests/<domain>/。",
+);
+
+const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+
+assert.equal(
+  packageJson.scripts.test.includes("scripts/run-tests.mjs"),
+  true,
+  "npm test 应通过 scripts/run-tests.mjs 执行分组测试。",
+);
+assert.equal(
+  packageJson.scripts["test:smoke"].includes("scripts/run-tests.mjs"),
+  true,
+  "npm run test:smoke 应通过 scripts/run-tests.mjs 执行 smoke 测试。",
+);
+assert.equal(
+  packageJson.scripts["test:eval"].includes("scripts/run-tests.mjs"),
+  true,
+  "npm run test:eval 应通过 scripts/run-tests.mjs 执行 eval 测试。",
+);
+
 const allowedLibImportPrefixes = [
   "@/lib/shared/",
   "@/lib/math/",

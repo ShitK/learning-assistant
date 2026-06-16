@@ -1,23 +1,23 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
-const { handleDiagnoseRequest } = jiti("../src/lib/diagnosis/diagnose-service.ts");
-const { handleConfirmRequest } = jiti("../src/lib/diagnosis/confirm-service.ts");
-const { POST: confirmRoutePost } = jiti("../src/app/api/confirm/route.ts");
+const { handleDiagnoseRequest } = jiti("./src/lib/diagnosis/diagnose-service.ts");
+const { handleConfirmRequest } = jiti("./src/lib/diagnosis/confirm-service.ts");
+const { POST: confirmRoutePost } = jiti("./src/app/api/confirm/route.ts");
 const { isDiagnoseImageExtractionResponse } = jiti(
-  "../src/lib/diagnosis/diagnose-api.ts",
+  "./src/lib/diagnosis/diagnose-api.ts",
 );
 const { parseConfirmedExtractionDraft } = jiti(
-  "../src/lib/image-diagnosis/image-confirmation.ts",
+  "./src/lib/image-diagnosis/image-confirmation.ts",
 );
 const {
   createImageConfirmationFingerprint,
   createImageConfirmationToken,
   verifyImageConfirmationToken,
-} = jiti("../src/lib/image-diagnosis/image-confirmation-token.ts");
-const { demoStudentProfile } = jiti("../src/data/mathtrace-demo.ts");
+} = jiti("./src/lib/image-diagnosis/image-confirmation-token.ts");
+const { demoStudentProfile } = jiti("./src/data/mathtrace-demo.ts");
 
 const provider = {
   async extractQuestionFromImage() {

@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
 const {
   createAnthropicCompatibleVisionProvider,
   createVisionProvider,
   createVisionProviderConfigFromEnv,
-} = jiti("../src/lib/providers/anthropic-compatible-provider.ts");
+} = jiti("./src/lib/providers/anthropic-compatible-provider.ts");
 
 const calls = [];
 const okFetch = async (url, init) => {

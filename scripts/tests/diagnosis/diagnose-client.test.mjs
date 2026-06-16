@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
 const { demoStudentProfile, mistakeHistory } = jiti(
-  "../src/data/mathtrace-demo.ts",
+  "./src/data/mathtrace-demo.ts",
 );
 const {
   buildConfirmedImageDiagnosePayload,
@@ -14,12 +14,12 @@ const {
   requestConfirmedImageDiagnosis,
   requestImageExtractionReview,
   shouldPersistDiagnoseProfile,
-} = jiti("../src/lib/diagnosis/diagnose-client.ts");
+} = jiti("./src/lib/diagnosis/diagnose-client.ts");
 const {
   isDiagnoseImageExtractionResponse,
   isDiagnoseImageSuccessResponse,
 } = jiti(
-  "../src/lib/diagnosis/diagnose-api.ts",
+  "./src/lib/diagnosis/diagnose-api.ts",
 );
 
 const samplePayload = buildSampleDiagnosePayload({

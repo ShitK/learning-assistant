@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
 const { demoStudentProfile, sampleDiagnoses } = jiti(
-  "../src/data/mathtrace-demo.ts",
+  "./src/data/mathtrace-demo.ts",
 );
 const {
   canShowRiskFollowUp,
@@ -20,7 +20,7 @@ const {
   createStandardSolutionDisplayText,
   createStandardSolutionBlocks,
   createVisionExtractionDraftFromEditableDraft,
-} = jiti("../src/lib/diagnosis/diagnosis-view-model.ts");
+} = jiti("./src/lib/diagnosis/diagnosis-view-model.ts");
 
 const sample = sampleDiagnoses[0];
 const sampleView = createSampleDiagnosisViewModel(sample);

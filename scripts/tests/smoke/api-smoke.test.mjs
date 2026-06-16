@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
-const { POST: diagnoseRoutePost } = jiti("../src/app/api/diagnose/route.ts");
-const { POST: confirmRoutePost } = jiti("../src/app/api/confirm/route.ts");
-const { handleDiagnoseRequest } = jiti("../src/lib/diagnosis/diagnose-service.ts");
-const { handleConfirmRequest } = jiti("../src/lib/diagnosis/confirm-service.ts");
+const { POST: diagnoseRoutePost } = jiti("./src/app/api/diagnose/route.ts");
+const { POST: confirmRoutePost } = jiti("./src/app/api/confirm/route.ts");
+const { handleDiagnoseRequest } = jiti("./src/lib/diagnosis/diagnose-service.ts");
+const { handleConfirmRequest } = jiti("./src/lib/diagnosis/confirm-service.ts");
 const { demoStudentProfile, mistakeHistory } = jiti(
-  "../src/data/mathtrace-demo.ts",
+  "./src/data/mathtrace-demo.ts",
 );
 const { isDiagnoseImageExtractionResponse } = jiti(
-  "../src/lib/diagnosis/diagnose-api.ts",
+  "./src/lib/diagnosis/diagnose-api.ts",
 );
 
 const samplePayload = {

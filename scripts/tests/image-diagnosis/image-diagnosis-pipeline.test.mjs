@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
 const { runImageMathTraceAgent } = jiti(
-  "../src/lib/image-diagnosis/image-diagnosis-pipeline.ts",
+  "./src/lib/image-diagnosis/image-diagnosis-pipeline.ts",
 );
-const { demoStudentProfile } = jiti("../src/data/mathtrace-demo.ts");
+const { demoStudentProfile } = jiti("./src/data/mathtrace-demo.ts");
 
 const request = {
   student_id: "demo_student_001",

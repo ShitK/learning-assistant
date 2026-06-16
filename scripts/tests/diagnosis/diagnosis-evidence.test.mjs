@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
 const {
   assessExtractionEvidence,
   createProblemRiskFollowUp,
   parseFollowUpAnswer,
-} = jiti("../src/lib/shared/diagnosis-evidence.ts");
+} = jiti("./src/lib/shared/diagnosis-evidence.ts");
 
 const sufficient = assessExtractionEvidence({
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
 const {
   planTask,
@@ -14,12 +14,12 @@ const {
   planReview,
   buildDiagnoseResponse,
   runMathTraceAgent,
-} = jiti("../src/lib/diagnosis/mathtrace-agent-pipeline.ts");
-const { POST } = jiti("../src/app/api/diagnose/route.ts");
-const { handleDiagnoseRequest } = jiti("../src/lib/diagnosis/diagnose-service.ts");
+} = jiti("./src/lib/diagnosis/mathtrace-agent-pipeline.ts");
+const { POST } = jiti("./src/app/api/diagnose/route.ts");
+const { handleDiagnoseRequest } = jiti("./src/lib/diagnosis/diagnose-service.ts");
 
 const { demoStudentProfile, sampleDiagnoses } = jiti(
-  "../src/data/mathtrace-demo.ts",
+  "./src/data/mathtrace-demo.ts",
 );
 
 const firstSample = sampleDiagnoses[0];

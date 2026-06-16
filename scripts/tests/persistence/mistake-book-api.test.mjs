@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
 const {
   DATABASE_DELETE_FAILED_WARNING,
@@ -12,13 +12,13 @@ const {
   createSupabaseMistakeBookRepository,
   handleMistakeBookDeleteRequest,
   handleMistakeBookRequest,
-} = jiti("../src/lib/mistake-book/mistake-book-service.ts");
+} = jiti("./src/lib/mistake-book/mistake-book-service.ts");
 const {
   deleteMistakeBookItem,
   isMistakeBookResponse,
   requestMistakeBookItems,
-} = jiti("../src/lib/mistake-book/mistake-book-client.ts");
-const { DELETE, GET } = jiti("../src/app/api/mistake-book/route.ts");
+} = jiti("./src/lib/mistake-book/mistake-book-client.ts");
+const { DELETE, GET } = jiti("./src/app/api/mistake-book/route.ts");
 
 const itemId = "11111111-1111-4111-8111-111111111111";
 

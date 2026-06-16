@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
 const {
   createAnalysisProvider,
   createAnalysisProviderConfigFromEnv,
   parseAnalysisProviderOutput,
-} = jiti("../src/lib/providers/analysis-provider.ts");
+} = jiti("./src/lib/providers/analysis-provider.ts");
 
 const missingConfig = createAnalysisProviderConfigFromEnv({});
 assert.equal(missingConfig.ok, false);

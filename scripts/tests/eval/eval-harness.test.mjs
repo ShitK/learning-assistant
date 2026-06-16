@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
-import { trustedDiagnosisCases } from "./fixtures/eval/p15-trusted-diagnosis-cases.mjs";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
+import { trustedDiagnosisCases } from "../../fixtures/eval/p15-trusted-diagnosis-cases.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
 const { demoStudentProfile, sampleDiagnoses } = jiti(
-  "../src/data/mathtrace-demo.ts",
+  "./src/data/mathtrace-demo.ts",
 );
 const { runImageMathTraceAgent } = jiti(
-  "../src/lib/image-diagnosis/image-diagnosis-pipeline.ts",
+  "./src/lib/image-diagnosis/image-diagnosis-pipeline.ts",
 );
-const { runMathTraceAgent } = jiti("../src/lib/diagnosis/mathtrace-agent-pipeline.ts");
+const { runMathTraceAgent } = jiti("./src/lib/diagnosis/mathtrace-agent-pipeline.ts");
 const { parseVisionExtractionText } = jiti(
-  "../src/lib/vision-extraction/vision-extraction-parser.ts",
+  "./src/lib/vision-extraction/vision-extraction-parser.ts",
 );
 
 const request = {

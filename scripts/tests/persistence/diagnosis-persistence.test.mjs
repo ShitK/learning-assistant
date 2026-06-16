@@ -1,27 +1,27 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
-const { handleDiagnoseRequest } = jiti("../src/lib/diagnosis/diagnose-service.ts");
-const { handleConfirmRequest } = jiti("../src/lib/diagnosis/confirm-service.ts");
+const { handleDiagnoseRequest } = jiti("./src/lib/diagnosis/diagnose-service.ts");
+const { handleConfirmRequest } = jiti("./src/lib/diagnosis/confirm-service.ts");
 const {
   createDiagnosisPersistencePayload,
   createQuestionFingerprint,
   createSupabaseDiagnosisPersistenceRepository,
   persistDiagnosisResponse,
-} = jiti("../src/lib/persistence/diagnosis-persistence.ts");
+} = jiti("./src/lib/persistence/diagnosis-persistence.ts");
 const { runImageMathTraceAgent } = jiti(
-  "../src/lib/image-diagnosis/image-diagnosis-pipeline.ts",
+  "./src/lib/image-diagnosis/image-diagnosis-pipeline.ts",
 );
 const {
   createImageConfirmationFingerprint,
   createImageConfirmationToken,
-} = jiti("../src/lib/image-diagnosis/image-confirmation-token.ts");
+} = jiti("./src/lib/image-diagnosis/image-confirmation-token.ts");
 const { demoStudentProfile, mistakeHistory } = jiti(
-  "../src/data/mathtrace-demo.ts",
+  "./src/data/mathtrace-demo.ts",
 );
 
 const samplePayload = {
@@ -148,7 +148,7 @@ const failedRpcResult = await failingRpcRepository.persistDiagnosis(directPayloa
 assert.deepEqual(failedRpcResult, { status: "failed" });
 
 const migrationSql = readFileSync(
-  new URL("../supabase/migrations/20260611000000_p17_mistake_book.sql", import.meta.url),
+  "supabase/migrations/20260611000000_p17_mistake_book.sql",
   "utf8",
 );
 
@@ -216,10 +216,7 @@ assert.equal(
 );
 
 const dedupeMigrationSql = readFileSync(
-  new URL(
-    "../supabase/migrations/20260611001000_p17_mistake_book_dedupe_delete.sql",
-    import.meta.url,
-  ),
+  "supabase/migrations/20260611001000_p17_mistake_book_dedupe_delete.sql",
   "utf8",
 );
 

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
-const { demoStudentProfile } = jiti("../src/data/mathtrace-demo.ts");
+const { demoStudentProfile } = jiti("./src/data/mathtrace-demo.ts");
 const {
   DEMO_STUDENT_PROFILE_STORAGE_KEY,
   parseStoredStudentProfile,
@@ -12,7 +12,7 @@ const {
   readStoredStudentProfile,
   writeStoredStudentProfile,
   clearStoredStudentProfile,
-} = jiti("../src/lib/demo/demo-state.ts");
+} = jiti("./src/lib/demo/demo-state.ts");
 
 const updatedProfile = {
   ...demoStudentProfile,

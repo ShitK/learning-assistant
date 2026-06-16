@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const jiti = createProjectJiti();
 
 const {
   parseVisionExtractionText,
   createVisionExtractionPrompt,
-} = jiti("../src/lib/vision-extraction/vision-extraction-parser.ts");
+} = jiti("./src/lib/vision-extraction/vision-extraction-parser.ts");
 
 const validModelText = JSON.stringify({
   question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",

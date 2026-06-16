@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { createJiti } from "jiti";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
 function stripComments(sourceText) {
   return sourceText
@@ -8,7 +8,7 @@ function stripComments(sourceText) {
     .replace(/^\s*\/\/.*$/gm, "");
 }
 
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true, jsx: true });
+const jiti = createProjectJiti({ jsx: true });
 const source = stripComments(
   await readFile("src/components/mathtrace-workbench.tsx", "utf8"),
 );
@@ -47,7 +47,7 @@ const workbenchUiSource = [
 const {
   confirmMistakeBookItemDeletion,
   createMistakeBookPanelViewModel,
-} = jiti("../src/components/mistake-book-panel.tsx");
+} = jiti("./src/components/mistake-book-panel.tsx");
 
 assert.equal(
   workbenchUiSource.includes("错误发生步骤"),
