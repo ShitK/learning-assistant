@@ -10,6 +10,9 @@ const {
   syncProjectedStudentProfile,
   PROFILE_SYNC_FAILED_WARNING,
 } = jiti("./src/lib/student-profile/student-profile-service.ts");
+const { createSupabaseStudentProfileRepository } = jiti(
+  "./src/lib/persistence/student-profile-persistence.ts",
+);
 
 const migrationSql = readFileSync(
   "supabase/migrations/20260617000000_p18_student_profiles.sql",
@@ -147,6 +150,32 @@ assert.deepEqual(
 assert.deepEqual(
   projectStudentProfileFromEvents([
     {
+      id: "invalid-rationale",
+      created_at: "2026-06-17T08:00:00+08:00",
+      memory_delta: memoryDelta({ rationale: 123 }),
+    },
+  ]),
+  {
+    status: "failed",
+    warning: PROFILE_SYNC_FAILED_WARNING,
+  },
+);
+assert.deepEqual(
+  projectStudentProfileFromEvents([
+    {
+      id: "not-persistable",
+      created_at: "2026-06-17T08:00:00+08:00",
+      memory_delta: memoryDelta({ should_persist: false }),
+    },
+  ]),
+  {
+    status: "failed",
+    warning: PROFILE_SYNC_FAILED_WARNING,
+  },
+);
+assert.deepEqual(
+  projectStudentProfileFromEvents([
+    {
       id: "good",
       created_at: "2026-06-17T08:00:00+08:00",
       memory_delta: memoryDelta(),
@@ -220,6 +249,67 @@ assert.deepEqual(
   });
   assert.deepEqual(calls, ["list"]);
 }
+{
+  const calls = [];
+  const rows = [
+    {
+      id: "event-1",
+      created_at: "2026-06-17T08:00:00+08:00",
+      memory_delta: memoryDelta(),
+    },
+  ];
+  const repository = createSupabaseStudentProfileRepository(
+    createFakeStudentProfileClient({ calls, listRows: rows }),
+  );
+
+  const result = await repository.listMemoryEvents("demo_student_001");
+
+  assert.deepEqual(result, rows);
+  assert.deepEqual(calls, [
+    ["from", "memory_events"],
+    ["select", "id, created_at, memory_delta"],
+    ["eq", "student_id", "demo_student_001"],
+    ["order", "created_at", { ascending: true }],
+    ["order", "id", { ascending: true }],
+  ]);
+}
+{
+  const calls = [];
+  const repository = createSupabaseStudentProfileRepository(
+    createFakeStudentProfileClient({ calls, listRows: [{ id: null }] }),
+  );
+
+  await assert.rejects(() => repository.listMemoryEvents("demo_student_001"));
+}
+{
+  const calls = [];
+  const repository = createSupabaseStudentProfileRepository(
+    createFakeStudentProfileClient({ calls, listRows: [] }),
+  );
+
+  await repository.upsertProjectedProfile({
+    student_id: "demo_student_001",
+    profile: demoStudentProfile,
+    event_count: 1,
+    last_memory_event_id: "event-1",
+  });
+
+  assert.equal(calls[0][0], "from");
+  assert.equal(calls[0][1], "student_profiles");
+  assert.equal(calls[1][0], "upsert");
+  assert.deepEqual(calls[1][1], {
+    student_id: "demo_student_001",
+    subject: "math",
+    grade: demoStudentProfile.grade,
+    profile: demoStudentProfile,
+    profile_version: 1,
+    event_count: 1,
+    last_memory_event_id: "event-1",
+    updated_at: calls[1][1].updated_at,
+  });
+  assert.equal(typeof calls[1][1].updated_at, "string");
+  assert.deepEqual(calls[1][2], { onConflict: "student_id" });
+}
 
 console.log("student profile persistence tests passed");
 
@@ -265,5 +355,46 @@ function memoryDelta(overrides = {}) {
     review_priority_changes: ["parameter_classification"],
     is_repeated_mistake: true,
     ...overrides,
+  };
+}
+
+function createFakeStudentProfileClient({ calls, listRows }) {
+  return {
+    from(tableName) {
+      calls.push(["from", tableName]);
+
+      if (tableName === "memory_events") {
+        const builder = {
+          orderCount: 0,
+          select(columns) {
+            calls.push(["select", columns]);
+            return builder;
+          },
+          eq(column, value) {
+            calls.push(["eq", column, value]);
+            return builder;
+          },
+          order(column, options) {
+            calls.push(["order", column, options]);
+            builder.orderCount += 1;
+
+            if (builder.orderCount === 2) {
+              return { data: listRows, error: null };
+            }
+
+            return builder;
+          },
+        };
+
+        return builder;
+      }
+
+      return {
+        upsert(payload, options) {
+          calls.push(["upsert", payload, options]);
+          return { error: null };
+        },
+      };
+    },
   };
 }

@@ -1,10 +1,9 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-
 import type { StudentProfile } from "@/data/mathtrace-demo";
 import {
   createSupabaseAdminClient,
   getSupabaseAdminConfig,
 } from "@/lib/persistence/supabase-admin";
+import { isRecord } from "@/lib/shared/utils";
 
 export const DEMO_STUDENT_ID = "demo_student_001";
 
@@ -29,18 +28,48 @@ export interface StudentProfileProjectionRepository {
   ): Promise<void>;
 }
 
+export interface SupabaseStudentProfileClient {
+  from(table: "memory_events"): SupabaseMemoryEventsTable;
+  from(table: "student_profiles"): SupabaseStudentProfilesTable;
+}
+
+interface SupabaseMemoryEventsTable {
+  select(columns: string): SupabaseMemoryEventsSelectQuery;
+}
+
+interface SupabaseMemoryEventsSelectQuery {
+  eq(column: string, value: string): SupabaseMemoryEventsOrderQuery;
+}
+
+interface SupabaseMemoryEventsOrderQuery
+  extends PromiseLike<{ data: unknown; error: unknown }> {
+  order(
+    column: string,
+    options: { ascending: boolean },
+  ): SupabaseMemoryEventsOrderQuery;
+}
+
+interface SupabaseStudentProfilesTable {
+  upsert(
+    payload: Record<string, unknown>,
+    options: { onConflict: string },
+  ): PromiseLike<{ error: unknown }>;
+}
+
 export function createDefaultStudentProfileRepository(): StudentProfileProjectionRepository {
   const config = getSupabaseAdminConfig();
   if (!config.ok) {
     return createDisabledStudentProfileRepository();
   }
 
-  const client = createSupabaseAdminClient(config.value);
+  const client = createSupabaseAdminClient(
+    config.value,
+  ) as unknown as SupabaseStudentProfileClient;
   return createSupabaseStudentProfileRepository(client);
 }
 
 export function createSupabaseStudentProfileRepository(
-  client: SupabaseClient,
+  client: SupabaseStudentProfileClient,
 ): StudentProfileProjectionRepository {
   return {
     is_database_configured: true,
@@ -60,13 +89,7 @@ export function createSupabaseStudentProfileRepository(
         throw new Error("Expected memory_events query to return an array.");
       }
 
-      return data.map((row) => {
-        return {
-          id: String(row.id),
-          created_at: String(row.created_at),
-          memory_delta: row.memory_delta,
-        };
-      });
+      return data.map(toProfileMemoryEvent);
     },
     async upsertProjectedProfile(input) {
       const { error } = await client.from("student_profiles").upsert(
@@ -97,5 +120,21 @@ export function createDisabledStudentProfileRepository(): StudentProfileProjecti
       return [];
     },
     async upsertProjectedProfile() {},
+  };
+}
+
+function toProfileMemoryEvent(row: unknown): ProfileMemoryEvent {
+  if (
+    !isRecord(row) ||
+    typeof row.id !== "string" ||
+    typeof row.created_at !== "string"
+  ) {
+    throw new Error("Expected memory_events row to include string id and created_at.");
+  }
+
+  return {
+    id: row.id,
+    created_at: row.created_at,
+    memory_delta: row.memory_delta,
   };
 }

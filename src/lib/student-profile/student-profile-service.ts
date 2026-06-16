@@ -118,7 +118,8 @@ function parseMemoryDelta(value: unknown): MemoryDelta | null {
   }
 
   if (
-    typeof value.should_persist !== "boolean" ||
+    value.should_persist !== true ||
+    typeof value.rationale !== "string" ||
     !isFiniteNumberRecord(value.knowledge_mastery_changes) ||
     !isFiniteNumberRecord(value.mistake_cause_changes) ||
     !isStringArray(value.review_priority_changes) ||
@@ -129,7 +130,7 @@ function parseMemoryDelta(value: unknown): MemoryDelta | null {
 
   return {
     should_persist: value.should_persist,
-    rationale: typeof value.rationale === "string" ? value.rationale : "",
+    rationale: value.rationale,
     knowledge_mastery_changes: value.knowledge_mastery_changes,
     mistake_cause_changes: value.mistake_cause_changes,
     review_priority_changes: value.review_priority_changes,
