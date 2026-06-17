@@ -49,6 +49,10 @@ export interface MistakeBookDeleteResponse {
   item_id: string;
   deleted: boolean;
   is_database_configured: boolean;
+  /**
+   * deleted=false 时，这个状态表示删除/画像同步流程没有产出新画像；
+   * 不表示错题已删除后画像同步失败。
+   */
   profile_sync_status: ProfileSyncStatus;
   warnings: string[];
 }

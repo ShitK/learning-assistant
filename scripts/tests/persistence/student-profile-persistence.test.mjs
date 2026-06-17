@@ -140,6 +140,43 @@ assert.deepEqual(projectStudentProfileFromEvents([]), {
     demoStudentProfile.mastery_scores.parameter_classification - 5,
   );
 }
+
+{
+  const result = projectStudentProfileFromEvents([
+    {
+      id: "b",
+      created_at: "2026-06-17T08:00:00+08:00",
+      memory_delta: memoryDelta({
+        knowledge_mastery_changes: { function_monotonicity: -3 },
+        review_priority_changes: ["function_monotonicity"],
+      }),
+    },
+    {
+      id: "a",
+      created_at: "2026-06-17T08:00:00+08:00",
+      memory_delta: memoryDelta({
+        knowledge_mastery_changes: { parameter_classification: -5 },
+        review_priority_changes: ["parameter_classification"],
+      }),
+    },
+  ]);
+
+  assert.equal(result.status, "projected");
+  assert.equal(result.event_count, 2);
+  assert.equal(result.last_memory_event_id, "b");
+  assert.deepEqual(result.profile.review_priority.slice(0, 2), [
+    "function_monotonicity",
+    "parameter_classification",
+  ]);
+  assert.equal(
+    result.profile.mastery_scores.function_monotonicity,
+    (demoStudentProfile.mastery_scores.function_monotonicity ?? 70) - 3,
+  );
+  assert.equal(
+    result.profile.mastery_scores.parameter_classification,
+    demoStudentProfile.mastery_scores.parameter_classification - 5,
+  );
+}
 assert.deepEqual(
   projectStudentProfileFromEvents([
     {
