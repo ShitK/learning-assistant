@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P1.9 画像展示语义重构 — 方案 A 参考草图</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f5f5f4;
+      padding: 24px;
+      margin: 0;
+      color: #292524;
+    }
+    .container { max-width: 480px; margin: 0 auto; }
+    h1 { text-align: center; margin-bottom: 8px; font-size: 20px; }
+    .subtitle { text-align: center; color: #78716c; margin-bottom: 24px; font-size: 13px; }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .card h2 { margin: 0; font-size: 17px; color: #44403c; }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: #d9f99d;
+      color: #365314;
+      font-weight: 600;
+    }
+    .sketch {
+      border: 2px dashed #d6d3d1;
+      border-radius: 12px;
+      padding: 16px;
+      background: #fafaf9;
+    }
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #a8a29e;
+      margin: 16px 0 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+    .section-title:first-child { margin-top: 0; }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #e7e5e4;
+      font-size: 14px;
+    }
+    .row:last-child { border-bottom: none; }
+    .row-left { display: flex; flex-direction: column; gap: 2px; }
+    .row-meta { font-size: 11px; color: #a8a29e; }
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #fee2e2;
+      color: #991b1b;
+      white-space: nowrap;
+    }
+    .pill.stable { background: #dcfce7; color: #166534; }
+    .pill.warning { background: #fef3c7; color: #92400e; }
+    .pill.neutral { background: #e7e5e4; color: #57534e; }
+    .story {
+      background: #f0fdf4;
+      border-left: 3px solid #86efac;
+      padding: 12px;
+      border-radius: 0 8px 8px 0;
+      font-size: 13px;
+      color: #166534;
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+    .expand-hint {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: #f5f5f4;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #57534e;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .expand-arrow { color: #a8a29e; font-size: 12px; }
+    .formula {
+      font-size: 11px;
+      color: #a8a29e;
+      text-align: center;
+      margin-top: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .cause-card {
+      background: white;
+      border: 1px solid #e7e5e4;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .cause-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 6px;
+    }
+    .cause-title { font-weight: 600; font-size: 14px; }
+    .cause-count { font-size: 13px; color: #57534e; white-space: nowrap; }
+    .cause-count .delta { color: #dc2626; font-weight: 600; }
+    .cause-desc {
+      font-size: 12px;
+      color: #78716c;
+      line-height: 1.5;
+      margin-top: 4px;
+    }
+    .cause-tag {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    .cause-tag.hot { background: #fee2e2; color: #991b1b; }
+    .cause-tag.new { background: #dbeafe; color: #1e40af; }
+    .collapsed-causes {
+      background: #f5f5f4;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+      color: #57534e;
+    }
+    .collapsed-cause-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px dashed #d6d3d1;
+    }
+    .collapsed-cause-item:last-child { border-bottom: none; }
+    .note {
+      font-size: 12px;
+      color: #78716c;
+      margin-top: 16px;
+      line-height: 1.6;
+      padding-top: 16px;
+      border-top: 1px solid #e7e5e4;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>P1.9 学生画像展示语义重构</h1>
+    <div class="subtitle">
+      最终方案 A：证据叙事型<br>
+      薄弱指数 = 100 − mastery_score
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="badge">推荐方案</span>
+        <h2>证据叙事型</h2>
+      </div>
+
+      <div class="sketch">
+        <div class="section-title">本次诊断结论</div>
+        <div class="row">
+          <div class="row-left">
+            <span>参数分类讨论</span>
+            <span class="row-meta">本次新增薄弱信号</span>
+          </div>
+          <span class="pill">薄弱指数 73（+8）</span>
+        </div>
+        <div class="row">
+          <div class="row-left">
+            <span>导数与函数单调性</span>
+            <span class="row-meta">波动但稳定</span>
+          </div>
+          <span class="pill warning">薄弱指数 58（+5）</span>
+        </div>
+        <div class="story">
+          <strong>行动建议：</strong>优先复习参数分类讨论；导数与函数单调性保持常规练习即可。
+        </div>
+
+        <div class="expand-hint">
+          <span>全部知识点优先级</span>
+          <span class="expand-arrow">▼ 可展开</span>
+        </div>
+        <div class="row">
+          <span>1. 参数分类讨论</span>
+          <span class="pill">薄弱指数 73 · 高优先级</span>
+        </div>
+        <div class="row">
+          <span>2. 导数与函数单调性</span>
+          <span class="pill warning">薄弱指数 58 · 待巩固</span>
+        </div>
+        <div class="row">
+          <span>3. 函数定义域</span>
+          <span class="pill warning">薄弱指数 46 · 待巩固</span>
+        </div>
+        <div class="row">
+          <span>4. 等比数列</span>
+          <span class="pill stable">薄弱指数 32 · 基本稳定</span>
+        </div>
+        <div class="formula">薄弱指数 = 100 − mastery_score</div>
+
+        <div class="section-title">需要关注的错因</div>
+
+        <div class="cause-card">
+          <div class="cause-card-header">
+            <div class="cause-title">
+              范围/边界遗漏
+              <span class="cause-tag hot">高频</span>
+              <span class="cause-tag new">本次新增</span>
+            </div>
+            <div class="cause-count">累计 <strong>7</strong> 次 <span class="delta">(+1)</span></div>
+          </div>
+          <div class="cause-desc">
+            定义域、取值范围、分类讨论边界等条件考虑不全，导致答案缺情况或范围错误。
+          </div>
+        </div>
+
+        <div class="cause-card">
+          <div class="cause-card-header">
+            <div class="cause-title">
+              步骤不完整/漏分
+              <span class="cause-tag hot">高频</span>
+              <span class="cause-tag new">本次新增</span>
+            </div>
+            <div class="cause-count">累计 <strong>6</strong> 次 <span class="delta">(+1)</span></div>
+          </div>
+          <div class="cause-desc">
+            解题过程跳步、关键推导缺失，或最终答案没有给出完整形式导致扣分。
+          </div>
+        </div>
+
+        <div class="expand-hint">
+          <span>其他错因（近期无变化）</span>
+          <span class="expand-arrow">▼ 展开</span>
+        </div>
+        <div class="collapsed-causes">
+          <div class="collapsed-cause-item">
+            <span>解题方向选错</span>
+            <span>2 次（无变化）</span>
+          </div>
+          <div class="collapsed-cause-item">
+            <span>计算失误</span>
+            <span>1 次（无变化）</span>
+          </div>
+        </div>
+
+        <div class="section-title">推荐依据</div>
+        <div class="story">
+          <strong>为什么优先复习参数分类讨论？</strong><br>
+          · 当前薄弱指数最高，优先级高于其他知识点<br>
+          · 本次诊断再次新增薄弱信号<br>
+          · 相关错因本次新增，且累计次数已达到高频阈值
+        </div>
+      </div>
+
+      <div class="note">
+        <strong>核心思路：</strong>叙事化展示本次诊断结论；薄弱指数替代风险分，数字越大越需优先处理；错因只突出“本次新增”或“高频”，其余折叠并加人话解释；P1.9 的“推荐依据”只使用当前画像、本次诊断和已有 demo 历史，不读取完整 memory_events。
+      </div>
+    </div>
+  </div>
+</body>
+</html>
