@@ -340,6 +340,23 @@ for (const filePath of clientReachableFiles) {
   );
 }
 
+for (const [filePath, source] of sourceByFilePath.entries()) {
+  if (!filePath.startsWith("src/components/")) {
+    continue;
+  }
+
+  assert.equal(
+    source.includes("@/lib/persistence/"),
+    false,
+    `${filePath} must not import persistence modules.`,
+  );
+  assert.equal(
+    source.includes("createSupabaseAdminClient"),
+    false,
+    `${filePath} must not import Supabase admin client.`,
+  );
+}
+
 const domainBoundaryRules = [
   {
     from_dir: "src/lib/providers/",
