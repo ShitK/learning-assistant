@@ -182,8 +182,8 @@ export function ProfileInsights({
             {viewModel.recommendation.title}
           </p>
           <ul className="mt-2 grid gap-2 text-sm leading-6 text-[var(--warm-gray)]">
-            {viewModel.recommendation.bullets.map((bullet) => (
-              <li key={bullet}>· {bullet}</li>
+            {viewModel.recommendation.bullets.map((bullet, index) => (
+              <li key={`${index}-${bullet}`}>· {bullet}</li>
             ))}
           </ul>
         </section>

@@ -110,7 +110,7 @@ export function createProfileInsightsViewModel(
     .map((id) => priorityRows.find((row) => row.id === id))
     .filter((row): row is KnowledgePriorityRow => row !== undefined)
     .sort(compareKnowledgePriorityRows);
-  const actionTarget = conclusionRows[0] ?? priorityRows[0] ?? null;
+  const actionTarget = conclusionRows[0] ?? null;
   const mistakeCauses = createMistakeCauseInsights({
     beforeProfile: input.beforeProfile,
     afterProfile: input.afterProfile,

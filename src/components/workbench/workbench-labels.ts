@@ -38,10 +38,6 @@ export function getKnowledgeName(id: string): string {
   return `${knowledgePoint.display_name} · ${frequency}`;
 }
 
-export function getMistakeShortName(id: string): string {
-  return mistakeCauses[id]?.short_name ?? id;
-}
-
 const mistakeCauseDisplayDetails: Record<
   string,
   { title: string; description: string }

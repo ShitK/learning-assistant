@@ -164,6 +164,12 @@ assert.equal(getWeaknessStatus(73).label, "高优先级");
 assert.equal(getWeaknessStatus(58).label, "待巩固");
 assert.equal(getWeaknessStatus(32).label, "基本稳定");
 assert.equal(getWeaknessStatus(12).label, "稳定");
+assert.equal(getWeaknessStatus(calculateWeaknessIndex(39)).label, "高优先级");
+assert.equal(getWeaknessStatus(calculateWeaknessIndex(40)).label, "待巩固");
+assert.equal(getWeaknessStatus(calculateWeaknessIndex(59)).label, "待巩固");
+assert.equal(getWeaknessStatus(calculateWeaknessIndex(60)).label, "基本稳定");
+assert.equal(getWeaknessStatus(calculateWeaknessIndex(79)).label, "基本稳定");
+assert.equal(getWeaknessStatus(calculateWeaknessIndex(80)).label, "稳定");
 assert.equal(HIGH_FREQUENCY_MISTAKE_CAUSE_THRESHOLD, 5);
 
 assert.equal(getMistakeCauseTitle("domain_missing"), "范围/边界遗漏");
@@ -172,6 +178,11 @@ assert.match(
   /分类|情况|含参/,
 );
 assert.equal(getMistakeCauseTitle("unknown_cause"), "unknown_cause");
+assert.equal(
+  workbenchStructureSources["workbench-labels.ts"].includes("getMistakeShortName"),
+  false,
+  "P1.9 已改用错因标题和解释，不应保留旧的 getMistakeShortName 死代码。",
+);
 
 const derivativeSample = sampleDiagnoses.find(
   (sample) => sample.id === "sample_derivative_001",
@@ -227,6 +238,30 @@ assert.equal(
   false,
   "P1.9 推荐依据不能声称读取完整 memory_events 历史。",
 );
+const emptyDiagnosis = {
+  ...derivativeDiagnosis,
+  memory_delta: {
+    ...derivativeDiagnosis.memory_delta,
+    knowledge_mastery_changes: {},
+    mistake_cause_changes: {},
+    review_priority_changes: [],
+    should_persist: false,
+  },
+  should_persist_profile: false,
+};
+const emptyProfileInsights = createProfileInsightsViewModel({
+  diagnosis: emptyDiagnosis,
+  beforeProfile: demoStudentProfile,
+  afterProfile: null,
+  mistakeHistoryLength: 8,
+});
+assert.equal(emptyProfileInsights.conclusionRows.length, 0);
+assert.equal(
+  emptyProfileInsights.notPersistedMessage,
+  "本次仅展示诊断建议，未写入长期画像。",
+);
+assert.match(emptyProfileInsights.actionAdvice, /当前错题报告完成订正/);
+assert.match(emptyProfileInsights.recommendation.bullets[0], /没有新增可写入/);
 assert.equal(
   workbenchStructureSources["profile-insights.tsx"].includes("掌握度变化"),
   false,
@@ -271,6 +306,11 @@ assert.equal(
   workbenchStructureSources["profile-insights.tsx"].includes("memory_events"),
   false,
   "P1.9 前端 UI 不应声称读取完整 memory_events 历史。",
+);
+assert.equal(
+  workbenchStructureSources["profile-insights.tsx"].includes("key={bullet}"),
+  false,
+  "推荐依据列表不应直接使用文案作为 React key。",
 );
 assert.equal(
   panelSource.includes("删除"),
