@@ -59,6 +59,9 @@ const {
   getMistakeCauseDescription,
   getMistakeCauseTitle,
 } = jiti("./src/components/workbench/workbench-labels.ts");
+const { requestStudentProfileEvidence } = jiti(
+  "./src/lib/student-profile/student-profile-evidence-client.ts",
+);
 const {
   demoStudentProfile,
   sampleDiagnoses,
@@ -69,6 +72,8 @@ const { createSampleDiagnosisViewModel } = jiti(
 const { applyMemoryDeltaToProfile } = jiti(
   "./src/lib/shared/student-profile.ts",
 );
+
+assert.equal(typeof requestStudentProfileEvidence, "function");
 
 assert.equal(
   workbenchUiSource.includes("错误发生步骤"),
@@ -138,6 +143,48 @@ assert.match(
   source,
   /import \{ requestCloudStudentProfile \} from "@\/lib\/student-profile\/student-profile-client";/,
   "工作台应从 browser-safe HTTP client 读取云端画像。",
+);
+assert.match(
+  source,
+  /import \{ requestStudentProfileEvidence \} from "@\/lib\/student-profile\/student-profile-evidence-client";/,
+  "工作台应从 browser-safe HTTP client 读取云端画像证据。",
+);
+assert.match(
+  source,
+  /const \[studentProfileEvidence, setStudentProfileEvidence\]/,
+  "工作台应持有 evidence state 并作为可选输入传给画像展示。",
+);
+assert.match(
+  source,
+  /const studentProfileEvidenceRefreshRequestIdRef = useRef\(0\);/,
+  "云端 evidence 刷新应使用 request id ref 防止旧请求覆盖新状态。",
+);
+assert.match(
+  source,
+  /const evidence = await requestStudentProfileEvidence\(\);/,
+  "工作台应 best-effort 请求画像证据摘要。",
+);
+assert.match(
+  source,
+  /setStudentProfileEvidence\(evidence\.evidence\);/,
+  "工作台只应把响应里的 evidence 摘要传给 UI。",
+);
+assert.match(
+  source,
+  /<ProfileInsights[\s\S]*evidence=\{studentProfileEvidence\}/,
+  "ProfileInsights 应接收 workbench 传入的 evidence，而不是自己 fetch。",
+);
+assert.match(
+  source,
+  /function handleResetProfile\(\): void \{[\s\S]*studentProfileEvidenceRefreshRequestIdRef\.current \+= 1;[\s\S]*setStudentProfileEvidence\(null\);/,
+  "重置画像应清空 evidence 状态，避免旧证据解释已重置 demo。",
+);
+assert.equal(
+  workbenchStructureSources["profile-insights.tsx"].includes(
+    "requestStudentProfileEvidence",
+  ),
+  false,
+  "ProfileInsights 不能直接请求 evidence API。",
 );
 
 assert.equal(
@@ -237,6 +284,105 @@ assert.equal(
   ),
   false,
   "P1.9 推荐依据不能声称读取完整 memory_events 历史。",
+);
+const evidenceBackedProfileInsights = createProfileInsightsViewModel({
+  diagnosis: derivativeDiagnosis,
+  beforeProfile: demoStudentProfile,
+  afterProfile: afterDerivativeProfile,
+  mistakeHistoryLength: 8,
+  evidence: {
+    event_count: 3,
+    latest_event_at: "2026-06-18T10:00:00.000Z",
+    top_knowledge_focus: [
+      {
+        id: "parameter_classification",
+        event_count: 2,
+        total_weakness_delta: 8,
+        latest_event_at: "2026-06-18T10:00:00.000Z",
+      },
+    ],
+    top_mistake_causes: [
+      {
+        id: "classification_missing",
+        event_count: 2,
+        total_delta: 3,
+        latest_event_at: "2026-06-18T10:00:00.000Z",
+      },
+    ],
+    recent_events: [
+      {
+        id: "event-3",
+        created_at: "2026-06-18T10:00:00.000Z",
+        event_type: "mistake_cause",
+        evidence_level: "student_work_sufficient",
+        persistence_evidence: "student_work",
+        knowledge_focus: ["parameter_classification"],
+        mistake_causes: ["classification_missing"],
+        rationale_summary: "系统把参数分类讨论提升为复习优先级第一位。",
+      },
+    ],
+  },
+});
+assert.match(
+  evidenceBackedProfileInsights.recommendation.bullets.join("\n"),
+  /最近 3 条画像事件中，参数分类讨论出现 2 次薄弱证据/,
+);
+assert.match(
+  evidenceBackedProfileInsights.recommendation.bullets.join("\n"),
+  /分类讨论漏项.*最近事件中新增 3 次/,
+);
+assert.equal(
+  evidenceBackedProfileInsights.recommendation.bullets.some((bullet) =>
+    bullet.includes("完整历史"),
+  ),
+  false,
+);
+
+const evidenceNotMatchingProfileInsights = createProfileInsightsViewModel({
+  diagnosis: derivativeDiagnosis,
+  beforeProfile: demoStudentProfile,
+  afterProfile: afterDerivativeProfile,
+  mistakeHistoryLength: 8,
+  evidence: {
+    event_count: 2,
+    latest_event_at: "2026-06-18T10:00:00.000Z",
+    top_knowledge_focus: [
+      {
+        id: "derivative_monotonicity",
+        event_count: 2,
+        total_weakness_delta: 4,
+        latest_event_at: "2026-06-18T10:00:00.000Z",
+      },
+    ],
+    top_mistake_causes: [
+      {
+        id: "calculation_error",
+        event_count: 1,
+        total_delta: 1,
+        latest_event_at: "2026-06-18T10:00:00.000Z",
+      },
+    ],
+    recent_events: [
+      {
+        id: "event-domain",
+        created_at: "2026-06-18T10:00:00.000Z",
+        event_type: "mistake_cause",
+        evidence_level: "student_work_sufficient",
+        persistence_evidence: "student_work",
+        knowledge_focus: ["derivative_monotonicity"],
+        mistake_causes: ["calculation_error"],
+        rationale_summary: "最近证据主要集中在函数单调性。",
+      },
+    ],
+  },
+});
+assert.match(
+  evidenceNotMatchingProfileInsights.recommendation.bullets.join("\n"),
+  /最近 2 条画像事件中，云端证据主要集中在导数与函数单调性/,
+);
+assert.match(
+  evidenceNotMatchingProfileInsights.recommendation.bullets.join("\n"),
+  /当前薄弱指数/,
 );
 const emptyDiagnosis = {
   ...derivativeDiagnosis,
@@ -360,8 +506,8 @@ assert.match(
 );
 assert.match(
   source,
-  /const deleteResult = await deleteMistakeBookItem[\s\S]*await refreshMistakeBook\(\);\s*if \(deleteResult\.profile_sync_status === "synced"\) \{\s*await refreshCloudStudentProfile\(\);\s*\}/,
-  "确认删除成功后只有云端画像同步成功才刷新云端画像。",
+  /const deleteResult = await deleteMistakeBookItem[\s\S]*await refreshMistakeBook\(\);\s*if \(deleteResult\.profile_sync_status === "synced"\) \{\s*await refreshStudentProfileEvidence\(\);\s*await refreshCloudStudentProfile\(\);\s*\}/,
+  "确认删除成功后只有云端画像同步成功才刷新云端画像和 evidence。",
 );
 assert.equal(
   source.includes("await refreshMistakeBook();"),
@@ -454,13 +600,13 @@ assert.match(
 );
 assert.match(
   source,
-  /createSampleDiagnosisViewModel\([\s\S]*diagnosis\.warnings,[\s\S]*\)[\s\S]*await refreshMistakeBook\(\);\s*if \(shouldRefreshCloudStudentProfileAfterDiagnosis\(diagnosis\.warnings\)\) \{\s*await refreshCloudStudentProfile\(\);\s*\}\s*return;/,
-  "sample_diagnosis 成功后应只在云端画像可信时刷新云端画像。",
+  /createSampleDiagnosisViewModel\([\s\S]*diagnosis\.warnings,[\s\S]*\)[\s\S]*await refreshMistakeBook\(\);\s*if \(shouldRefreshCloudStudentProfileAfterDiagnosis\(diagnosis\.warnings\)\) \{\s*await refreshStudentProfileEvidence\(\);\s*await refreshCloudStudentProfile\(\);\s*\}\s*return;/,
+  "sample_diagnosis 成功后应只在云端画像可信时刷新云端画像和 evidence。",
 );
 assert.match(
   source,
-  /requestConfirmedImageDiagnosis[\s\S]*await refreshMistakeBook\(\);\s*if \(shouldRefreshCloudStudentProfileAfterDiagnosis\(diagnosis\.warnings\)\) \{\s*await refreshCloudStudentProfile\(\);\s*\}/,
-  "图片确认写入成功后应只在云端画像可信时刷新云端画像。",
+  /requestConfirmedImageDiagnosis[\s\S]*await refreshMistakeBook\(\);\s*if \(shouldRefreshCloudStudentProfileAfterDiagnosis\(diagnosis\.warnings\)\) \{\s*await refreshStudentProfileEvidence\(\);\s*await refreshCloudStudentProfile\(\);\s*\}/,
+  "图片确认写入成功后应只在云端画像可信时刷新云端画像和 evidence。",
 );
 assert.equal(
   source.includes("@/lib/shared/persistence-warnings"),

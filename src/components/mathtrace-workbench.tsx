@@ -49,6 +49,7 @@ import {
   PROFILE_SYNC_FAILED_WARNING,
 } from "@/lib/shared/persistence-warnings";
 import { requestCloudStudentProfile } from "@/lib/student-profile/student-profile-client";
+import { requestStudentProfileEvidence } from "@/lib/student-profile/student-profile-evidence-client";
 import {
   canConfirmEditableExtractionDraft,
   createEditableExtractionDraft,
@@ -72,6 +73,7 @@ import type {
 import type { FollowUpAnswerDraft } from "@/lib/diagnosis/diagnose-api";
 import type { MistakeBookResponse } from "@/lib/mistake-book/mistake-book-client";
 import type { PreparedImageUpload } from "@/lib/image-diagnosis/image-upload-client";
+import type { StudentProfileEvidenceSummary } from "@/lib/student-profile/student-profile-evidence-service";
 
 const DEFAULT_SAMPLE_ID: SampleQuestionId = "sample_derivative_001";
 const cloudProfileStaleWarnings: readonly string[] = [
@@ -113,6 +115,8 @@ export function MathTraceWorkbench(): ReactElement {
     useState(false);
   const [sessionStudentProfile, setSessionStudentProfile] =
     useState<StudentProfile | null>(null);
+  const [studentProfileEvidence, setStudentProfileEvidence] =
+    useState<StudentProfileEvidenceSummary | null>(null);
   const studentProfile = sessionStudentProfile ?? restoredStudentProfile;
   const [profilePreview, setProfilePreview] = useState<ProfilePreview | null>(
     null,
@@ -142,6 +146,7 @@ export function MathTraceWorkbench(): ReactElement {
   >(null);
   const isDiagnosisRequestLockedRef = useRef(false);
   const cloudProfileRefreshRequestIdRef = useRef(0);
+  const studentProfileEvidenceRefreshRequestIdRef = useRef(0);
   const isTimelineRunning =
     isTimelineAnimating && completedStepCount < diagnosisView.steps.length;
   const isDiagnosing = isRequestPending || isTimelineRunning;
@@ -191,6 +196,29 @@ export function MathTraceWorkbench(): ReactElement {
     }
   }, [hasHydrated]);
 
+  const refreshStudentProfileEvidence = useCallback(async (): Promise<void> => {
+    if (!hasHydrated) {
+      return;
+    }
+
+    const evidenceRefreshRequestId =
+      ++studentProfileEvidenceRefreshRequestIdRef.current;
+
+    try {
+      const evidence = await requestStudentProfileEvidence();
+      if (
+        evidenceRefreshRequestId !==
+        studentProfileEvidenceRefreshRequestIdRef.current
+      ) {
+        return;
+      }
+
+      setStudentProfileEvidence(evidence.evidence);
+    } catch {
+      // Demo fallback remains the P1.9 local recommendation rationale.
+    }
+  }, [hasHydrated]);
+
   useEffect(() => {
     if (!hasHydrated) {
       return;
@@ -215,6 +243,18 @@ export function MathTraceWorkbench(): ReactElement {
     return () => window.clearTimeout(timeoutId);
   }, [hasHydrated, refreshCloudStudentProfile]);
 
+  useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void refreshStudentProfileEvidence();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [hasHydrated, refreshStudentProfileEvidence]);
+
   const handleDeleteMistakeBookItem = useCallback(
     async (itemId: string): Promise<void> => {
       if (deletingMistakeBookItemId !== null) {
@@ -232,6 +272,7 @@ export function MathTraceWorkbench(): ReactElement {
         });
         await refreshMistakeBook();
         if (deleteResult.profile_sync_status === "synced") {
+          await refreshStudentProfileEvidence();
           await refreshCloudStudentProfile();
         }
       } catch (error) {
@@ -243,7 +284,12 @@ export function MathTraceWorkbench(): ReactElement {
         setDeletingMistakeBookItemId(null);
       }
     },
-    [deletingMistakeBookItemId, refreshCloudStudentProfile, refreshMistakeBook],
+    [
+      deletingMistakeBookItemId,
+      refreshCloudStudentProfile,
+      refreshMistakeBook,
+      refreshStudentProfileEvidence,
+    ],
   );
 
   useEffect(() => {
@@ -456,6 +502,8 @@ export function MathTraceWorkbench(): ReactElement {
     }
 
     cloudProfileRefreshRequestIdRef.current += 1;
+    studentProfileEvidenceRefreshRequestIdRef.current += 1;
+    setStudentProfileEvidence(null);
     clearStoredStudentProfile(window.localStorage);
     setSessionStudentProfile(demoStudentProfile);
     setProfilePreview({
@@ -521,6 +569,7 @@ export function MathTraceWorkbench(): ReactElement {
         }
         await refreshMistakeBook();
         if (shouldRefreshCloudStudentProfileAfterDiagnosis(diagnosis.warnings)) {
+          await refreshStudentProfileEvidence();
           await refreshCloudStudentProfile();
         }
         return;
@@ -651,6 +700,7 @@ export function MathTraceWorkbench(): ReactElement {
       }
       await refreshMistakeBook();
       if (shouldRefreshCloudStudentProfileAfterDiagnosis(diagnosis.warnings)) {
+        await refreshStudentProfileEvidence();
         await refreshCloudStudentProfile();
       }
     } catch (error) {
@@ -753,6 +803,7 @@ export function MathTraceWorkbench(): ReactElement {
             diagnosis={diagnosisView}
             beforeProfile={visibleProfilePreview.beforeProfile}
             afterProfile={visibleProfilePreview.afterProfile}
+            evidence={studentProfileEvidence}
             onResetProfile={handleResetProfile}
             isResetDisabled={isDiagnosing}
           />

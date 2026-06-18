@@ -4,6 +4,7 @@ import {
   type StudentProfile,
 } from "@/data/mathtrace-demo";
 import type { DiagnosisViewModel } from "@/lib/diagnosis/diagnosis-view-model";
+import type { StudentProfileEvidenceSummary } from "@/lib/student-profile/student-profile-evidence-service";
 import { createProfileInsightsViewModel } from "@/components/workbench/profile-view-model";
 import { SectionHeader } from "@/components/workbench/section-header";
 
@@ -11,12 +12,14 @@ export function ProfileInsights({
   diagnosis,
   beforeProfile,
   afterProfile,
+  evidence,
   onResetProfile,
   isResetDisabled,
 }: {
   diagnosis: DiagnosisViewModel;
   beforeProfile: StudentProfile;
   afterProfile: StudentProfile | null;
+  evidence?: StudentProfileEvidenceSummary | null;
   onResetProfile: () => void;
   isResetDisabled: boolean;
 }): ReactElement {
@@ -25,6 +28,7 @@ export function ProfileInsights({
     beforeProfile,
     afterProfile,
     mistakeHistoryLength: mistakeHistory.length,
+    evidence: evidence ?? null,
   });
 
   return (

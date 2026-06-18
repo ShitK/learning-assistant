@@ -1,5 +1,9 @@
 import type { StudentProfile } from "@/data/mathtrace-demo";
 import type { DiagnosisViewModel } from "@/lib/diagnosis/diagnosis-view-model";
+import type {
+  MistakeCauseEvidenceSummary,
+  StudentProfileEvidenceSummary,
+} from "@/lib/student-profile/student-profile-evidence-service";
 import { clampScore } from "@/lib/shared/utils";
 import {
   getKnowledgeName,
@@ -14,6 +18,7 @@ export interface CreateProfileInsightsViewModelInput {
   beforeProfile: StudentProfile;
   afterProfile: StudentProfile | null;
   mistakeHistoryLength: number;
+  evidence?: StudentProfileEvidenceSummary | null;
 }
 
 export interface WeaknessStatusView {
@@ -140,7 +145,11 @@ export function createProfileInsightsViewModel(
       highlightedMistakeCauses.length === 0
         ? "本次没有新增明确错因；先按知识点薄弱信号安排复习。"
         : null,
-    recommendation: createRecommendation(actionTarget, highlightedMistakeCauses),
+    recommendation: createRecommendation(
+      actionTarget,
+      highlightedMistakeCauses,
+      input.evidence ?? null,
+    ),
   };
 }
 
@@ -252,11 +261,24 @@ function createActionAdvice(
 function createRecommendation(
   actionTarget: KnowledgePriorityRow | null,
   highlightedMistakeCauses: MistakeCauseInsight[],
+  evidence: StudentProfileEvidenceSummary | null,
 ): RecommendationView {
   if (!actionTarget) {
     return {
       title: "推荐依据",
       bullets: ["本次没有新增可写入的画像变化，建议先完成当前错题订正。"],
+    };
+  }
+
+  const evidenceBullets = createEvidenceRecommendationBullets(
+    actionTarget,
+    highlightedMistakeCauses,
+    evidence,
+  );
+  if (evidenceBullets.length > 0) {
+    return {
+      title: `为什么优先复习${stripFrequency(actionTarget.name)}？`,
+      bullets: evidenceBullets,
     };
   }
 
@@ -285,6 +307,72 @@ function createRecommendation(
     title: `为什么优先复习${stripFrequency(actionTarget.name)}？`,
     bullets,
   };
+}
+
+interface MatchedCauseEvidence {
+  cause: MistakeCauseInsight;
+  evidence: MistakeCauseEvidenceSummary;
+}
+
+function createEvidenceRecommendationBullets(
+  actionTarget: KnowledgePriorityRow,
+  highlightedMistakeCauses: MistakeCauseInsight[],
+  evidence: StudentProfileEvidenceSummary | null,
+): string[] {
+  if (!evidence) {
+    return [];
+  }
+
+  const bullets: string[] = [];
+  const matchingKnowledge = evidence.top_knowledge_focus.find(
+    (item) => item.id === actionTarget.id,
+  );
+
+  if (matchingKnowledge) {
+    bullets.push(
+      `最近 ${evidence.event_count} 条画像事件中，${stripFrequency(
+        actionTarget.name,
+      )}出现 ${matchingKnowledge.event_count} 次薄弱证据。`,
+    );
+  }
+
+  const matchingCause = highlightedMistakeCauses
+    .map((cause) => ({
+      cause,
+      evidence: evidence.top_mistake_causes.find((item) => item.id === cause.id),
+    }))
+    .find((item): item is MatchedCauseEvidence => item.evidence !== undefined);
+
+  if (matchingCause) {
+    bullets.push(
+      `相关错因“${matchingCause.cause.title}”在最近事件中新增 ${matchingCause.evidence.total_delta} 次。`,
+    );
+  }
+
+  if (bullets.length === 0) {
+    const fallbackKnowledge = evidence.top_knowledge_focus[0];
+    if (fallbackKnowledge) {
+      bullets.push(
+        `最近 ${evidence.event_count} 条画像事件中，云端证据主要集中在${stripFrequency(
+          getKnowledgeName(fallbackKnowledge.id),
+        )}；本次行动建议仍以当前诊断为准。`,
+      );
+    } else if (evidence.top_mistake_causes[0]) {
+      bullets.push(
+        `最近 ${evidence.event_count} 条画像事件中，云端证据主要集中在错因“${getMistakeCauseTitle(
+          evidence.top_mistake_causes[0].id,
+        )}”；本次行动建议仍以当前诊断为准。`,
+      );
+    }
+  }
+
+  if (bullets.length > 0) {
+    bullets.push(
+      `当前薄弱指数 ${actionTarget.weaknessIndex}，状态为“${actionTarget.status.label}”。`,
+    );
+  }
+
+  return bullets;
 }
 
 function compareKnowledgePriorityRows(
