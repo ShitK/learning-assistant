@@ -28,6 +28,12 @@ const {
 const { requestCloudStudentProfile } = jiti(
   "./src/lib/student-profile/student-profile-client.ts",
 );
+const { GET: getStudentProfileEvidence } = jiti(
+  "./src/app/api/student-profile/evidence/route.ts",
+);
+const { requestStudentProfileEvidence } = jiti(
+  "./src/lib/student-profile/student-profile-evidence-client.ts",
+);
 
 const migrationSql = readFileSync(
   "supabase/migrations/20260617000000_p18_student_profiles.sql",
@@ -717,6 +723,134 @@ await assert.rejects(
     ["limit", 8],
   ]);
 }
+{
+  const requests = [];
+  const result = await requestStudentProfileEvidence({
+    fetcher: async (url, init) => {
+      requests.push({ url, init });
+
+      return new Response(
+        JSON.stringify({
+          student_id: "demo_student_001",
+          source: "cloud",
+          is_database_configured: true,
+          evidence: createExpectedEvidenceSummary(),
+          warnings: [],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    },
+    student_id: "demo_student_001",
+    limit: 8,
+  });
+
+  assert.equal(result.source, "cloud");
+  assert.equal(result.evidence.top_knowledge_focus[0].id, "parameter_classification");
+  assert.equal(
+    requests[0].url,
+    "/api/student-profile/evidence?student_id=demo_student_001&limit=8",
+  );
+  assert.deepEqual(requests[0].init, { method: "GET", cache: "no-store" });
+}
+{
+  const result = await requestStudentProfileEvidence({
+    fetcher: async () =>
+      new Response(
+        JSON.stringify({
+          student_id: "demo_student_001",
+          source: "fallback",
+          is_database_configured: false,
+          evidence: null,
+          warnings: [PROFILE_EVIDENCE_READ_NOT_CONFIGURED_WARNING],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+  });
+
+  assert.equal(result.evidence, null);
+  assert.equal(result.source, "fallback");
+}
+await assert.rejects(
+  () =>
+    requestStudentProfileEvidence({
+      fetcher: async () =>
+        new Response(
+          JSON.stringify({
+            student_id: "demo_student_001",
+            source: "cloud",
+            is_database_configured: true,
+            evidence: createExpectedEvidenceSummary(),
+            warnings: [],
+            memory_delta: {},
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    }),
+  /云端画像证据响应格式无效。/,
+);
+await assert.rejects(
+  () =>
+    requestStudentProfileEvidence({
+      fetcher: async () =>
+        new Response(
+          JSON.stringify({
+            student_id: "demo_student_001",
+            source: "cloud",
+            is_database_configured: true,
+            evidence: {
+              ...createExpectedEvidenceSummary(),
+              recent_events: [
+                {
+                  ...createExpectedEvidenceSummary().recent_events[0],
+                  question_text: "should not pass",
+                },
+              ],
+            },
+            warnings: [],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    }),
+  /云端画像证据响应格式无效。/,
+);
+await assert.rejects(
+  () =>
+    requestStudentProfileEvidence({
+      fetcher: async () =>
+        new Response(JSON.stringify({ error: { code: "invalid_request" } }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+      student_id: "student_002",
+    }),
+  /云端画像证据暂时读取失败。/,
+);
+{
+  const routeResponse = await getStudentProfileEvidence(
+    new Request(
+      "http://localhost/api/student-profile/evidence?student_id=demo_student_001",
+    ),
+  );
+  const routeBody = await routeResponse.json();
+
+  assert.equal(routeResponse.status, 200);
+  assert.equal(routeBody.student_id, "demo_student_001");
+  assert.equal(routeBody.source, "fallback");
+  assert.equal(routeBody.evidence, null);
+  assert.equal(Array.isArray(routeBody.warnings), true);
+}
 
 console.log("student profile persistence tests passed");
 
@@ -843,6 +977,41 @@ function createEvidenceEvents() {
       profile_update_kind: "mistake_cause",
     },
   ];
+}
+
+function createExpectedEvidenceSummary() {
+  return {
+    event_count: 3,
+    latest_event_at: "2026-06-18T10:00:00.000Z",
+    top_knowledge_focus: [
+      {
+        id: "parameter_classification",
+        event_count: 2,
+        total_weakness_delta: 8,
+        latest_event_at: "2026-06-18T10:00:00.000Z",
+      },
+    ],
+    top_mistake_causes: [
+      {
+        id: "classification_missing",
+        event_count: 2,
+        total_delta: 3,
+        latest_event_at: "2026-06-18T10:00:00.000Z",
+      },
+    ],
+    recent_events: [
+      {
+        id: "event-3",
+        created_at: "2026-06-18T10:00:00.000Z",
+        event_type: "mistake_cause",
+        evidence_level: "student_work_sufficient",
+        persistence_evidence: "student_work",
+        knowledge_focus: ["parameter_classification"],
+        mistake_causes: ["classification_missing"],
+        rationale_summary: "系统把参数分类讨论提升为复习优先级第一位。",
+      },
+    ],
+  };
 }
 
 function createFakeStudentProfileClient({
