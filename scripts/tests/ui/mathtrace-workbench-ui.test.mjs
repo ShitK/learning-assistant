@@ -389,6 +389,14 @@ assert.match(
   evidenceNotMatchingProfileInsights.recommendation.bullets.join("\n"),
   /当前薄弱指数/,
 );
+assert.match(
+  evidenceNotMatchingProfileInsights.recommendation.bullets.join("\n"),
+  /本次诊断使薄弱指数上升/,
+);
+assert.match(
+  evidenceNotMatchingProfileInsights.recommendation.bullets.join("\n"),
+  /相关错因.*本次新增，累计/,
+);
 const emptyDiagnosis = {
   ...derivativeDiagnosis,
   memory_delta: {

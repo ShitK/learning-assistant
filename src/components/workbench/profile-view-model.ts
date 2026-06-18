@@ -364,6 +364,21 @@ function createEvidenceRecommendationBullets(
         )}”；本次行动建议仍以当前诊断为准。`,
       );
     }
+
+    if (bullets.length > 0) {
+      if (actionTarget.weaknessDelta > 0) {
+        bullets.push(`本次诊断使薄弱指数上升 ${actionTarget.weaknessDelta}。`);
+      }
+
+      const newCause = highlightedMistakeCauses.find(
+        (cause) => cause.isNewInDiagnosis,
+      );
+      if (newCause) {
+        bullets.push(
+          `相关错因“${newCause.title}”本次新增，累计 ${newCause.nextCount} 次。`,
+        );
+      }
+    }
   }
 
   if (bullets.length > 0) {

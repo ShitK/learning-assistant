@@ -671,6 +671,23 @@ await assert.rejects(
   assert.equal(result.status, 200);
   assert.deepEqual(calls, [["demo_student_001", 8]]);
 }
+for (const badLimit of ["abc", "3.5", "-1", "0", "21", ""]) {
+  const calls = [];
+  const result = await handleStudentProfileEvidenceRequest(
+    new URLSearchParams(`student_id=demo_student_001&limit=${badLimit}`),
+    {
+      is_database_configured: true,
+      async listProfileEvidenceEvents(studentId, limit) {
+        calls.push([studentId, limit]);
+        return createEvidenceEvents();
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.source, "cloud");
+  assert.deepEqual(calls, [["demo_student_001", 8]]);
+}
 {
   const summary = createStudentProfileEvidenceSummary([
     {
@@ -850,6 +867,18 @@ await assert.rejects(
   assert.equal(routeBody.source, "fallback");
   assert.equal(routeBody.evidence, null);
   assert.equal(Array.isArray(routeBody.warnings), true);
+}
+{
+  const routeResponse = await getStudentProfileEvidence(
+    new Request(
+      "http://localhost/api/student-profile/evidence?student_id=student_002",
+    ),
+  );
+  const routeBody = await routeResponse.json();
+
+  assert.equal(routeResponse.status, 400);
+  assert.equal(routeBody.error.code, "invalid_request");
+  assert.equal(routeBody.error.recoverable, true);
 }
 
 console.log("student profile persistence tests passed");
