@@ -330,7 +330,7 @@ function createEvidenceRecommendationBullets(
 
   if (matchingKnowledge) {
     bullets.push(
-      `最近 ${evidence.event_count} 条画像事件中，${stripFrequency(
+      `结合最近 ${evidence.event_count} 次已确认的画像记录，${stripFrequency(
         actionTarget.name,
       )}出现 ${matchingKnowledge.event_count} 次薄弱证据。`,
     );
@@ -345,7 +345,7 @@ function createEvidenceRecommendationBullets(
 
   if (matchingCause) {
     bullets.push(
-      `相关错因“${matchingCause.cause.title}”在最近事件中新增 ${matchingCause.evidence.total_delta} 次。`,
+      `相关错因“${matchingCause.cause.title}”在这些画像记录中新增 ${matchingCause.evidence.total_delta} 次。`,
     );
   }
 
@@ -353,13 +353,13 @@ function createEvidenceRecommendationBullets(
     const fallbackKnowledge = evidence.top_knowledge_focus[0];
     if (fallbackKnowledge) {
       bullets.push(
-        `最近 ${evidence.event_count} 条画像事件中，云端证据主要集中在${stripFrequency(
+        `结合最近 ${evidence.event_count} 次已确认的画像记录，云端证据主要集中在${stripFrequency(
           getKnowledgeName(fallbackKnowledge.id),
         )}；本次行动建议仍以当前诊断为准。`,
       );
     } else if (evidence.top_mistake_causes[0]) {
       bullets.push(
-        `最近 ${evidence.event_count} 条画像事件中，云端证据主要集中在错因“${getMistakeCauseTitle(
+        `结合最近 ${evidence.event_count} 次已确认的画像记录，云端证据主要集中在错因“${getMistakeCauseTitle(
           evidence.top_mistake_causes[0].id,
         )}”；本次行动建议仍以当前诊断为准。`,
       );

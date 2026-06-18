@@ -330,11 +330,11 @@ const evidenceBackedProfileInsights = createProfileInsightsViewModel({
 });
 assert.match(
   evidenceBackedProfileInsights.recommendation.bullets.join("\n"),
-  /最近 3 条画像事件中，参数分类讨论出现 2 次薄弱证据/,
+  /结合最近 3 次已确认的画像记录，参数分类讨论出现 2 次薄弱证据/,
 );
 assert.match(
   evidenceBackedProfileInsights.recommendation.bullets.join("\n"),
-  /分类讨论漏项.*最近事件中新增 3 次/,
+  /分类讨论漏项.*这些画像记录中新增 3 次/,
 );
 assert.equal(
   evidenceBackedProfileInsights.recommendation.bullets.some((bullet) =>
@@ -383,7 +383,7 @@ const evidenceNotMatchingProfileInsights = createProfileInsightsViewModel({
 });
 assert.match(
   evidenceNotMatchingProfileInsights.recommendation.bullets.join("\n"),
-  /最近 2 条画像事件中，云端证据主要集中在导数与函数单调性/,
+  /结合最近 2 次已确认的画像记录，云端证据主要集中在导数与函数单调性/,
 );
 assert.match(
   evidenceNotMatchingProfileInsights.recommendation.bullets.join("\n"),
