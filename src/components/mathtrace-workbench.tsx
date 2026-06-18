@@ -215,7 +215,14 @@ export function MathTraceWorkbench(): ReactElement {
 
       setStudentProfileEvidence(evidence.evidence);
     } catch {
-      // Demo fallback remains the P1.9 local recommendation rationale.
+      if (
+        evidenceRefreshRequestId !==
+        studentProfileEvidenceRefreshRequestIdRef.current
+      ) {
+        return;
+      }
+
+      setStudentProfileEvidence(null);
     }
   }, [hasHydrated]);
 

@@ -171,6 +171,11 @@ assert.match(
 );
 assert.match(
   source,
+  /const refreshStudentProfileEvidence = useCallback\(async \(\): Promise<void> => \{[\s\S]*const evidenceRefreshRequestId =\s*\+\+studentProfileEvidenceRefreshRequestIdRef\.current;[\s\S]*try \{[\s\S]*setStudentProfileEvidence\(evidence\.evidence\);[\s\S]*\} catch \{[\s\S]*if \(\s*evidenceRefreshRequestId !==\s*studentProfileEvidenceRefreshRequestIdRef\.current\s*\) \{\s*return;\s*\}\s*setStudentProfileEvidence\(null\);[\s\S]*\}/,
+  "当前 evidence 请求失败时应清空 evidence；旧请求失败不应覆盖新请求状态。",
+);
+assert.match(
+  source,
   /<ProfileInsights[\s\S]*evidence=\{studentProfileEvidence\}/,
   "ProfileInsights 应接收 workbench 传入的 evidence，而不是自己 fetch。",
 );
