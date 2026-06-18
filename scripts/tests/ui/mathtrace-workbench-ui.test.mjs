@@ -228,6 +228,51 @@ assert.equal(
   "P1.9 推荐依据不能声称读取完整 memory_events 历史。",
 );
 assert.equal(
+  workbenchStructureSources["profile-insights.tsx"].includes("掌握度变化"),
+  false,
+  "画像区不应再以“掌握度变化”作为主标题。",
+);
+assert.equal(
+  workbenchStructureSources["profile-insights.tsx"].includes("长期价值对比"),
+  false,
+  "画像区不应继续使用虚泛的“长期价值对比”叙事。",
+);
+assert.equal(
+  workbenchStructureSources["profile-insights.tsx"].includes("薄弱指数"),
+  true,
+  "画像区应使用薄弱指数表达复习优先级。",
+);
+assert.equal(
+  workbenchStructureSources["profile-insights.tsx"].includes("本次诊断结论"),
+  true,
+  "画像区应展示本次诊断结论。",
+);
+assert.equal(
+  workbenchStructureSources["profile-insights.tsx"].includes("全部知识点优先级"),
+  true,
+  "画像区应提供全部知识点优先级折叠区。",
+);
+assert.equal(
+  workbenchStructureSources["profile-insights.tsx"].includes("需要关注的错因"),
+  true,
+  "画像区应展示需要关注的错因。",
+);
+assert.equal(
+  workbenchStructureSources["profile-insights.tsx"].includes("推荐依据"),
+  true,
+  "画像区应展示推荐依据。",
+);
+assert.match(
+  workbenchStructureSources["profile-insights.tsx"],
+  /createProfileInsightsViewModel/,
+  "画像区应通过纯 view model 派生展示数据。",
+);
+assert.equal(
+  workbenchStructureSources["profile-insights.tsx"].includes("memory_events"),
+  false,
+  "P1.9 前端 UI 不应声称读取完整 memory_events 历史。",
+);
+assert.equal(
   panelSource.includes("删除"),
   true,
   "错题本每条记录应展示删除按钮。",
