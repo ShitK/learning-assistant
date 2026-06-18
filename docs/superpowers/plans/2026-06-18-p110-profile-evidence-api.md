@@ -186,6 +186,22 @@ Add these test blocks before `console.log("student profile persistence tests pas
   assert.equal(JSON.stringify(result.body).includes("question_text"), false);
 }
 {
+  const calls = [];
+  const result = await handleStudentProfileEvidenceRequest(
+    new URLSearchParams("student_id=demo_student_001&limit=999"),
+    {
+      is_database_configured: true,
+      async listProfileEvidenceEvents(studentId, limit) {
+        calls.push([studentId, limit]);
+        return createEvidenceEvents();
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(calls, [["demo_student_001", 8]]);
+}
+{
   const summary = createStudentProfileEvidenceSummary([
     {
       id: "event-empty",
@@ -194,7 +210,7 @@ Add these test blocks before `console.log("student profile persistence tests pas
       knowledge_mastery_changes: { parameter_classification: Number.NaN },
       mistake_cause_changes: { classification_missing: Infinity },
       review_priority_changes: ["function_monotonicity"],
-      rationale: "  这是一段很长的解释文本，用于确认服务端会截断过长 rationale，避免把过长模型文本直接透传到前端展示区域。  ",
+      rationale: "  这是一段很长的解释文本，用于确认服务端会截断过长 rationale，避免把过长模型文本直接透传到前端展示区域。这里继续补充更多上下文，确保测试样本一定超过八十个字符，并稳定触发省略号截断逻辑。  ",
       evidence_level: "student_work_sufficient",
       persistence_evidence: "student_work",
       profile_update_kind: "mistake_cause",
@@ -210,6 +226,7 @@ Add these test blocks before `console.log("student profile persistence tests pas
   });
   assert.deepEqual(summary.top_mistake_causes, []);
   assert.equal(summary.recent_events[0].rationale_summary.length <= 80, true);
+  assert.equal(summary.recent_events[0].rationale_summary.endsWith("…"), true);
 }
 {
   const calls = [];
@@ -661,7 +678,11 @@ function summarizeRationale(rationale: string): string {
     return "本次诊断产生了可写入画像的薄弱证据。";
   }
 
-  return trimmedRationale.slice(0, MAX_RATIONALE_SUMMARY_LENGTH);
+  if (trimmedRationale.length <= MAX_RATIONALE_SUMMARY_LENGTH) {
+    return trimmedRationale;
+  }
+
+  return `${trimmedRationale.slice(0, MAX_RATIONALE_SUMMARY_LENGTH - 1)}…`;
 }
 
 function parseEvidenceLimit(value: string | undefined): number {
@@ -760,6 +781,13 @@ function createFakeStudentProfileClient({
 }) {
 ```
 
+`resolveMemoryEventsWithLimit` is only a test-only switch for the two terminal query shapes in this fake client:
+
+- `false`: projection query ends after `.order("created_at").order("id")`.
+- `true`: evidence query ends after `.order("created_at").order("id").limit(count)`.
+
+Do not use this flag to control table selection, returned rows, error behavior, or any other query.
+
 Then update the `memory_events` builder:
 
 ```js
@@ -834,6 +862,9 @@ git commit -m "feat: add student profile evidence service"
 Add import:
 
 ```js
+const { GET: getStudentProfileEvidence } = jiti(
+  "./src/app/api/student-profile/evidence/route.ts",
+);
 const { requestStudentProfileEvidence } = jiti(
   "./src/lib/student-profile/student-profile-evidence-client.ts",
 );
@@ -956,6 +987,20 @@ await assert.rejects(
     }),
   /云端画像证据暂时读取失败。/,
 );
+{
+  const routeResponse = await getStudentProfileEvidence(
+    new Request(
+      "http://localhost/api/student-profile/evidence?student_id=demo_student_001",
+    ),
+  );
+  const routeBody = await routeResponse.json();
+
+  assert.equal(routeResponse.status, 200);
+  assert.equal(routeBody.student_id, "demo_student_001");
+  assert.equal(routeBody.source, "fallback");
+  assert.equal(routeBody.evidence, null);
+  assert.equal(Array.isArray(routeBody.warnings), true);
+}
 ```
 
 Add helper:
@@ -1005,7 +1050,7 @@ Run:
 node scripts/tests/persistence/student-profile-persistence.test.mjs
 ```
 
-Expected: fails because `student-profile-evidence-client.ts` does not exist.
+Expected: fails because `src/app/api/student-profile/evidence/route.ts` and `student-profile-evidence-client.ts` do not exist.
 
 - [ ] **Step 3: Add API route**
 
@@ -1312,6 +1357,53 @@ assert.equal(
   ),
   false,
 );
+
+const evidenceNotMatchingProfileInsights = createProfileInsightsViewModel({
+  diagnosis: derivativeDiagnosis,
+  beforeProfile: demoStudentProfile,
+  afterProfile: afterDerivativeProfile,
+  mistakeHistoryLength: 8,
+  evidence: {
+    event_count: 2,
+    latest_event_at: "2026-06-18T10:00:00.000Z",
+    top_knowledge_focus: [
+      {
+        id: "function_monotonicity",
+        event_count: 2,
+        total_weakness_delta: 4,
+        latest_event_at: "2026-06-18T10:00:00.000Z",
+      },
+    ],
+    top_mistake_causes: [
+      {
+        id: "domain_missing",
+        event_count: 1,
+        total_delta: 1,
+        latest_event_at: "2026-06-18T10:00:00.000Z",
+      },
+    ],
+    recent_events: [
+      {
+        id: "event-domain",
+        created_at: "2026-06-18T10:00:00.000Z",
+        event_type: "mistake_cause",
+        evidence_level: "student_work_sufficient",
+        persistence_evidence: "student_work",
+        knowledge_focus: ["function_monotonicity"],
+        mistake_causes: ["domain_missing"],
+        rationale_summary: "最近证据主要集中在函数单调性。",
+      },
+    ],
+  },
+});
+assert.match(
+  evidenceNotMatchingProfileInsights.recommendation.bullets.join("\n"),
+  /最近 2 条画像事件中，云端证据主要集中在函数单调性/,
+);
+assert.match(
+  evidenceNotMatchingProfileInsights.recommendation.bullets.join("\n"),
+  /当前薄弱指数/,
+);
 ```
 
 Add source-boundary assertions near existing cloud profile assertions:
@@ -1346,6 +1438,11 @@ assert.match(
   source,
   /<ProfileInsights[\s\S]*evidence=\{studentProfileEvidence\}/,
   "ProfileInsights 应接收 workbench 传入的 evidence，而不是自己 fetch。",
+);
+assert.match(
+  source,
+  /function handleResetProfile\(\): void \{[\s\S]*studentProfileEvidenceRefreshRequestIdRef\.current \+= 1;[\s\S]*setStudentProfileEvidence\(null\);/,
+  "重置画像应清空 evidence 状态，避免旧证据解释已重置 demo。",
 );
 assert.equal(
   workbenchStructureSources["profile-insights.tsx"].includes("requestStudentProfileEvidence"),
@@ -1493,6 +1590,23 @@ function createEvidenceRecommendationBullets(
     bullets.push(
       `相关错因“${matchingCause.cause.title}”在最近事件中新增 ${matchingCause.evidence.total_delta} 次。`,
     );
+  }
+
+  if (bullets.length === 0) {
+    const fallbackKnowledge = evidence.top_knowledge_focus[0];
+    if (fallbackKnowledge) {
+      bullets.push(
+        `最近 ${evidence.event_count} 条画像事件中，云端证据主要集中在${stripFrequency(
+          getKnowledgeName(fallbackKnowledge.id),
+        )}；本次行动建议仍以当前诊断为准。`,
+      );
+    } else if (evidence.top_mistake_causes[0]) {
+      bullets.push(
+        `最近 ${evidence.event_count} 条画像事件中，云端证据主要集中在错因“${getMistakeCauseTitle(
+          evidence.top_mistake_causes[0].id,
+        )}”；本次行动建议仍以当前诊断为准。`,
+      );
+    }
   }
 
   if (bullets.length > 0) {
