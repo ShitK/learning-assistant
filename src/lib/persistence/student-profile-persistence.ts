@@ -14,6 +14,19 @@ export interface ProfileMemoryEvent {
   memory_delta: unknown;
 }
 
+export interface ProfileEvidenceEvent {
+  id: string;
+  created_at: string;
+  event_type: "mistake_cause" | "problem_type_focus";
+  knowledge_mastery_changes: Record<string, number>;
+  mistake_cause_changes: Record<string, number>;
+  review_priority_changes: string[];
+  rationale: string;
+  evidence_level: string | null;
+  persistence_evidence: string | null;
+  profile_update_kind: string;
+}
+
 export interface UpsertProjectedStudentProfileInput {
   student_id: string;
   profile: StudentProfile;
@@ -32,6 +45,14 @@ export interface StudentProfileProjectionRepository {
 export interface StudentProfileReadRepository {
   is_database_configured: boolean;
   readCurrentProfile(student_id: string): Promise<StudentProfile | null>;
+}
+
+export interface StudentProfileEvidenceRepository {
+  is_database_configured: boolean;
+  listProfileEvidenceEvents(
+    student_id: string,
+    limit: number,
+  ): Promise<ProfileEvidenceEvent[]>;
 }
 
 export interface SupabaseStudentProfileClient {
@@ -53,6 +74,7 @@ interface SupabaseMemoryEventsOrderQuery
     column: string,
     options: { ascending: boolean },
   ): SupabaseMemoryEventsOrderQuery;
+  limit(count: number): PromiseLike<{ data: unknown; error: unknown }>;
 }
 
 interface SupabaseStudentProfilesTable {
@@ -73,7 +95,8 @@ interface SupabaseStudentProfilesSelectQuery {
 }
 
 export function createDefaultStudentProfileRepository(): StudentProfileProjectionRepository &
-  StudentProfileReadRepository {
+  StudentProfileReadRepository &
+  StudentProfileEvidenceRepository {
   const config = getSupabaseAdminConfig();
   if (!config.ok) {
     return createDisabledStudentProfileRepository();
@@ -87,7 +110,9 @@ export function createDefaultStudentProfileRepository(): StudentProfileProjectio
 
 export function createSupabaseStudentProfileRepository(
   client: SupabaseStudentProfileClient,
-): StudentProfileProjectionRepository & StudentProfileReadRepository {
+): StudentProfileProjectionRepository &
+  StudentProfileReadRepository &
+  StudentProfileEvidenceRepository {
   return {
     is_database_configured: true,
     async listMemoryEvents(student_id) {
@@ -107,6 +132,27 @@ export function createSupabaseStudentProfileRepository(
       }
 
       return data.map(toProfileMemoryEvent);
+    },
+    async listProfileEvidenceEvents(student_id, limit) {
+      const { data, error } = await client
+        .from("memory_events")
+        .select(
+          "id, created_at, event_type, knowledge_mastery_changes, mistake_cause_changes, review_priority_changes, rationale, evidence_level, persistence_evidence, profile_update_kind",
+        )
+        .eq("student_id", student_id)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        throw error;
+      }
+
+      if (!Array.isArray(data)) {
+        throw new Error("Expected memory_events evidence query to return an array.");
+      }
+
+      return data.map(toProfileEvidenceEvent);
     },
     async upsertProjectedProfile(input) {
       const { error } = await client.from("student_profiles").upsert(
@@ -152,10 +198,14 @@ export function createSupabaseStudentProfileRepository(
 }
 
 export function createDisabledStudentProfileRepository(): StudentProfileProjectionRepository &
-  StudentProfileReadRepository {
+  StudentProfileReadRepository &
+  StudentProfileEvidenceRepository {
   return {
     is_database_configured: false,
     async listMemoryEvents() {
+      return [];
+    },
+    async listProfileEvidenceEvents() {
       return [];
     },
     async upsertProjectedProfile() {},
@@ -179,4 +229,53 @@ function toProfileMemoryEvent(row: unknown): ProfileMemoryEvent {
     created_at: row.created_at,
     memory_delta: row.memory_delta,
   };
+}
+
+function toProfileEvidenceEvent(row: unknown): ProfileEvidenceEvent {
+  if (
+    !isRecord(row) ||
+    typeof row.id !== "string" ||
+    typeof row.created_at !== "string" ||
+    (row.event_type !== "mistake_cause" &&
+      row.event_type !== "problem_type_focus") ||
+    !isFiniteNumberRecord(row.knowledge_mastery_changes) ||
+    !isFiniteNumberRecord(row.mistake_cause_changes) ||
+    !isStringArray(row.review_priority_changes) ||
+    typeof row.rationale !== "string" ||
+    !isNullableString(row.evidence_level) ||
+    !isNullableString(row.persistence_evidence) ||
+    typeof row.profile_update_kind !== "string"
+  ) {
+    throw new Error("Expected memory_events evidence row to match evidence summary shape.");
+  }
+
+  return {
+    id: row.id,
+    created_at: row.created_at,
+    event_type: row.event_type,
+    knowledge_mastery_changes: row.knowledge_mastery_changes,
+    mistake_cause_changes: row.mistake_cause_changes,
+    review_priority_changes: row.review_priority_changes,
+    rationale: row.rationale,
+    evidence_level: row.evidence_level,
+    persistence_evidence: row.persistence_evidence,
+    profile_update_kind: row.profile_update_kind,
+  };
+}
+
+function isFiniteNumberRecord(value: unknown): value is Record<string, number> {
+  return (
+    isRecord(value) &&
+    Object.values(value).every(
+      (entryValue) => typeof entryValue === "number" && Number.isFinite(entryValue),
+    )
+  );
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
 }

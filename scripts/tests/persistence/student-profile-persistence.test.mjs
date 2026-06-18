@@ -15,6 +15,13 @@ const {
   PROFILE_SYNC_FAILED_WARNING,
 } = jiti("./src/lib/student-profile/student-profile-service.ts");
 const {
+  createStudentProfileEvidenceSummary,
+  handleStudentProfileEvidenceRequest,
+  PROFILE_EVIDENCE_NOT_FOUND_WARNING,
+  PROFILE_EVIDENCE_READ_FAILED_WARNING,
+  PROFILE_EVIDENCE_READ_NOT_CONFIGURED_WARNING,
+} = jiti("./src/lib/student-profile/student-profile-evidence-service.ts");
+const {
   createDisabledStudentProfileRepository,
   createSupabaseStudentProfileRepository,
 } = jiti("./src/lib/persistence/student-profile-persistence.ts");
@@ -547,6 +554,169 @@ await assert.rejects(
     }),
   /云端画像暂时读取失败。/,
 );
+{
+  const result = await handleStudentProfileEvidenceRequest(
+    new URLSearchParams("student_id=student_002"),
+    createEvidenceRepository([]),
+  );
+
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error.code, "invalid_request");
+  assert.equal(result.body.error.recoverable, true);
+}
+{
+  const result = await handleStudentProfileEvidenceRequest(
+    new URLSearchParams("student_id=demo_student_001"),
+    {
+      is_database_configured: false,
+      async listProfileEvidenceEvents() {
+        throw new Error("should not query disabled repository");
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, {
+    student_id: "demo_student_001",
+    source: "fallback",
+    is_database_configured: false,
+    evidence: null,
+    warnings: [PROFILE_EVIDENCE_READ_NOT_CONFIGURED_WARNING],
+  });
+}
+{
+  const result = await handleStudentProfileEvidenceRequest(
+    new URLSearchParams("student_id=demo_student_001"),
+    createEvidenceRepository([]),
+  );
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, {
+    student_id: "demo_student_001",
+    source: "fallback",
+    is_database_configured: true,
+    evidence: null,
+    warnings: [PROFILE_EVIDENCE_NOT_FOUND_WARNING],
+  });
+}
+{
+  const result = await handleStudentProfileEvidenceRequest(
+    new URLSearchParams("student_id=demo_student_001"),
+    createFailingEvidenceRepository(),
+  );
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, {
+    student_id: "demo_student_001",
+    source: "fallback",
+    is_database_configured: true,
+    evidence: null,
+    warnings: [PROFILE_EVIDENCE_READ_FAILED_WARNING],
+  });
+  assert.equal(JSON.stringify(result.body).includes("service role"), false);
+}
+{
+  const calls = [];
+  const events = createEvidenceEvents();
+  const result = await handleStudentProfileEvidenceRequest(
+    new URLSearchParams("student_id=demo_student_001&limit=2"),
+    {
+      is_database_configured: true,
+      async listProfileEvidenceEvents(studentId, limit) {
+        calls.push([studentId, limit]);
+        return events;
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.source, "cloud");
+  assert.equal(result.body.evidence.event_count, 3);
+  assert.equal(result.body.evidence.latest_event_at, "2026-06-18T10:00:00.000Z");
+  assert.deepEqual(result.body.evidence.top_knowledge_focus[0], {
+    id: "parameter_classification",
+    event_count: 2,
+    total_weakness_delta: 8,
+    latest_event_at: "2026-06-18T10:00:00.000Z",
+  });
+  assert.deepEqual(result.body.evidence.top_mistake_causes[0], {
+    id: "classification_missing",
+    event_count: 2,
+    total_delta: 3,
+    latest_event_at: "2026-06-18T10:00:00.000Z",
+  });
+  assert.deepEqual(calls, [["demo_student_001", 2]]);
+  assert.equal(JSON.stringify(result.body).includes("memory_delta"), false);
+  assert.equal(JSON.stringify(result.body).includes("question_text"), false);
+}
+{
+  const calls = [];
+  const result = await handleStudentProfileEvidenceRequest(
+    new URLSearchParams("student_id=demo_student_001&limit=999"),
+    {
+      is_database_configured: true,
+      async listProfileEvidenceEvents(studentId, limit) {
+        calls.push([studentId, limit]);
+        return createEvidenceEvents();
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(calls, [["demo_student_001", 8]]);
+}
+{
+  const summary = createStudentProfileEvidenceSummary([
+    {
+      id: "event-empty",
+      created_at: "2026-06-18T10:00:00.000Z",
+      event_type: "mistake_cause",
+      knowledge_mastery_changes: { parameter_classification: Number.NaN },
+      mistake_cause_changes: { classification_missing: Infinity },
+      review_priority_changes: ["function_monotonicity"],
+      rationale: "  这是一段很长的解释文本，用于确认服务端会截断过长 rationale，避免把过长模型文本直接透传到前端展示区域。这里继续补充更多上下文，确保测试样本一定超过八十个字符，并稳定触发省略号截断逻辑。  ",
+      evidence_level: "student_work_sufficient",
+      persistence_evidence: "student_work",
+      profile_update_kind: "mistake_cause",
+    },
+  ]);
+
+  assert.equal(summary.event_count, 1);
+  assert.deepEqual(summary.top_knowledge_focus[0], {
+    id: "function_monotonicity",
+    event_count: 1,
+    total_weakness_delta: 0,
+    latest_event_at: "2026-06-18T10:00:00.000Z",
+  });
+  assert.deepEqual(summary.top_mistake_causes, []);
+  assert.equal(summary.recent_events[0].rationale_summary.length <= 80, true);
+  assert.equal(summary.recent_events[0].rationale_summary.endsWith("…"), true);
+}
+{
+  const calls = [];
+  const repository = createSupabaseStudentProfileRepository(
+    createFakeStudentProfileClient({
+      calls,
+      listRows: createEvidenceEvents(),
+      resolveMemoryEventsWithLimit: true,
+    }),
+  );
+
+  const rows = await repository.listProfileEvidenceEvents("demo_student_001", 8);
+
+  assert.equal(rows.length, 3);
+  assert.deepEqual(calls, [
+    ["from", "memory_events"],
+    [
+      "select",
+      "id, created_at, event_type, knowledge_mastery_changes, mistake_cause_changes, review_priority_changes, rationale, evidence_level, persistence_evidence, profile_update_kind",
+    ],
+    ["eq", "student_id", "demo_student_001"],
+    ["order", "created_at", { ascending: false }],
+    ["order", "id", { ascending: false }],
+    ["limit", 8],
+  ]);
+}
 
 console.log("student profile persistence tests passed");
 
@@ -614,7 +784,73 @@ function createFailingReadRepository() {
   };
 }
 
-function createFakeStudentProfileClient({ calls, listRows, readRow = null }) {
+function createEvidenceRepository(events) {
+  return {
+    is_database_configured: true,
+    async listProfileEvidenceEvents(studentId, limit) {
+      assert.equal(studentId, "demo_student_001");
+      assert.equal(Number.isInteger(limit), true);
+      return events;
+    },
+  };
+}
+
+function createFailingEvidenceRepository() {
+  return {
+    is_database_configured: true,
+    async listProfileEvidenceEvents() {
+      throw new Error("service role key leaked");
+    },
+  };
+}
+
+function createEvidenceEvents() {
+  return [
+    {
+      id: "event-3",
+      created_at: "2026-06-18T10:00:00.000Z",
+      event_type: "mistake_cause",
+      knowledge_mastery_changes: { parameter_classification: -3 },
+      mistake_cause_changes: { classification_missing: 2 },
+      review_priority_changes: ["parameter_classification"],
+      rationale: "系统把参数分类讨论提升为复习优先级第一位。",
+      evidence_level: "student_work_sufficient",
+      persistence_evidence: "student_work",
+      profile_update_kind: "mistake_cause",
+    },
+    {
+      id: "event-2",
+      created_at: "2026-06-18T09:00:00.000Z",
+      event_type: "problem_type_focus",
+      knowledge_mastery_changes: { derivative_monotonicity: -5 },
+      mistake_cause_changes: { domain_missing: 1 },
+      review_priority_changes: ["derivative_monotonicity"],
+      rationale: "",
+      evidence_level: "problem_only",
+      persistence_evidence: "uploaded_problem_only",
+      profile_update_kind: "problem_type_focus",
+    },
+    {
+      id: "event-1",
+      created_at: "2026-06-18T08:00:00.000Z",
+      event_type: "mistake_cause",
+      knowledge_mastery_changes: { parameter_classification: -5 },
+      mistake_cause_changes: { classification_missing: 1 },
+      review_priority_changes: ["parameter_classification"],
+      rationale: "系统只能指出这道题错在分类讨论。",
+      evidence_level: null,
+      persistence_evidence: "student_work",
+      profile_update_kind: "mistake_cause",
+    },
+  ];
+}
+
+function createFakeStudentProfileClient({
+  calls,
+  listRows,
+  readRow = null,
+  resolveMemoryEventsWithLimit = false,
+}) {
   return {
     from(tableName) {
       calls.push(["from", tableName]);
@@ -635,7 +871,16 @@ function createFakeStudentProfileClient({ calls, listRows, readRow = null }) {
             builder.orderCount += 1;
 
             if (builder.orderCount === 2) {
-              return { data: listRows, error: null };
+              if (!resolveMemoryEventsWithLimit) {
+                return { data: listRows, error: null };
+              }
+
+              return {
+                limit(count) {
+                  calls.push(["limit", count]);
+                  return { data: listRows, error: null };
+                },
+              };
             }
 
             return builder;
