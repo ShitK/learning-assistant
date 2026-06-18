@@ -41,3 +41,44 @@ export function getKnowledgeName(id: string): string {
 export function getMistakeShortName(id: string): string {
   return mistakeCauses[id]?.short_name ?? id;
 }
+
+const mistakeCauseDisplayDetails: Record<
+  string,
+  { title: string; description: string }
+> = {
+  domain_missing: {
+    title: "范围/边界遗漏",
+    description:
+      "定义域、取值范围或分类讨论边界考虑不全，导致答案缺情况或范围错误。",
+  },
+  classification_missing: {
+    title: "分类讨论漏项",
+    description: "含参、分段或多情况题没有完整分类，导致结论缺少必要情况。",
+  },
+  method_error: {
+    title: "解题方向选错",
+    description: "审题后选择了错误的解题方法或公式，导致整题方向偏离。",
+  },
+  transformation_error: {
+    title: "变形过程失真",
+    description: "等价变形、代数整理或结构转换时丢失条件或改变原式含义。",
+  },
+  calculation_error: {
+    title: "计算失误",
+    description: "运算过程中出现符号、数值或代数计算错误。",
+  },
+};
+
+export function getMistakeCauseTitle(id: string): string {
+  return (
+    mistakeCauseDisplayDetails[id]?.title ?? mistakeCauses[id]?.display_name ?? id
+  );
+}
+
+export function getMistakeCauseDescription(id: string): string {
+  return (
+    mistakeCauseDisplayDetails[id]?.description ??
+    mistakeCauses[id]?.display_name ??
+    id
+  );
+}

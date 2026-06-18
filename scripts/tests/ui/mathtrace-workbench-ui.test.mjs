@@ -25,6 +25,7 @@ const workbenchStructureSources = Object.fromEntries(
       "mistake-input-card.tsx",
       "practice-lab.tsx",
       "profile-insights.tsx",
+      "profile-view-model.ts",
       "review-path.tsx",
       "risk-follow-up-panel.tsx",
       "section-header.tsx",
@@ -48,6 +49,26 @@ const {
   confirmMistakeBookItemDeletion,
   createMistakeBookPanelViewModel,
 } = jiti("./src/components/mistake-book-panel.tsx");
+const {
+  calculateWeaknessIndex,
+  createProfileInsightsViewModel,
+  getWeaknessStatus,
+  HIGH_FREQUENCY_MISTAKE_CAUSE_THRESHOLD,
+} = jiti("./src/components/workbench/profile-view-model.ts");
+const {
+  getMistakeCauseDescription,
+  getMistakeCauseTitle,
+} = jiti("./src/components/workbench/workbench-labels.ts");
+const {
+  demoStudentProfile,
+  sampleDiagnoses,
+} = jiti("./src/data/mathtrace-demo.ts");
+const { createSampleDiagnosisViewModel } = jiti(
+  "./src/lib/diagnosis/diagnosis-view-model.ts",
+);
+const { applyMemoryDeltaToProfile } = jiti(
+  "./src/lib/shared/student-profile.ts",
+);
 
 assert.equal(
   workbenchUiSource.includes("错误发生步骤"),
@@ -135,6 +156,76 @@ assert.equal(
   panelSource.includes("SUPABASE_SERVICE_ROLE_KEY"),
   false,
   "错题本只读面板不能读取 Supabase service role key。",
+);
+
+assert.equal(calculateWeaknessIndex(35), 65);
+assert.equal(calculateWeaknessIndex(27), 73);
+assert.equal(getWeaknessStatus(73).label, "高优先级");
+assert.equal(getWeaknessStatus(58).label, "待巩固");
+assert.equal(getWeaknessStatus(32).label, "基本稳定");
+assert.equal(getWeaknessStatus(12).label, "稳定");
+assert.equal(HIGH_FREQUENCY_MISTAKE_CAUSE_THRESHOLD, 5);
+
+assert.equal(getMistakeCauseTitle("domain_missing"), "范围/边界遗漏");
+assert.match(
+  getMistakeCauseDescription("classification_missing"),
+  /分类|情况|含参/,
+);
+assert.equal(getMistakeCauseTitle("unknown_cause"), "unknown_cause");
+
+const derivativeSample = sampleDiagnoses.find(
+  (sample) => sample.id === "sample_derivative_001",
+);
+assert.ok(derivativeSample, "测试样例 sample_derivative_001 应存在。");
+const derivativeDiagnosis = createSampleDiagnosisViewModel(derivativeSample);
+const afterDerivativeProfile = applyMemoryDeltaToProfile(
+  demoStudentProfile,
+  derivativeSample.memory_delta,
+);
+const profileInsights = createProfileInsightsViewModel({
+  diagnosis: derivativeDiagnosis,
+  beforeProfile: demoStudentProfile,
+  afterProfile: afterDerivativeProfile,
+  mistakeHistoryLength: 8,
+});
+
+assert.equal(profileInsights.title, "画像变化");
+assert.equal(profileInsights.conclusionRows.length, 2);
+assert.equal(profileInsights.conclusionRows[0].id, "parameter_classification");
+assert.equal(profileInsights.conclusionRows[0].weaknessIndex, 62);
+assert.equal(profileInsights.conclusionRows[0].weaknessDelta, 8);
+assert.equal(profileInsights.conclusionRows[0].status.label, "高优先级");
+assert.equal(profileInsights.priorityRows[0].id, "parameter_classification");
+assert.equal(profileInsights.highlightedMistakeCauses.length, 2);
+assert.equal(
+  profileInsights.highlightedMistakeCauses[0].id,
+  "classification_missing",
+);
+assert.equal(
+  profileInsights.highlightedMistakeCauses[0].isNewInDiagnosis,
+  true,
+);
+assert.equal(
+  profileInsights.highlightedMistakeCauses[0].isHighFrequency,
+  true,
+);
+assert.equal(
+  profileInsights.otherMistakeCauses.some(
+    (cause) => cause.id === "calculation_error",
+  ),
+  true,
+);
+assert.match(profileInsights.actionAdvice, /优先复习参数分类讨论/);
+assert.match(
+  profileInsights.recommendation.title,
+  /为什么优先复习参数分类讨论/,
+);
+assert.equal(
+  profileInsights.recommendation.bullets.some((bullet) =>
+    bullet.includes("完整 memory_events"),
+  ),
+  false,
+  "P1.9 推荐依据不能声称读取完整 memory_events 历史。",
 );
 assert.equal(
   panelSource.includes("删除"),
@@ -348,6 +439,11 @@ for (const { fileName, exportName, pattern } of [
     fileName: "profile-insights.tsx",
     exportName: "ProfileInsights",
     pattern: /^export\s+function\s+ProfileInsights\b/m,
+  },
+  {
+    fileName: "profile-view-model.ts",
+    exportName: "createProfileInsightsViewModel",
+    pattern: /^export\s+function\s+createProfileInsightsViewModel\b/m,
   },
   {
     fileName: "review-path.tsx",
