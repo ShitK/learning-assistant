@@ -54,6 +54,16 @@ assert.deepEqual(
 );
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+const gitignore = await readFile(".gitignore", "utf8");
+
+assert.equal(
+  gitignore
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .includes("/artifacts/"),
+  true,
+  "Generated OCR/RAG artifacts must stay ignored and out of Git history.",
+);
 
 assert.equal(
   packageJson.scripts.test.includes("scripts/run-tests.mjs"),

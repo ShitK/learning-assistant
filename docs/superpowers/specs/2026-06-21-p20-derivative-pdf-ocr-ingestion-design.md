@@ -263,3 +263,9 @@ P2.0 Task 2: metadata/text search 检索 3 道变式题
 P2.0 Task 3: 变式题模块接入 corpus 检索，预写题作为 fallback
 P2.1: 建立检索 eval，再评估 pgvector
 ```
+
+## 13. Implementation Plan Note
+
+Implementation will start with `scripts/rag/ocr-derivative-pdf.mjs` and pure helpers in `scripts/rag/derivative-pdf-ocr-core.mjs`. Generated outputs live under `artifacts/rag/derivative-pdf-spike/` and are ignored by Git.
+
+The first implementation pass must support an OCR-unavailable environment by still producing a schema-valid `candidate_questions.json` and `extraction_report.md` with `ocr_tool_unavailable` warnings. Real OCR quality evaluation can happen after a local OCR engine such as `tesseract` plus `chi_sim` Chinese trained data is installed or another OCR path is explicitly chosen.
