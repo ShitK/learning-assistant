@@ -165,6 +165,8 @@ interface ReviewedPracticeItem {
 
 使用 poppler 渲染页面图片，优先从 150-200 DPI 开始。当前体检中 120 DPI 已能肉眼阅读，但 OCR 可能需要更高分辨率。
 
+实现计划中的 bundled poppler 路径只代表当前本地 Codex runtime。其他环境应安装 poppler，或通过 `CODEX_POPPLER_BIN` 指向包含 `pdfinfo` / `pdftoppm` 的目录。
+
 ### 7.2 页面切分
 
 当前 PDF 一页包含左右两页书页。第一版可以使用简单几何切分：
@@ -174,13 +176,15 @@ left = 左半部分
 right = 右半部分
 ```
 
+当前实现计划优先使用 macOS 自带 `sips` 做几何裁剪；`sips` 是 macOS 专有工具。其他平台或 `sips` 不可用时，脚本必须 fallback 为整张扫描页，并在 JSON/report 中记录 `page_slice_fallback_full_page`、`sips_available=false` 或等价 warning，避免误以为左右切分已完成。
+
 如果边缘栏、装订线或页眉干扰 OCR，再加入固定 margin crop。不要在 Task 0 引入复杂版面分析。
 
 ### 7.3 OCR
 
 首选本地 OCR，候选方案：
 
-- `tesseract`：适合脚本化，后续可固定为开发依赖或安装说明。
+- `tesseract`：适合脚本化，后续可固定为开发依赖或安装说明。中文扫描件需要 `tesseract` 本体和 `chi_sim` 或 `chi_sim_best` 中文训练数据；若只有二进制但缺少中文语言包，报告应记录为语言包/运行失败问题，而不是笼统当作 PDF 解析失败。
 - macOS Vision OCR：可作为本机 spike 方案，但当前沙箱测试返回 `nilError`，不能作为已验证路径。
 - 外部 OCR：若本地 OCR 不稳定，作为后续单独评估，不混入 Task 0 MVP。
 
@@ -194,6 +198,8 @@ right = 右半部分
 
 切分失败时保留整页 OCR 文本，并在 report 中标记 `question_split_failed`。
 
+章节标题、考点标题、页眉页脚等非题号文本允许在 Task 0 中保留到相邻题块；候选层只负责保留可追溯文本，不在本阶段尝试完整版面理解。人工审核进入 `practice_corpus` 时再清理这些噪声。
+
 ### 7.5 答案对齐
 
 本阶段不强求答案 PDF 自动对齐。若同一 PDF 中出现答案或解析，可作为 `answer_or_solution_candidate`。否则先置为 `null`，人工审核时补齐。
@@ -204,7 +210,8 @@ right = 右半部分
 
 - 输入文件名、大小、页数、是否有文字层。
 - 渲染 DPI 和页面切分策略。
-- OCR 工具和版本。
+- OCR 工具、版本和语言包。
+- `sips_available`、实际 slice 策略和每个 slice 的尺寸。
 - 成功 OCR 的页面数量。
 - 候选题数量。
 - 题号连续性检查。
@@ -256,4 +263,3 @@ P2.0 Task 2: metadata/text search 检索 3 道变式题
 P2.0 Task 3: 变式题模块接入 corpus 检索，预写题作为 fallback
 P2.1: 建立检索 eval，再评估 pgvector
 ```
-

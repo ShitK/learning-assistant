@@ -32,6 +32,8 @@
   - Adds the RAG helper test to the default suite.
 - Modify `.gitignore`
   - Ignores generated `artifacts/` output.
+- Modify `scripts/tests/architecture/architecture-boundaries.test.mjs`
+  - Verifies generated OCR artifacts remain ignored by Git policy.
 - Modify `docs/superpowers/specs/2026-06-21-p20-derivative-pdf-ocr-ingestion-design.md`
   - Adds a short implementation note after the plan is complete, only if the implemented command or output path differs from the spec.
 - Optional later manual artifact, not committed:
@@ -128,6 +130,31 @@ assert.equal(
   assert.equal(candidates[0].question_number, null);
   assert.equal(candidates[0].id, "pdf-page-001-left-chunk-001");
   assert.equal(candidates[0].warnings.includes("question_split_failed"), true);
+  assert.equal(candidates[0].extraction_confidence, "low");
+}
+
+{
+  const candidates = splitQuestionCandidates({
+    ...pageRecord,
+    ocrText: "",
+  });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].question_number, null);
+  assert.equal(candidates[0].warnings.includes("empty_ocr_text"), true);
+  assert.equal(candidates[0].warnings.includes("question_split_failed"), true);
+  assert.equal(candidates[0].extraction_confidence, "low");
+}
+
+{
+  const candidates = splitQuestionCandidates({
+    ...pageRecord,
+    ocrText: "1. 设 f(x)",
+  });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].question_number, "1");
+  assert.equal(candidates[0].warnings.includes("short_candidate_text"), true);
   assert.equal(candidates[0].extraction_confidence, "low");
 }
 
@@ -475,6 +502,7 @@ const DEFAULT_POPPLER_BIN = join(
 );
 const BUNDLED_POPPLER_BIN = "/Users/kk/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/poppler/poppler/bin";
 const DEFAULT_DPI = 180;
+const TESSERACT_LANGUAGE = "chi_sim+eng";
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -512,6 +540,7 @@ async function main() {
   });
 
   const pageRecords = [];
+  const sliceReports = [];
   for (const renderedPage of renderedPages) {
     const slices = splitRenderedPage({
       renderedPage,
@@ -520,6 +549,12 @@ async function main() {
     });
 
     for (const slice of slices) {
+      sliceReports.push({
+        pdf_page_index: renderedPage.pdfPageIndex,
+        side: slice.side,
+        path: relativeFromProject(slice.path),
+        dimensions: readPngDimensions(slice.path),
+      });
       const ocr = runOcr({
         imagePath: slice.path,
         ocrCommand: args.ocrCommand ?? "tesseract",
@@ -554,7 +589,12 @@ async function main() {
   );
   await writeFile(
     join(outDir, "extraction_report.md"),
-    renderExtractionReport(extraction),
+    `${renderExtractionReport(extraction)}\n${renderCliEnvironmentReport({
+      sipsAvailable: findExecutableInPath("sips"),
+      ocrCommand: args.ocrCommand ?? "tesseract",
+      ocrLanguage: TESSERACT_LANGUAGE,
+      sliceReports,
+    })}`,
   );
 
   console.log(`Wrote ${join(outDir, "candidate_questions.json")}`);
@@ -677,7 +717,7 @@ function splitRenderedPage({ renderedPage, slicesDir, warnings }) {
     inputPath: renderedPage.path,
     outputPath: rightPath,
     height: dimensions.height,
-    width: dimensions.width - halfWidth,
+    width: halfWidth,
     offsetX: Math.floor(dimensions.width / 4),
   });
 
@@ -748,11 +788,19 @@ function runOcr({ imagePath, ocrCommand }) {
     };
   }
 
-  const result = spawnSync(ocrCommand, [imagePath, "stdout", "-l", "chi_sim+eng"], {
+  const result = spawnSync(ocrCommand, [imagePath, "stdout", "-l", TESSERACT_LANGUAGE], {
     encoding: "utf8",
   });
 
   if (result.status !== 0) {
+    if (/Failed loading language|Error opening data file/i.test(result.stderr)) {
+      return {
+        ok: false,
+        text: "",
+        warning: "ocr_language_pack_unavailable",
+      };
+    }
+
     return {
       ok: false,
       text: "",
@@ -787,6 +835,31 @@ function relativeFromProject(filePath) {
   return absolute.startsWith(projectRoot)
     ? absolute.slice(projectRoot.length + 1)
     : absolute;
+}
+
+function renderCliEnvironmentReport({
+  sipsAvailable,
+  ocrCommand,
+  ocrLanguage,
+  sliceReports,
+}) {
+  return [
+    "## CLI Environment",
+    "",
+    `- sips_available: ${sipsAvailable}`,
+    `- ocr_command: ${ocrCommand}`,
+    `- ocr_language: ${ocrLanguage}`,
+    "",
+    "## Slice Dimensions",
+    "",
+    ...sliceReports.map((slice) => {
+      const dimensions = slice.dimensions
+        ? `${slice.dimensions.width}x${slice.dimensions.height}`
+        : "unknown";
+      return `- page ${slice.pdf_page_index} ${slice.side}: ${dimensions} ${slice.path}`;
+    }),
+    "",
+  ].join("\n");
 }
 
 main().catch((error) => {
@@ -838,7 +911,9 @@ Run:
 
 ```bash
 node --input-type=module -e 'import data from "./artifacts/rag/derivative-pdf-spike/candidate_questions.json" with { type: "json" }; console.log({ page_count: data.page_count, candidates: data.candidates.length, warnings: data.warnings });'
-sed -n '1,120p' artifacts/rag/derivative-pdf-spike/extraction_report.md
+node -e 'const fs=require("node:fs"); console.log(fs.readFileSync("artifacts/rag/derivative-pdf-spike/extraction_report.md","utf8").split("\n").slice(0,160).join("\n"));'
+sips -g pixelWidth -g pixelHeight artifacts/rag/derivative-pdf-spike/page-slices/page-001-left.png
+sips -g pixelWidth -g pixelHeight artifacts/rag/derivative-pdf-spike/page-slices/page-001-right.png
 ```
 
 Expected:
@@ -846,9 +921,10 @@ Expected:
 ```text
 { page_count: 8, candidates: 4, warnings: [...] }
 # P2.0 导数扫描 PDF OCR 入库报告
+## CLI Environment
 ```
 
-If OCR is available, verify at least one candidate has non-empty `raw_ocr_text`. If OCR is unavailable, verify `ocr_tool_unavailable` appears in both JSON warnings and the report.
+If OCR is available, verify at least one candidate has non-empty `raw_ocr_text`. If OCR is unavailable, verify `ocr_tool_unavailable` appears in both JSON warnings and the report. If `tesseract` is installed but Chinese trained data is missing, verify `ocr_language_pack_unavailable` appears instead. Also verify `page-001-left.png` and `page-001-right.png` are non-empty, have approximately half the rendered page width, and visually correspond to the left/right book pages before trusting later OCR quality checks.
 
 - [ ] **Step 5: Commit Task 2 script only**
 
@@ -874,6 +950,7 @@ Do not stage `artifacts/`, `.nvmrc`, or the original PDF.
 
 **Files:**
 - Modify: `.gitignore`
+- Modify: `scripts/tests/architecture/architecture-boundaries.test.mjs`
 - Modify: `docs/superpowers/specs/2026-06-21-p20-derivative-pdf-ocr-ingestion-design.md`
 
 **Interfaces:**
@@ -882,6 +959,7 @@ Do not stage `artifacts/`, `.nvmrc`, or the original PDF.
   - Local artifact path `artifacts/rag/derivative-pdf-spike/`.
 - Produces:
   - `.gitignore` rule for `artifacts/`.
+  - Architecture-boundary assertion that `.gitignore` contains `/artifacts/`.
   - Spec note with actual command and current OCR environment result.
 
 - [ ] **Step 1: Ignore generated local artifacts**
@@ -894,7 +972,24 @@ Modify `.gitignore` by adding this block after the `# testing` section:
 /artifacts/
 ```
 
-- [ ] **Step 2: Add implementation note to the P2.0 spec**
+- [ ] **Step 2: Add an architecture test for generated artifact ignore rules**
+
+Modify `scripts/tests/architecture/architecture-boundaries.test.mjs` after `const packageJson = JSON.parse(...)`:
+
+```js
+const gitignore = await readFile(".gitignore", "utf8");
+
+assert.equal(
+  gitignore
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .includes("/artifacts/"),
+  true,
+  "Generated OCR/RAG artifacts must stay ignored and out of Git history.",
+);
+```
+
+- [ ] **Step 3: Add implementation note to the P2.0 spec**
 
 Append this section to `docs/superpowers/specs/2026-06-21-p20-derivative-pdf-ocr-ingestion-design.md`:
 
@@ -903,10 +998,10 @@ Append this section to `docs/superpowers/specs/2026-06-21-p20-derivative-pdf-ocr
 
 Implementation will start with `scripts/rag/ocr-derivative-pdf.mjs` and pure helpers in `scripts/rag/derivative-pdf-ocr-core.mjs`. Generated outputs live under `artifacts/rag/derivative-pdf-spike/` and are ignored by Git.
 
-The first implementation pass must support an OCR-unavailable environment by still producing a schema-valid `candidate_questions.json` and `extraction_report.md` with `ocr_tool_unavailable` warnings. Real OCR quality evaluation can happen after a local OCR engine such as `tesseract` is installed or another OCR path is explicitly chosen.
+The first implementation pass must support an OCR-unavailable environment by still producing a schema-valid `candidate_questions.json` and `extraction_report.md` with `ocr_tool_unavailable` warnings. Real OCR quality evaluation can happen after a local OCR engine such as `tesseract` plus `chi_sim` Chinese trained data is installed or another OCR path is explicitly chosen.
 ```
 
-- [ ] **Step 3: Verify no generated artifacts are tracked**
+- [ ] **Step 4: Verify no generated artifacts are tracked**
 
 Run:
 
@@ -925,12 +1020,13 @@ artifacts/rag/derivative-pdf-spike/extraction_report.md
 
 If `git status --short` still shows files under `artifacts/`, fix `.gitignore` before continuing.
 
-- [ ] **Step 4: Run focused and project verification**
+- [ ] **Step 5: Run focused and project verification**
 
 Run:
 
 ```bash
 node scripts/tests/rag/derivative-pdf-ocr-core.test.mjs
+node scripts/tests/architecture/architecture-boundaries.test.mjs
 node scripts/run-tests.mjs default
 npm run build
 ```
@@ -943,7 +1039,7 @@ derivative pdf ocr core tests passed
 
 and the default suite/build complete successfully. If `npm run build` fails due to unrelated existing environment issues, capture the exact error and stop before changing unrelated files.
 
-- [ ] **Step 5: Final scope check before review**
+- [ ] **Step 6: Final scope check before review**
 
 Run:
 
@@ -961,6 +1057,7 @@ docs/superpowers/specs/2026-06-21-p20-derivative-pdf-ocr-ingestion-design.md
 scripts/rag/derivative-pdf-ocr-core.mjs
 scripts/rag/ocr-derivative-pdf.mjs
 scripts/run-tests.mjs
+scripts/tests/architecture/architecture-boundaries.test.mjs
 scripts/tests/rag/derivative-pdf-ocr-core.test.mjs
 ```
 
@@ -972,12 +1069,12 @@ artifacts/rag/derivative-pdf-spike/
 
 Do not stage `.nvmrc`, `docs/reviews/*.md`, original PDFs, or generated artifacts.
 
-- [ ] **Step 6: Commit Task 3**
+- [ ] **Step 7: Commit Task 3**
 
 Run:
 
 ```bash
-git add .gitignore docs/superpowers/specs/2026-06-21-p20-derivative-pdf-ocr-ingestion-design.md
+git add .gitignore scripts/tests/architecture/architecture-boundaries.test.mjs docs/superpowers/specs/2026-06-21-p20-derivative-pdf-ocr-ingestion-design.md
 git commit -m "docs: document derivative pdf ocr spike workflow"
 ```
 
@@ -985,6 +1082,7 @@ Expected staged files:
 
 ```text
 .gitignore
+scripts/tests/architecture/architecture-boundaries.test.mjs
 docs/superpowers/specs/2026-06-21-p20-derivative-pdf-ocr-ingestion-design.md
 ```
 
@@ -1004,4 +1102,4 @@ docs/superpowers/specs/2026-06-21-p20-derivative-pdf-ocr-ingestion-design.md
 - Type consistency:
   - `CandidateQuestionExtraction`, `CandidateQuestion`, `source_ref`, `raw_ocr_text`, `normalized_text`, `answer_or_solution_candidate`, `extraction_confidence`, and `warnings` match the design spec.
 - Review handoff:
-  - Claude Code should review this plan before implementation, especially the Task 2 OCR-unavailable behavior and whether full-page slicing is acceptable for the first pass.
+  - Claude Code should review this plan before implementation, especially the Task 2 OCR-unavailable behavior, macOS `sips` fallback, and left/right slice verification.
