@@ -271,3 +271,9 @@ Implementation will start with `scripts/rag/ocr-derivative-pdf.mjs` and pure hel
 The first implementation pass must support an OCR-unavailable environment by still producing a schema-valid `candidate_questions.json` and `extraction_report.md` with `ocr_tool_unavailable` warnings. Real OCR quality evaluation can happen after a local OCR engine such as `tesseract` plus `chi_sim` Chinese trained data is installed or another OCR path is explicitly chosen.
 
 After implementation review, the CLI uses `CODEX_POPPLER_BIN` as an explicit poppler override before the local bundled fallback, uses Pillow for PNG dimensions and left/right cropping, validates local-only CLI inputs, and includes a fake-poppler CLI regression test for OCR-unavailable output generation.
+
+## 14. MinerU Precise Parsing Smoke Note
+
+The next provider validation step uses MinerU precise parsing as an external document parser smoke, gated behind local `MINERU_API_TOKEN`. The smoke script writes all provider results under `artifacts/rag/mineru-derivative-smoke/`, which stays ignored by Git.
+
+This step only validates source quality. It does not write `practice_corpus`, does not update RAG retrieval, does not touch `memory_events` / `student_profiles`, and does not expose MinerU results to students.
