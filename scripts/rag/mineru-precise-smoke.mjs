@@ -3,7 +3,7 @@
 import { spawnSync } from "node:child_process";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   buildMineruBatchPayload,
@@ -310,7 +310,17 @@ async function downloadFile(url, outputPath) {
   await writeFile(outputPath, bytes);
 }
 
-function extractZip(zipPath, outputDir, warnings) {
+export function extractZip(zipPath, outputDir, warnings) {
+  const zipEntries = listZipEntries(zipPath, warnings);
+  if (!zipEntries) {
+    return;
+  }
+
+  if (zipEntries.some(isUnsafeZipEntry)) {
+    warnings.push("result_zip_unsafe_entry");
+    return;
+  }
+
   const unzip = spawnSync("unzip", ["-o", zipPath, "-d", outputDir], {
     encoding: "utf8",
     timeout: COMMAND_TIMEOUT_MS,
@@ -326,6 +336,37 @@ function extractZip(zipPath, outputDir, warnings) {
   if (ditto.status !== 0) {
     warnings.push("result_zip_extract_failed");
   }
+}
+
+function listZipEntries(zipPath, warnings) {
+  const result = spawnSync("unzip", ["-Z", "-1", zipPath], {
+    encoding: "utf8",
+    timeout: COMMAND_TIMEOUT_MS,
+  });
+  if (result.status !== 0) {
+    warnings.push("result_zip_extract_failed");
+    return null;
+  }
+
+  const stdout = result.stdout.replace(/\r?\n$/, "");
+  return stdout.length > 0 ? stdout.split(/\r?\n/) : [];
+}
+
+function isUnsafeZipEntry(entry) {
+  if (entry.length === 0) {
+    return true;
+  }
+
+  const normalizedEntry = entry.replaceAll("\\", "/");
+  if (normalizedEntry.endsWith("/")) {
+    return false;
+  }
+
+  return (
+    normalizedEntry.startsWith("/") ||
+    /^[A-Za-z]:\//.test(normalizedEntry) ||
+    normalizedEntry.split("/").includes("..")
+  );
 }
 
 function listFilesWithFind(dir) {
@@ -352,13 +393,22 @@ function sleep(ms) {
   });
 }
 
-main().catch((error) => {
-  if (error instanceof CliUsageError) {
-    console.error(`Error: ${error.message}`);
-    process.exitCode = 2;
-    return;
-  }
+function isMainModule() {
+  const invokedPath = process.argv[1];
+  return invokedPath
+    ? import.meta.url === pathToFileURL(resolve(invokedPath)).href
+    : false;
+}
 
-  console.error(error.message);
-  process.exitCode = 1;
-});
+if (isMainModule()) {
+  main().catch((error) => {
+    if (error instanceof CliUsageError) {
+      console.error(`Error: ${error.message}`);
+      process.exitCode = 2;
+      return;
+    }
+
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}
