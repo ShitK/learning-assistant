@@ -13,6 +13,7 @@ const suites = {
     "scripts/tests/rag/mineru-precise-smoke-cli.test.mjs",
     "scripts/tests/rag/mineru-json-candidate-mapper-core.test.mjs",
     "scripts/tests/rag/mineru-json-candidate-mapper-cli.test.mjs",
+    "scripts/tests/rag/candidate-review-ui-core.test.mjs",
     "scripts/tests/image-diagnosis/vision-extraction-parser.test.mjs",
     "scripts/tests/providers/anthropic-compatible-provider.test.mjs",
     "scripts/tests/providers/analysis-provider.test.mjs",
