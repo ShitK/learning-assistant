@@ -304,4 +304,6 @@ MinerU mapper 沿用候选题 schema，并增加以下追溯字段：
 
 进入下一阶段前，需要人工抽查题号连续性、公式准确性、选项完整性、跨页题和图像题。只有人工校对过的题目才能提升为可检索的 `practice_corpus`。
 
+候选题人工抽查阶段可使用本地静态审核页生成器，详见 `docs/superpowers/specs/2026-06-22-p20-candidate-question-review-ui-design.md`。
+
 `interview/mathtrace-project-narrative.md` 本任务不更新。原因是当前 mapper artifact 仍待用户人工审核，等候选题质量被确认后，再另开任务把 P2.0 候选题入库前置验证写入面试叙事。
