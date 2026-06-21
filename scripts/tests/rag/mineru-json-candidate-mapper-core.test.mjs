@@ -162,6 +162,7 @@ assert.deepEqual(isQuestionStartBlock("12.34"), { ok: false });
   assert.equal(extraction.extractor, "mineru-json-candidate-mapper");
   assert.equal(extraction.page_count, 1);
   assert.equal(extraction.candidates.length, 3);
+  extraction.candidates.forEach(assertCandidateShape);
 
   assert.equal(extraction.candidates[0].id, "mineru-page-001-block-002-q-1");
   assert.equal(extraction.candidates[0].question_number, "1");
@@ -178,6 +179,9 @@ assert.deepEqual(isQuestionStartBlock("12.34"), { ok: false });
 
   assert.equal(extraction.candidates[1].question_number, "2");
   assert.equal(extraction.candidates[1].normalized_text.includes("(2)求 $f(x)$ 的最大值."), true);
+  assert.equal(extraction.candidates[1].normalized_text.includes("A. a = \\ln 1.2"), false);
+  assert.equal(extraction.candidates[1].source_ref.block_end_pdf_page_index, 1);
+  assert.equal(extraction.candidates[1].source_ref.block_end_index, 6);
   assert.equal(extraction.candidates[1].warnings.includes("contains_nested_list_block"), true);
   assert.equal(extraction.candidates[1].extraction_confidence, "medium");
 
@@ -296,13 +300,61 @@ assert.deepEqual(isQuestionStartBlock("12.34"), { ok: false });
 
 {
   const extraction = buildCandidateQuestions({
-    mineruJson: { pdf_info: [] },
+    mineruJson: mineruFixture,
+    mineruJsonFile: "/tmp/导数专题.json",
     extractedAt: "2026-06-21T00:00:00.000Z",
   });
 
-  assert.equal(extraction.source_file, "source_file_unknown");
+  assert.equal(extraction.source_file, "/tmp/导数专题.json");
+  assert.equal(extraction.warnings.includes("source_file_unknown"), true);
+}
+
+{
+  const nonZeroPageIdxFixture = {
+    pdf_info: [
+      {
+        page_idx: 3,
+        para_blocks: [
+          {
+            type: "text",
+            index: 2,
+            bbox: [10, 40, 500, 80],
+            lines: [{ spans: [{ type: "text", content: "1.(测试)题干 ()" }] }],
+          },
+          {
+            type: "text",
+            index: 3,
+            bbox: [10, 90, 200, 110],
+            lines: [{ spans: [{ type: "text", content: "A. 1" }] }],
+          },
+        ],
+      },
+    ],
+  };
+
+  const pageBlocks = extractPageBlocks(nonZeroPageIdxFixture);
+  assert.equal(pageBlocks[0].pdfPageIndex, 4);
+
+  const extraction = buildCandidateQuestions({
+    mineruJson: nonZeroPageIdxFixture,
+    sourceFile: "/tmp/非零页码.pdf",
+    extractedAt: "2026-06-21T00:00:00.000Z",
+  });
+  assert.equal(extraction.candidates[0].source_ref.pdf_page_index, 4);
+  assert.equal(extraction.candidates[0].source_ref.block_end_pdf_page_index, 4);
+}
+
+{
+  const extraction = buildCandidateQuestions({
+    mineruJson: { pdf_info: [] },
+    mineruJsonFile: "/tmp/empty.json",
+    extractedAt: "2026-06-21T00:00:00.000Z",
+  });
+
+  assert.equal(extraction.source_file, "/tmp/empty.json");
   assert.equal(extraction.page_count, 0);
   assert.equal(extraction.candidates.length, 0);
+  assert.equal(extraction.warnings.includes("source_file_unknown"), true);
   assert.equal(extraction.warnings.includes("question_split_failed"), true);
 }
 
@@ -347,6 +399,29 @@ assert.deepEqual(isQuestionStartBlock("12.34"), { ok: false });
   assert.equal(report.includes("- 候选题数量：3"), true);
   assert.equal(report.includes("考点 1 导数的概念、几何意义与运算"), true);
   assert.equal(report.includes("MINERU_API_TOKEN"), false);
+}
+
+function assertCandidateShape(candidate) {
+  assert.equal(typeof candidate.id, "string");
+  assert.equal(typeof candidate.question_number, "string");
+  assert.equal(typeof candidate.raw_ocr_text, "string");
+  assert.equal(typeof candidate.normalized_text, "string");
+  assert.equal(Array.isArray(candidate.warnings), true);
+
+  const sourceRef = candidate.source_ref;
+  assert.equal(typeof sourceRef.pdf_page_index, "number");
+  assert.equal(
+    sourceRef.book_page_label === null || typeof sourceRef.book_page_label === "string",
+    true,
+  );
+  assert.equal(typeof sourceRef.side, "string");
+  assert.equal(typeof sourceRef.block_start_index, "number");
+  assert.equal(sourceRef.block_start_bbox === null || Array.isArray(sourceRef.block_start_bbox), true);
+  assert.equal(typeof sourceRef.block_end_pdf_page_index, "number");
+  assert.equal(typeof sourceRef.block_end_index, "number");
+  assert.equal(sourceRef.block_end_bbox === null || Array.isArray(sourceRef.block_end_bbox), true);
+  assert.equal(sourceRef.section_title === null || typeof sourceRef.section_title === "string", true);
+  assert.equal(sourceRef.crop_image_path === null || typeof sourceRef.crop_image_path === "string", true);
 }
 
 console.log("mineru json candidate mapper core tests passed");

@@ -56,11 +56,13 @@ export function extractPageBlocks(mineruJson) {
   const pages = Array.isArray(mineruJson?.pdf_info) ? mineruJson.pdf_info : [];
   return pages.flatMap((page, pageIndex) => {
     const blocks = Array.isArray(page?.para_blocks) ? page.para_blocks : [];
+    const pdfPageIndex =
+      Number.isInteger(page?.page_idx) && page.page_idx >= 0 ? page.page_idx + 1 : pageIndex + 1;
     return blocks.map((block, localIndex) => {
       const blockIndex =
         Number.isInteger(block?.index) && block.index > 0 ? block.index : localIndex + 1;
       return {
-        pdfPageIndex: pageIndex + 1,
+        pdfPageIndex,
         blockIndex,
         type: typeof block?.type === "string" ? block.type : "unknown",
         bbox: Array.isArray(block?.bbox) ? block.bbox : null,
@@ -73,7 +75,7 @@ export function extractPageBlocks(mineruJson) {
 
 export function buildCandidateQuestions({
   mineruJson,
-  sourceFile = "source_file_unknown",
+  sourceFile = null,
   sourceFileSha256 = null,
   mineruJsonFile = null,
   mineruJsonSha256 = null,
@@ -83,6 +85,11 @@ export function buildCandidateQuestions({
   const pageBlocks = extractPageBlocks(mineruJson);
   const candidates = [];
   const warnings = [...inputWarnings];
+  const hasSourceFile = typeof sourceFile === "string" && sourceFile.length > 0;
+  const resolvedSourceFile = hasSourceFile ? sourceFile : mineruJsonFile ?? "source_file_unknown";
+  if (!hasSourceFile) {
+    warnings.push("source_file_unknown");
+  }
   const ignoredBlockCounts = {};
   let currentSectionTitle = null;
   let currentCandidate = null;
@@ -93,6 +100,10 @@ export function buildCandidateQuestions({
     }
 
     if (isSectionTitleBlock(block)) {
+      if (currentCandidate) {
+        candidates.push(finalizeCandidate(currentCandidate));
+        currentCandidate = null;
+      }
       currentSectionTitle = block.text;
       continue;
     }
@@ -155,7 +166,7 @@ export function buildCandidateQuestions({
   }
 
   return {
-    source_file: sourceFile,
+    source_file: resolvedSourceFile,
     source_file_sha256: sourceFileSha256,
     mineru_json_file: mineruJsonFile,
     mineru_json_sha256: mineruJsonSha256,
