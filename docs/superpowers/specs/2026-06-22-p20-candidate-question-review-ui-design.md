@@ -222,7 +222,7 @@ browser index.html
 - 输入 JSON 非法：CLI exit 1，提示 `failed to parse candidate questions JSON`。
 - 输入 schema 不符合最小契约：CLI exit 1，列出缺失字段。
 - candidates 为空：允许生成页面，但页面展示空状态，并在 manifest 记录 warning。
-- KaTeX 渲染失败：页面保留原始 `$...$` 文本，并给该候选题附加 `math_render_warning`。
+- KaTeX 渲染失败：页面保留原始 `$...$` 文本，并给该候选题附加 `math_render_failed`。
 - KaTeX CSS 读取失败：CLI exit 1，提示 `failed to read KaTeX CSS`，避免生成“看似渲染但实际无样式”的页面。
 - 剪贴板不可用：页面展示 fallback 文本框，不让复制按钮静默失败。
 - 嵌入页面的候选题 JSON 必须转义 `</script>`、`<`、`>`、`&`、U+2028、U+2029，避免脚本注入。

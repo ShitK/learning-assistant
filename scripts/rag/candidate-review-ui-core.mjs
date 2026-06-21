@@ -111,13 +111,20 @@ export function buildReviewAppData({
 }
 
 export function buildReviewManifest(appData) {
+  const extractionWarnings = [
+    ...new Set([
+      ...appData.extraction.warnings,
+      ...(appData.candidates.length === 0 ? ["empty_candidates"] : []),
+    ]),
+  ];
+
   return {
     app_version: appData.app_version,
     candidate_source_file: appData.candidate_source_file,
     candidate_source_sha256: appData.candidate_source_sha256,
     generated_at: appData.generated_at,
     candidate_count: appData.candidates.length,
-    extraction_warnings: appData.extraction.warnings,
+    extraction_warnings: extractionWarnings,
   };
 }
 

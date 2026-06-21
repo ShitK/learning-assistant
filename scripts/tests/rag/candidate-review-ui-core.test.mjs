@@ -283,7 +283,11 @@ const extraction = {
 
 {
   const appData = buildReviewAppData({
-    extraction: { ...extraction, candidates: [] },
+    extraction: {
+      ...extraction,
+      candidates: [],
+      warnings: ["question_number_restarted:demo"],
+    },
     candidateSourceFile: "/tmp/candidate_questions.json",
     candidateSourceSha256: "abc123456789",
     generatedAt: "2026-06-22T00:00:00.000Z",
@@ -302,6 +306,21 @@ const extraction = {
   );
   assert.equal(seed.approved_count, 0);
   assert.deepEqual(seed.items, []);
+  assert.deepEqual(buildReviewManifest(appData).extraction_warnings, [
+    "question_number_restarted:demo",
+    "empty_candidates",
+  ]);
+
+  const duplicateWarningAppData = {
+    ...appData,
+    extraction: {
+      ...appData.extraction,
+      warnings: ["empty_candidates"],
+    },
+  };
+  assert.deepEqual(buildReviewManifest(duplicateWarningAppData).extraction_warnings, [
+    "empty_candidates",
+  ]);
 }
 
 {
