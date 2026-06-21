@@ -111,6 +111,7 @@ assert.equal(
   assert.equal(extraction.page_count, 8);
   assert.equal(extraction.candidates.length, 3);
   assert.equal(extraction.warnings.includes("ocr_tool_unavailable"), true);
+  assertCandidateQuestionExtractionSchema(extraction);
 
   const report = renderExtractionReport(extraction);
   assert.equal(report.includes("# P2.0 导数扫描 PDF OCR 入库报告"), true);
@@ -120,3 +121,39 @@ assert.equal(
 }
 
 console.log("derivative pdf ocr core tests passed");
+
+function assertCandidateQuestionExtractionSchema(extraction) {
+  assert.equal(typeof extraction.source_file, "string");
+  assert.equal(typeof extraction.source_file_sha256, "string");
+  assert.equal(typeof extraction.extracted_at, "string");
+  assert.equal(typeof extraction.page_count, "number");
+  assert.equal(Array.isArray(extraction.candidates), true);
+  assert.equal(Array.isArray(extraction.warnings), true);
+
+  for (const candidate of extraction.candidates) {
+    assert.equal(typeof candidate.id, "string");
+    assert.equal(typeof candidate.source_ref.pdf_page_index, "number");
+    assert.ok(
+      candidate.source_ref.book_page_label === null ||
+        typeof candidate.source_ref.book_page_label === "string",
+    );
+    assert.ok(["left", "right", "full"].includes(candidate.source_ref.side));
+    assert.ok(
+      candidate.source_ref.crop_image_path === null ||
+        typeof candidate.source_ref.crop_image_path === "string",
+    );
+    assert.ok(
+      candidate.question_number === null ||
+        typeof candidate.question_number === "string",
+    );
+    assert.equal(typeof candidate.raw_ocr_text, "string");
+    assert.equal(typeof candidate.normalized_text, "string");
+    assert.equal(candidate.answer_or_solution_candidate, null);
+    assert.ok(["high", "medium", "low"].includes(candidate.extraction_confidence));
+    assert.equal(Array.isArray(candidate.warnings), true);
+    assert.equal(
+      candidate.warnings.every((warning) => typeof warning === "string"),
+      true,
+    );
+  }
+}

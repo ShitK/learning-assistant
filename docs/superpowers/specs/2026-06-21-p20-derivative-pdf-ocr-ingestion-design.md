@@ -176,7 +176,7 @@ left = 左半部分
 right = 右半部分
 ```
 
-当前实现计划优先使用 macOS 自带 `sips` 做几何裁剪；`sips` 是 macOS 专有工具。其他平台或 `sips` 不可用时，脚本必须 fallback 为整张扫描页，并在 JSON/report 中记录 `page_slice_fallback_full_page`、`sips_available=false` 或等价 warning，避免误以为左右切分已完成。
+实现使用 Python Pillow 读取 PNG 尺寸并裁剪左右半页，避免把核心切分路径绑定到 macOS `sips`。如果 `python3` 或 Pillow 不可用，脚本必须 fallback 为整张扫描页，并在 JSON/report 中记录 `page_slice_fallback_full_page`、`python_pillow_crop_available=false` 或等价 warning，避免误以为左右切分已完成。`sips_available` 只作为本机环境信息和人工尺寸检查参考，不决定主切分路径。
 
 如果边缘栏、装订线或页眉干扰 OCR，再加入固定 margin crop。不要在 Task 0 引入复杂版面分析。
 
@@ -269,3 +269,5 @@ P2.1: 建立检索 eval，再评估 pgvector
 Implementation will start with `scripts/rag/ocr-derivative-pdf.mjs` and pure helpers in `scripts/rag/derivative-pdf-ocr-core.mjs`. Generated outputs live under `artifacts/rag/derivative-pdf-spike/` and are ignored by Git.
 
 The first implementation pass must support an OCR-unavailable environment by still producing a schema-valid `candidate_questions.json` and `extraction_report.md` with `ocr_tool_unavailable` warnings. Real OCR quality evaluation can happen after a local OCR engine such as `tesseract` plus `chi_sim` Chinese trained data is installed or another OCR path is explicitly chosen.
+
+After implementation review, the CLI uses `CODEX_POPPLER_BIN` as an explicit poppler override before the local bundled fallback, uses Pillow for PNG dimensions and left/right cropping, validates local-only CLI inputs, and includes a fake-poppler CLI regression test for OCR-unavailable output generation.

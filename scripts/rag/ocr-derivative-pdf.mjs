@@ -2,7 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,11 +12,16 @@ import {
 } from "./derivative-pdf-ocr-core.mjs";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const DEFAULT_POPPLER_BIN = join(process.env.CODEX_POPPLER_BIN ?? "");
+const DEFAULT_POPPLER_BIN = process.env.CODEX_POPPLER_BIN
+  ? resolve(process.env.CODEX_POPPLER_BIN)
+  : null;
 const BUNDLED_POPPLER_BIN =
   "/Users/kk/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/poppler/poppler/bin";
 const DEFAULT_DPI = 180;
 const TESSERACT_LANGUAGE = "chi_sim+eng";
+const COMMAND_TIMEOUT_MS = 60_000;
+
+class CliUsageError extends Error {}
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -32,6 +37,7 @@ async function main() {
   }
 
   const inputPath = resolve(args.input);
+  await assertFileExists(inputPath);
   const outDir = resolve(args.out ?? "artifacts/rag/derivative-pdf-spike");
   const pagesDir = join(outDir, "pages");
   const slicesDir = join(outDir, "page-slices");
@@ -126,20 +132,53 @@ function parseArgs(argv) {
     if (arg === "--help" || arg === "-h") {
       args.help = true;
     } else if (arg === "--input") {
-      args.input = argv[++index];
+      args.input = readOptionValue(argv, index, arg);
+      index += 1;
     } else if (arg === "--out") {
-      args.out = argv[++index];
+      args.out = readOptionValue(argv, index, arg);
+      index += 1;
     } else if (arg === "--max-pages") {
-      args.maxPages = Number(argv[++index]);
+      args.maxPages = parsePositiveInteger(
+        readOptionValue(argv, index, arg),
+        "--max-pages",
+      );
+      index += 1;
     } else if (arg === "--dpi") {
-      args.dpi = Number(argv[++index]);
+      args.dpi = parsePositiveInteger(readOptionValue(argv, index, arg), "--dpi");
+      index += 1;
     } else if (arg === "--ocr-command") {
-      args.ocrCommand = argv[++index];
+      args.ocrCommand = parseOcrCommand(readOptionValue(argv, index, arg));
+      index += 1;
     } else {
-      throw new Error(`Unknown argument: ${arg}`);
+      throw new CliUsageError(`Unknown argument: ${arg}`);
     }
   }
   return args;
+}
+
+function readOptionValue(argv, index, optionName) {
+  const value = argv[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new CliUsageError(`${optionName} requires a value`);
+  }
+  return value;
+}
+
+function parsePositiveInteger(value, optionName) {
+  const parsedValue = Number(value);
+  if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+    throw new CliUsageError(`${optionName} must be an integer >= 1`);
+  }
+  return parsedValue;
+}
+
+function parseOcrCommand(value) {
+  if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+    throw new CliUsageError(
+      "unsupported --ocr-command; use a command name such as tesseract",
+    );
+  }
+  return value;
 }
 
 function printHelp() {
@@ -155,6 +194,14 @@ async function sha256File(filePath) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+async function assertFileExists(filePath) {
+  try {
+    await access(filePath);
+  } catch {
+    throw new CliUsageError(`input file not found: ${filePath}`);
+  }
+}
+
 function readPdfInfo(inputPath, warnings) {
   const pdfinfo = findBinary("pdfinfo");
   if (!pdfinfo) {
@@ -162,7 +209,10 @@ function readPdfInfo(inputPath, warnings) {
     return { pages: 0 };
   }
 
-  const result = spawnSync(pdfinfo, [inputPath], { encoding: "utf8" });
+  const result = spawnSync(pdfinfo, [inputPath], {
+    encoding: "utf8",
+    timeout: COMMAND_TIMEOUT_MS,
+  });
   if (result.status !== 0) {
     warnings.push("pdfinfo_failed");
     return { pages: 0 };
@@ -195,7 +245,7 @@ function renderPages({ inputPath, pagesDir, maxPages, dpi, warnings }) {
       inputPath,
       outputPrefix,
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", timeout: COMMAND_TIMEOUT_MS },
   );
 
   if (result.status !== 0) {
@@ -269,24 +319,35 @@ function splitRenderedPage({ renderedPage, slicesDir, warnings }) {
 
 function readPngDimensions(imagePath) {
   const result = spawnSync(
-    "sips",
-    ["-g", "pixelWidth", "-g", "pixelHeight", imagePath],
-    { encoding: "utf8" },
+    "python3",
+    [
+      "-c",
+      [
+        "from PIL import Image",
+        "import json, sys",
+        "image = Image.open(sys.argv[1])",
+        "print(json.dumps({'width': image.size[0], 'height': image.size[1]}))",
+      ].join("; "),
+      imagePath,
+    ],
+    { encoding: "utf8", timeout: COMMAND_TIMEOUT_MS },
   );
   if (result.status !== 0) {
     return null;
   }
 
-  const widthMatch = result.stdout.match(/pixelWidth:\s+(\d+)/);
-  const heightMatch = result.stdout.match(/pixelHeight:\s+(\d+)/);
-  if (!widthMatch || !heightMatch) {
+  try {
+    const dimensions = JSON.parse(result.stdout);
+    if (
+      !Number.isInteger(dimensions.width) ||
+      !Number.isInteger(dimensions.height)
+    ) {
+      return null;
+    }
+    return dimensions;
+  } catch {
     return null;
   }
-
-  return {
-    width: Number(widthMatch[1]),
-    height: Number(heightMatch[1]),
-  };
 }
 
 function cropWithPillow({ inputPath, outputPath, cropBox }) {
@@ -308,7 +369,7 @@ function cropWithPillow({ inputPath, outputPath, cropBox }) {
       String(cropBox.right),
       String(cropBox.bottom),
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", timeout: COMMAND_TIMEOUT_MS },
   );
 
   return result.status === 0;
@@ -321,6 +382,7 @@ function isPillowCropAvailable() {
 
   const result = spawnSync("python3", ["-c", "from PIL import Image"], {
     encoding: "utf8",
+    timeout: COMMAND_TIMEOUT_MS,
   });
   return result.status === 0;
 }
@@ -334,9 +396,14 @@ function runOcr({ imagePath, ocrCommand }) {
     };
   }
 
-  const result = spawnSync(ocrCommand, [imagePath, "stdout", "-l", TESSERACT_LANGUAGE], {
-    encoding: "utf8",
-  });
+  const result = spawnSync(
+    ocrCommand,
+    [imagePath, "stdout", "-l", TESSERACT_LANGUAGE],
+    {
+      encoding: "utf8",
+      timeout: COMMAND_TIMEOUT_MS,
+    },
+  );
 
   if (result.status !== 0) {
     if (/Failed loading language|Error opening data file/i.test(result.stderr)) {
@@ -361,18 +428,21 @@ function runOcr({ imagePath, ocrCommand }) {
 }
 
 function findBinary(name) {
+  if (DEFAULT_POPPLER_BIN && findExecutableInPath(join(DEFAULT_POPPLER_BIN, name))) {
+    return join(DEFAULT_POPPLER_BIN, name);
+  }
   const bundled = join(BUNDLED_POPPLER_BIN, name);
   if (findExecutableInPath(bundled)) {
     return bundled;
-  }
-  if (DEFAULT_POPPLER_BIN && findExecutableInPath(join(DEFAULT_POPPLER_BIN, name))) {
-    return join(DEFAULT_POPPLER_BIN, name);
   }
   return findExecutableInPath(name) ? name : null;
 }
 
 function findExecutableInPath(command) {
-  const result = spawnSync("which", [command], { encoding: "utf8" });
+  const result = spawnSync("which", [command], {
+    encoding: "utf8",
+    timeout: COMMAND_TIMEOUT_MS,
+  });
   return result.status === 0;
 }
 
@@ -410,6 +480,12 @@ function renderCliEnvironmentReport({
 }
 
 main().catch((error) => {
+  if (error instanceof CliUsageError) {
+    console.error(`Error: ${error.message}`);
+    process.exitCode = 2;
+    return;
+  }
+
   console.error(error);
   process.exitCode = 1;
 });

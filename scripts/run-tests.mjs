@@ -8,6 +8,7 @@ const suites = {
   default: [
     "scripts/tests/architecture/architecture-boundaries.test.mjs",
     "scripts/tests/rag/derivative-pdf-ocr-core.test.mjs",
+    "scripts/tests/rag/ocr-derivative-pdf-cli.test.mjs",
     "scripts/tests/image-diagnosis/vision-extraction-parser.test.mjs",
     "scripts/tests/providers/anthropic-compatible-provider.test.mjs",
     "scripts/tests/providers/analysis-provider.test.mjs",

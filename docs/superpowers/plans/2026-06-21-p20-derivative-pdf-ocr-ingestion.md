@@ -1001,6 +1001,8 @@ Implementation will start with `scripts/rag/ocr-derivative-pdf.mjs` and pure hel
 The first implementation pass must support an OCR-unavailable environment by still producing a schema-valid `candidate_questions.json` and `extraction_report.md` with `ocr_tool_unavailable` warnings. Real OCR quality evaluation can happen after a local OCR engine such as `tesseract` plus `chi_sim` Chinese trained data is installed or another OCR path is explicitly chosen.
 ```
 
+Implementation review follow-up: the final CLI uses Python Pillow, not `sips`, for PNG dimensions and left/right cropping. `CODEX_POPPLER_BIN` is the explicit poppler override before the local bundled fallback. `sips_available` remains only an environment-report field for local/manual checks.
+
 - [ ] **Step 4: Verify no generated artifacts are tracked**
 
 Run:
