@@ -58,17 +58,10 @@ export function extractPageBlocks(mineruJson) {
     const blocks = Array.isArray(page?.para_blocks) ? page.para_blocks : [];
     const pdfPageIndex =
       Number.isInteger(page?.page_idx) && page.page_idx >= 0 ? page.page_idx + 1 : pageIndex + 1;
-    return blocks.map((block, localIndex) => {
+    return blocks.flatMap((block, localIndex) => {
       const blockIndex =
         Number.isInteger(block?.index) && block.index > 0 ? block.index : localIndex + 1;
-      return {
-        pdfPageIndex,
-        blockIndex,
-        type: typeof block?.type === "string" ? block.type : "unknown",
-        bbox: Array.isArray(block?.bbox) ? block.bbox : null,
-        text: normalizeCandidateText(extractMineruBlockText(block)),
-        hasNestedBlocks: Array.isArray(block?.blocks) && block.blocks.length > 0,
-      };
+      return flattenMineruBlock({ block, pdfPageIndex, blockIndex, parentHasNestedBlocks: false });
     });
   });
 }
@@ -238,6 +231,32 @@ export function renderCandidateMapperReport(extraction) {
 
 function isSectionTitleBlock(block) {
   return block.type === "title";
+}
+
+function flattenMineruBlock({ block, pdfPageIndex, blockIndex, parentHasNestedBlocks }) {
+  const childBlocks = Array.isArray(block?.blocks) ? block.blocks : [];
+  const hasChildBlocks = childBlocks.length > 0;
+  if (hasChildBlocks) {
+    return childBlocks.flatMap((childBlock) =>
+      flattenMineruBlock({
+        block: childBlock,
+        pdfPageIndex,
+        blockIndex,
+        parentHasNestedBlocks: true,
+      }),
+    );
+  }
+
+  return [
+    {
+      pdfPageIndex,
+      blockIndex,
+      type: typeof block?.type === "string" ? block.type : "unknown",
+      bbox: Array.isArray(block?.bbox) ? block.bbox : null,
+      text: normalizeCandidateText(extractMineruBlockText(block)),
+      hasNestedBlocks: parentHasNestedBlocks,
+    },
+  ];
 }
 
 function buildCandidateId(pdfPageIndex, blockIndex, questionNumber) {

@@ -138,11 +138,12 @@ assert.deepEqual(isQuestionStartBlock("12.34"), { ok: false });
 
 {
   const pageBlocks = extractPageBlocks(mineruFixture);
-  assert.equal(pageBlocks.length, 9);
+  assert.equal(pageBlocks.length, 10);
   assert.equal(pageBlocks[0].pdfPageIndex, 1);
   assert.equal(pageBlocks[0].blockIndex, 1);
   assert.equal(pageBlocks[0].text, "考点 1 导数的概念、几何意义与运算");
-  assert.equal(pageBlocks[5].text.includes("(2)求 $f(x)$ 的最大值."), true);
+  assert.equal(pageBlocks[5].text, "(1)求单调区间.");
+  assert.equal(pageBlocks[6].text, "(2)求 $f(x)$ 的最大值.");
 }
 
 {
@@ -192,6 +193,71 @@ assert.deepEqual(isQuestionStartBlock("12.34"), { ok: false });
   );
   assert.equal(extraction.candidates[2].normalized_text.includes("A. a ="), false);
   assert.equal(extraction.candidates[2].warnings.includes("missing_options_or_solution"), true);
+}
+
+{
+  const nestedQuestionStartsFixture = {
+    pdf_info: [
+      {
+        page_idx: 0,
+        para_blocks: [
+          {
+            type: "title",
+            index: 1,
+            lines: [{ spans: [{ type: "text", content: "考点 1 导数题组" }] }],
+          },
+          {
+            type: "list",
+            index: 2,
+            bbox: [10, 40, 500, 160],
+            blocks: [
+              {
+                type: "text",
+                index: 1,
+                bbox: [10, 40, 500, 80],
+                lines: [{ spans: [{ type: "text", content: "1.(测试一)求函数的导数 ()" }] }],
+              },
+              {
+                type: "text",
+                index: 2,
+                bbox: [10, 90, 500, 130],
+                lines: [{ spans: [{ type: "text", content: "A. 1" }] }],
+              },
+              {
+                type: "text",
+                index: 3,
+                bbox: [10, 140, 500, 180],
+                lines: [{ spans: [{ type: "text", content: "2.(测试二)求切线斜率 ()" }] }],
+              },
+              {
+                type: "text",
+                index: 4,
+                bbox: [10, 190, 500, 230],
+                lines: [{ spans: [{ type: "text", content: "A. 2" }] }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const extraction = buildCandidateQuestions({
+    mineruJson: nestedQuestionStartsFixture,
+    sourceFile: "/tmp/嵌套题组.pdf",
+    extractedAt: "2026-06-21T00:00:00.000Z",
+  });
+
+  assert.equal(extraction.candidates.length, 2);
+  assert.equal(extraction.candidates[0].question_number, "1");
+  assert.equal(extraction.candidates[1].question_number, "2");
+  assert.equal(extraction.candidates[0].normalized_text.includes("2.(测试二)"), false);
+  assert.equal(extraction.candidates[0].source_ref.block_start_index, 2);
+  assert.equal(extraction.candidates[0].source_ref.block_end_index, 2);
+  assert.equal(extraction.candidates[1].source_ref.block_start_index, 2);
+  assert.equal(extraction.candidates[1].source_ref.block_end_index, 2);
+  assert.equal(extraction.candidates[0].warnings.includes("contains_nested_list_block"), true);
+  assert.equal(extraction.candidates[1].warnings.includes("contains_nested_list_block"), true);
 }
 
 {

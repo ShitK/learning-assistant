@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -209,10 +210,10 @@ This local-only smoke calls MinerU precise parsing and writes ignored artifacts.
 MINERU_API_TOKEN must be configured in .env.local or process env.`);
 }
 
-function loadDotEnvLocal() {
+export function loadDotEnvLocal() {
   const envPath = resolve(".env.local");
   try {
-    const text = readFileSyncUtf8(envPath);
+    const text = readFileSync(envPath, "utf8");
     for (const line of text.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) {
@@ -223,21 +224,15 @@ function loadDotEnvLocal() {
         continue;
       }
       const key = trimmed.slice(0, separatorIndex);
-      const value = trimmed.slice(separatorIndex + 1);
-      if (!process.env[key]) {
-        process.env[key] = value;
+      if (key !== "MINERU_API_TOKEN" || process.env.MINERU_API_TOKEN) {
+        continue;
       }
+      const value = trimmed.slice(separatorIndex + 1);
+      process.env.MINERU_API_TOKEN = value;
     }
   } catch {
     // .env.local is optional; readMineruToken reports the actionable error.
   }
-}
-
-function readFileSyncUtf8(filePath) {
-  return spawnSync("cat", [filePath], {
-    encoding: "utf8",
-    timeout: COMMAND_TIMEOUT_MS,
-  }).stdout;
 }
 
 async function assertFileExists(filePath) {
@@ -339,7 +334,7 @@ export function extractZip(zipPath, outputDir, warnings) {
 }
 
 function listZipEntries(zipPath, warnings) {
-  const result = spawnSync("unzip", ["-Z", "-1", zipPath], {
+  const result = spawnSync("unzip", ["-Z", "-l", zipPath], {
     encoding: "utf8",
     timeout: COMMAND_TIMEOUT_MS,
   });
@@ -348,21 +343,37 @@ function listZipEntries(zipPath, warnings) {
     return null;
   }
 
-  const stdout = result.stdout.replace(/\r?\n$/, "");
-  return stdout.length > 0 ? stdout.split(/\r?\n/) : [];
+  return parseZipListing(result.stdout);
 }
 
-function isUnsafeZipEntry(entry) {
-  if (entry.length === 0) {
+export function parseZipListing(listingText) {
+  return String(listingText ?? "")
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = line.match(
+        /^\s*([dl-][rwxstST-]{9})\s+\S+\s+\S+\s+\d+\s+\S+\s+(?:\d+\s+)?\S+\s+\S+\s+\S+\s+(.+?)\s*$/,
+      );
+      if (!match) {
+        return null;
+      }
+      return {
+        name: match[2],
+        isSymlink: match[1].startsWith("l"),
+      };
+    })
+    .filter(Boolean);
+}
+
+export function isUnsafeZipEntry(entry) {
+  const entryName = typeof entry === "string" ? entry : entry?.name;
+  if (typeof entryName !== "string" || entryName.length === 0) {
     return true;
   }
 
-  const normalizedEntry = entry.replaceAll("\\", "/");
-  if (normalizedEntry.endsWith("/")) {
-    return false;
-  }
+  const normalizedEntry = entryName.replaceAll("\\", "/");
 
   return (
+    entry?.isSymlink === true ||
     normalizedEntry.startsWith("/") ||
     /^[A-Za-z]:\//.test(normalizedEntry) ||
     normalizedEntry.split("/").includes("..")

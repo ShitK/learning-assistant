@@ -276,6 +276,8 @@ After implementation review, the CLI uses `CODEX_POPPLER_BIN` as an explicit pop
 
 MinerU 精准解析输出确认可以作为 P2.0 候选题来源，但仍只进入未审核候选层。当前 mapper 读取本地 MinerU JSON，不调用 MinerU，也不读取 `MINERU_API_TOKEN`。它递归解析 `pdf_info[].para_blocks`、`lines.spans` 和嵌套 `blocks`，将 `inline_equation` 保留为 LaTeX 片段，并按保守题号边界生成 `candidate_questions.json`。
 
+本分支还包含一个本地 token-gated MinerU precise smoke CLI，用于在用户明确提供 PDF 和 `MINERU_API_TOKEN` 时上传 PDF、轮询 MinerU，并下载 provider artifact 到 ignored `artifacts/` 目录。该 CLI 只服务本地验证；它与 JSON mapper 分离，mapper 不读取 token、不上传文件，也不调用 MinerU。
+
 MinerU mapper 沿用候选题 schema，并增加以下追溯字段：
 
 - 顶层 `extractor: "mineru-json-candidate-mapper"`。
