@@ -272,8 +272,34 @@ The first implementation pass must support an OCR-unavailable environment by sti
 
 After implementation review, the CLI uses `CODEX_POPPLER_BIN` as an explicit poppler override before the local bundled fallback, uses Pillow for PNG dimensions and left/right cropping, validates local-only CLI inputs, and includes a fake-poppler CLI regression test for OCR-unavailable output generation.
 
-## 14. MinerU Precise Parsing Smoke Note
+## 14. MinerU JSON 到候选题映射
 
-The next provider validation step uses MinerU precise parsing as an external document parser smoke, gated behind local `MINERU_API_TOKEN`. The smoke script writes all provider results under `artifacts/rag/mineru-derivative-smoke/`, which stays ignored by Git.
+MinerU 精准解析输出确认可以作为 P2.0 候选题来源，但仍只进入未审核候选层。当前 mapper 读取本地 MinerU JSON，不调用 MinerU，也不读取 `MINERU_API_TOKEN`。它递归解析 `pdf_info[].para_blocks`、`lines.spans` 和嵌套 `blocks`，将 `inline_equation` 保留为 LaTeX 片段，并按保守题号边界生成 `candidate_questions.json`。
 
-This step only validates source quality. It does not write `practice_corpus`, does not update RAG retrieval, does not touch `memory_events` / `student_profiles`, and does not expose MinerU results to students.
+MinerU mapper 沿用候选题 schema，并增加以下追溯字段：
+
+- 顶层 `extractor: "mineru-json-candidate-mapper"`。
+- 顶层 `mineru_json_file` 和 `mineru_json_sha256`，记录实际 mapper 输入。
+- 顶层 `source_file` 优先记录原始 PDF 路径；若原始 PDF 未知，则记录 MinerU JSON 路径并给出 `source_file_unknown` warning。
+- 顶层 `source_file_sha256` 记录原始 PDF SHA256；若传入的原始 PDF 本地不可读，则置为空字符串并给出 `source_file_sha256_unavailable` warning。
+- `source_ref.side` 固定为 `"full"`，`book_page_label` 为 `null`。
+- `source_ref.block_start_index`、`block_start_bbox`、`block_end_pdf_page_index`、`block_end_index`、`block_end_bbox` 和 `section_title` 用于人工审核回看。
+
+真实本地 smoke 摘要：
+
+- MinerU JSON 覆盖 8 个 PDF 页面。
+- mapper 产出 72 道候选题。
+- 全局 warnings 主要来自章节内题号重启检查（`question_number_restarted`）和题号前被忽略的文本块（`ignored_text_blocks`），例如标题、页眉或目录性文本。
+- 为避免提交或传播未经审核题文，文档只记录数量和 warning 类型，不粘贴完整题目内容。
+
+本阶段仍不做以下事情：
+
+- 不把候选题直接写入 `practice_corpus`。
+- 不接 pgvector、embedding 或前端检索。
+- 不让 OCR/RAG 结果影响 `memory_events` 或 `student_profiles`。
+- 不改变 `sample_diagnosis`、前端、API、数据库、evidence API 或现有诊断链路。
+- 不提交原始 PDF、MinerU 原始输出或生成的候选题 artifact。
+
+进入下一阶段前，需要人工抽查题号连续性、公式准确性、选项完整性、跨页题和图像题。只有人工校对过的题目才能提升为可检索的 `practice_corpus`。
+
+`interview/mathtrace-project-narrative.md` 本任务不更新。原因是当前 mapper artifact 仍待用户人工审核，等候选题质量被确认后，再另开任务把 P2.0 候选题入库前置验证写入面试叙事。
