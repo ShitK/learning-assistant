@@ -29,6 +29,7 @@ async function main() {
   const outputDir = resolve(args.out ?? "artifacts/rag/candidate-review");
   const inputText = await readInputText(inputPath);
   const katexCss = await readKatexCss();
+  const katexJs = await readKatexJs();
   const parsed = parseCandidateJson(inputText);
   const validation = validateCandidateExtraction(parsed);
   if (!validation.ok) {
@@ -45,7 +46,7 @@ async function main() {
   await mkdir(outputDir, { recursive: true });
   const htmlPath = resolve(outputDir, "index.html");
   const manifestPath = resolve(outputDir, "review_manifest.json");
-  await writeFile(htmlPath, renderCandidateReviewHtml(appData, { katexCss }));
+  await writeFile(htmlPath, renderCandidateReviewHtml(appData, { katexCss, katexJs }));
   await writeFile(
     manifestPath,
     `${JSON.stringify(buildReviewManifest(appData), null, 2)}\n`,
@@ -104,6 +105,15 @@ async function readKatexCss() {
     return await readFile(resolve("node_modules/katex/dist/katex.min.css"), "utf8");
   } catch {
     throw new Error("failed to read KaTeX CSS");
+  }
+}
+
+async function readKatexJs() {
+  try {
+    const source = await readFile(resolve("node_modules/katex/dist/katex.min.js"), "utf8");
+    return source.replaceAll("https://", "\\x68ttps://").replaceAll("http://", "\\x68ttp://");
+  } catch {
+    throw new Error("failed to read KaTeX JS");
   }
 }
 

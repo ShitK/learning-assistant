@@ -295,11 +295,23 @@ const extraction = {
   });
   const html = renderCandidateReviewHtml(appData, {
     katexCss: ".katex{font:normal}",
+    katexJs:
+      "window.katex={renderToString:function(){return '<span class=\\\"katex\\\">math</span>';}};",
   });
 
   assert.equal(html.includes("<!doctype html>"), true);
   assert.equal(html.includes("MathTrace Candidate Review"), true);
   assert.equal(html.includes(".katex{font:normal}"), true);
+  assert.equal(html.includes('id="corrected-text"'), true);
+  assert.equal(html.includes('id="corrected-preview"'), true);
+  assert.equal(html.includes("修正题目内容"), true);
+  assert.equal(html.includes("修正后预览"), true);
+  assert.equal(html.includes("原始识别结果"), true);
+  assert.equal(html.includes("window.katex={renderToString"), true);
+  assert.equal(html.includes('id="katex-runtime"'), true);
+  assert.equal(html.includes('id="candidate-review-data"'), true);
+  assert.equal(html.includes('id="candidate-review-app"'), true);
+  assert.equal(html.includes("function renderMathTextForPreview"), true);
   assert.equal(html.includes("window.__CANDIDATE_REVIEW_DATA__"), true);
   assert.equal(html.includes("localStorage"), true);
   assert.equal(html.includes('id="toggle-topbar"'), true);
@@ -315,6 +327,21 @@ const extraction = {
 }
 
 {
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const html = renderCandidateReviewHtml(appData, {
+    katexCss: ".katex{}",
+    katexJs: "window.x='</script><script>alert(9)</script>';",
+  });
+  assert.equal(html.includes("</script><script>alert(9)</script>"), false);
+  assert.equal(html.includes("<\\/script><script>alert(9)<\\/script>"), true);
+}
+
+{
   const hostileExtraction = structuredClone(extraction);
   hostileExtraction.candidates[0].id = "</script><script>alert(1)</script>";
   hostileExtraction.candidates[0].source_ref.section_title =
@@ -327,7 +354,10 @@ const extraction = {
     candidateSourceSha256: "abc123456789",
     generatedAt: "2026-06-22T00:00:00.000Z",
   });
-  const html = renderCandidateReviewHtml(appData, { katexCss: ".katex{}" });
+  const html = renderCandidateReviewHtml(appData, {
+    katexCss: ".katex{}",
+    katexJs: "window.katex={renderToString:function(){return '';}};",
+  });
   assert.equal(html.includes("</script><script>alert"), false);
   assert.equal(html.includes("\\u003c/script\\u003e"), true);
 }
@@ -343,7 +373,10 @@ const extraction = {
     candidateSourceSha256: "abc123456789",
     generatedAt: "2026-06-22T00:00:00.000Z",
   });
-  const html = renderCandidateReviewHtml(appData, { katexCss: ".katex{}" });
+  const html = renderCandidateReviewHtml(appData, {
+    katexCss: ".katex{}",
+    katexJs: "window.katex={renderToString:function(){return '';}};",
+  });
   const listHtml = renderBrowserListHtml(html);
 
   assert.equal(listHtml.includes('data-id="candidate" onclick="alert(1)"'), false);
@@ -371,7 +404,10 @@ const extraction = {
   });
   assert.equal(appData.candidates.length, 0);
   assert.equal(
-    renderCandidateReviewHtml(appData, { katexCss: ".katex{}" }).includes(
+    renderCandidateReviewHtml(appData, {
+      katexCss: ".katex{}",
+      katexJs: "window.katex={renderToString:function(){return '';}};",
+    }).includes(
       "没有候选题",
     ),
     true,
@@ -430,13 +466,124 @@ const extraction = {
   assert.equal(appData.candidates[0].warnings.includes("math_render_failed"), true);
 }
 
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const editedText = "1. 修正后 $f(x)$\nA. 1\nB. 2\nC. 3";
+  const result = runBrowserCorrectionScenario(appData, editedText);
+  assert.equal(result.savedState["candidate-1"].corrected_text, editedText);
+  assert.equal(result.previewHtml.includes("katex"), true);
+}
+
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const result = runBrowserCorrectionScenario(
+    appData,
+    "1. 修正 <script>alert(1)</script> $x$",
+  );
+  assert.equal(result.previewHtml.includes("<script>alert(1)</script>"), false);
+  assert.equal(
+    result.previewHtml.includes("&lt;script&gt;alert(1)&lt;/script&gt;"),
+    true,
+  );
+}
+
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const editedText = "1. 修正后 $f(x)$\nA. 1\nB. 2\nC. 3";
+  const result = runBrowserCorrectionScenario(appData, editedText);
+  const nodeSeed = buildReviewedPracticeSeed({
+    appData,
+    reviewState: result.savedState,
+    exportedAt: result.browserSeed.exported_at,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(result.browserSeed.items[0])), nodeSeed.items[0]);
+}
+
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const result = runBrowserCorrectionScenario(appData, "   ");
+  assert.equal(
+    result.browserSeed.items[0].question_text,
+    appData.candidates[0].normalized_text,
+  );
+  assert.equal(result.browserSeed.items[0].has_manual_correction, false);
+}
+
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const result = runBrowserCorrectionScenario(
+    appData,
+    "1. 已知 $f(x)$, 则()\nA. 1\nB. 2",
+    {
+      initialReviewState: {
+        "candidate-1": {
+          status: "approved",
+          note: "旧 state，无 corrected_text",
+          updated_at: "2026-06-22T00:00:00.000Z",
+        },
+      },
+    },
+  );
+  assert.equal(result.browserSeed.items[0].has_manual_correction, false);
+}
+
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const result = runBrowserCorrectionScenario(appData, "修正关键词 $x$", {
+    searchText: "修正关键词",
+  });
+  assert.equal(
+    result.savedState["candidate-1"].corrected_text.includes("修正关键词"),
+    true,
+  );
+  assert.equal(result.listHtml.includes("candidate-1"), true);
+}
+
 console.log("candidate review ui core tests passed");
 
-function renderBrowserListHtml(html) {
-  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(
-    (match) => match[1],
+function extractScriptById(html, scriptId) {
+  const pattern = new RegExp(
+    `<script id="${scriptId}">([\\s\\S]*?)<\\/script>`,
   );
-  assert.equal(scripts.length, 2);
+  const match = html.match(pattern);
+  assert.ok(match, `missing script ${scriptId}`);
+  return match[1];
+}
+
+function renderBrowserListHtml(html) {
+  const katexScript = extractScriptById(html, "katex-runtime");
+  const dataScript = extractScriptById(html, "candidate-review-data");
+  const appScript = extractScriptById(html, "candidate-review-app");
 
   const nodes = new Map();
   const document = {
@@ -449,6 +596,7 @@ function renderBrowserListHtml(html) {
         nodes.set(selector, {
           hidden: false,
           href: "",
+          id: selector.startsWith("#") ? selector.slice(1) : "",
           innerHTML: "",
           textContent: "",
           value: "",
@@ -483,6 +631,113 @@ function renderBrowserListHtml(html) {
     window: {},
   };
 
-  vm.runInNewContext(`${scripts[0]}\n${scripts[1]}`, context);
+  vm.runInNewContext(`${katexScript}\n${dataScript}\n${appScript}`, context);
   return nodes.get("#candidate-list").innerHTML;
+}
+
+function runBrowserCorrectionScenario(
+  appData,
+  editedText,
+  { initialReviewState = null, searchText = "" } = {},
+) {
+  const html = renderCandidateReviewHtml(appData, {
+    katexCss: ".katex{}",
+    katexJs:
+      'window.katex={renderToString:function(value){return \'<span class="katex">\' + value + "</span>";}};',
+  });
+  const katexScript = extractScriptById(html, "katex-runtime");
+  const dataScript = extractScriptById(html, "candidate-review-data");
+  const appScript = extractScriptById(html, "candidate-review-app");
+  const nodes = new Map();
+  const storage = new Map();
+  const document = {
+    addEventListener(type, handler) {
+      nodes.set(`listener:${type}`, handler);
+    },
+    querySelector(selector) {
+      if (!nodes.has(selector)) {
+        nodes.set(selector, {
+          dataset: {},
+          id: selector.startsWith("#") ? selector.slice(1) : "",
+          innerHTML: "",
+          textContent: "",
+          value: "",
+          hidden: false,
+          setAttribute(name, value) {
+            this[name] = value;
+          },
+          addEventListener() {},
+          click() {},
+          focus() {},
+          select() {},
+        });
+      }
+      return nodes.get(selector);
+    },
+  };
+  const context = {
+    Blob,
+    Date,
+    JSON,
+    String,
+    URL: {
+      createObjectURL() {
+        return "blob:review-seed";
+      },
+      revokeObjectURL() {},
+    },
+    clearTimeout() {},
+    document,
+    localStorage: {
+      getItem(key) {
+        return storage.get(key) ?? null;
+      },
+      setItem(key, value) {
+        storage.set(key, value);
+      },
+    },
+    navigator: {},
+    setTimeout(callback) {
+      callback();
+      return 1;
+    },
+    window: {},
+  };
+
+  if (initialReviewState) {
+    storage.set(appData.storage_key, JSON.stringify(initialReviewState));
+  }
+
+  vm.runInNewContext(`${katexScript}\n${dataScript}\n${appScript}`, context);
+  const textarea = document.querySelector("#corrected-text");
+  textarea.value = editedText;
+  nodes.get("listener:input")({
+    target: textarea,
+  });
+  if (searchText) {
+    const searchInput = document.querySelector("#search");
+    searchInput.value = searchText;
+    nodes.get("listener:input")({
+      target: searchInput,
+    });
+  }
+  nodes.get("listener:click")({
+    target: {
+      closest(selector) {
+        if (selector === "[data-status]") {
+          return { dataset: { status: "approved" } };
+        }
+        return null;
+      },
+    },
+  });
+
+  const savedState = JSON.parse(storage.get(appData.storage_key));
+  const browserSeed = context.window.__candidateReviewTestHooks__.buildSeed();
+  return {
+    browserSeed,
+    listHtml: nodes.get("#candidate-list").innerHTML,
+    savedState,
+    previewHtml: nodes.get("#corrected-preview").innerHTML,
+  };
 }
