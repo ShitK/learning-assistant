@@ -131,21 +131,27 @@ export function buildReviewManifest(appData) {
 export function buildReviewedPracticeSeed({ appData, reviewState, exportedAt }) {
   const approvedItems = appData.candidates
     .filter((candidate) => reviewState[candidate.id]?.status === "approved")
-    .map((candidate) => ({
-      id: candidate.id,
-      candidate_id: candidate.id,
-      review_status: "reviewed",
-      reviewer_note: reviewState[candidate.id]?.note ?? "",
-      question_text: candidate.normalized_text,
-      solution_outline: null,
-      mistake_causes: [],
-      knowledge_points: inferKnowledgePoints(candidate),
-      difficulty: null,
-      variant_level: null,
-      source_ref: candidate.source_ref,
-      original_extraction_confidence: candidate.extraction_confidence,
-      original_warnings: candidate.warnings,
-    }));
+    .map((candidate) => {
+      const reviewStateItem = reviewState[candidate.id];
+      const questionText = getCorrectedQuestionText(candidate, reviewStateItem);
+      return {
+        id: candidate.id,
+        candidate_id: candidate.id,
+        review_status: "reviewed",
+        reviewer_note: reviewStateItem?.note ?? "",
+        question_text: questionText,
+        original_question_text: candidate.normalized_text,
+        has_manual_correction: hasManualCorrection(candidate, questionText),
+        solution_outline: null,
+        mistake_causes: [],
+        knowledge_points: inferKnowledgePoints(candidate),
+        difficulty: null,
+        variant_level: null,
+        source_ref: candidate.source_ref,
+        original_extraction_confidence: candidate.extraction_confidence,
+        original_warnings: candidate.warnings,
+      };
+    });
 
   return {
     exported_at: exportedAt,
@@ -209,6 +215,21 @@ function inferKnowledgePoints(candidate) {
     points.push(candidate.section_title);
   }
   return [...new Set(points)];
+}
+
+function getCorrectedQuestionText(candidate, reviewStateItem) {
+  const correctedText =
+    typeof reviewStateItem?.corrected_text === "string"
+      ? reviewStateItem.corrected_text
+      : "";
+  if (!correctedText.trim()) {
+    return candidate.normalized_text;
+  }
+  return correctedText;
+}
+
+function hasManualCorrection(candidate, questionText) {
+  return questionText.trim() !== String(candidate.normalized_text ?? "").trim();
 }
 
 function escapeHtml(value) {

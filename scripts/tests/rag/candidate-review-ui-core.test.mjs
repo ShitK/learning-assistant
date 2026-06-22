@@ -187,15 +187,18 @@ const extraction = {
     candidateSourceSha256: "abc123456789",
     generatedAt: "2026-06-22T00:00:00.000Z",
   });
+  const correctedQuestionText = "1. 已知 $f(x)$, 则()\nA. 1\nB. 2\nC. 3";
   const reviewState = {
     "candidate-1": {
       status: "approved",
-      note: "公式和选项 OK",
+      note: "修正了 C 选项",
+      corrected_text: correctedQuestionText,
       updated_at: "2026-06-22T00:01:00.000Z",
     },
     "candidate-2": {
       status: "needs_fix",
       note: "缺少选项",
+      corrected_text: "2. 草稿修正但未通过",
       updated_at: "2026-06-22T00:02:00.000Z",
     },
   };
@@ -211,7 +214,17 @@ const extraction = {
   assert.equal(seed.items[0].id, "candidate-1");
   assert.equal(seed.items[0].candidate_id, "candidate-1");
   assert.equal(seed.items[0].review_status, "reviewed");
-  assert.equal(seed.items[0].question_text.includes("已知 $f(x)$"), true);
+  assert.equal(seed.items[0].question_text, correctedQuestionText);
+  assert.equal(
+    seed.items[0].original_question_text,
+    "1. 已知 $f(x)$, 则()\nA. 1\nB. 2",
+  );
+  assert.equal(seed.items[0].has_manual_correction, true);
+  assert.equal(seed.items[0].reviewer_note, "修正了 C 选项");
+  assert.equal(
+    seed.items.some((item) => item.candidate_id === "candidate-2"),
+    false,
+  );
   assert.deepEqual(seed.items[0].mistake_causes, []);
   assert.deepEqual(seed.items[0].knowledge_points, [
     "导数",
@@ -219,6 +232,58 @@ const extraction = {
   ]);
   assert.equal(seed.items[0].difficulty, null);
   assert.equal(seed.items[0].variant_level, null);
+}
+
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const seed = buildReviewedPracticeSeed({
+    appData,
+    reviewState: {
+      "candidate-1": {
+        status: "approved",
+        corrected_text: "1. 已知 $f(x)$, 则()\nA. 1\nB. 2",
+        note: "",
+        updated_at: "2026-06-22T00:03:00.000Z",
+      },
+    },
+    exportedAt: "2026-06-22T00:04:00.000Z",
+  });
+
+  assert.equal(seed.items[0].question_text, "1. 已知 $f(x)$, 则()\nA. 1\nB. 2");
+  assert.equal(
+    seed.items[0].original_question_text,
+    "1. 已知 $f(x)$, 则()\nA. 1\nB. 2",
+  );
+  assert.equal(seed.items[0].has_manual_correction, false);
+}
+
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const seed = buildReviewedPracticeSeed({
+    appData,
+    reviewState: {
+      "candidate-1": {
+        status: "approved",
+        corrected_text: "   ",
+        note: "",
+        updated_at: "2026-06-22T00:03:00.000Z",
+      },
+    },
+    exportedAt: "2026-06-22T00:04:00.000Z",
+  });
+
+  assert.equal(seed.items[0].question_text, "1. 已知 $f(x)$, 则()\nA. 1\nB. 2");
+  assert.equal(seed.items[0].has_manual_correction, false);
 }
 
 {
