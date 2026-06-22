@@ -170,20 +170,25 @@ export function renderCandidateReviewHtml(appData, { katexCss }) {
 </head>
 <body>
   <main id="app">
-    <header class="topbar">
-      <h1>MathTrace Candidate Review</h1>
+    <header class="topbar" data-collapsed="false">
+      <div class="topbar-primary">
+        <h1>MathTrace Candidate Review</h1>
+        <button id="toggle-topbar" type="button" aria-expanded="true">收起工具栏</button>
+      </div>
       <div id="summary"></div>
-      <input id="search" type="search" placeholder="搜索题号、章节、题干">
-      <select id="filter">
-        <option value="all">全部</option>
-        <option value="unreviewed">未审核</option>
-        <option value="approved">Approved</option>
-        <option value="needs_fix">Needs Fix</option>
-        <option value="skipped">Skipped</option>
-        <option value="warnings">有 warnings</option>
-      </select>
-      <button id="copy-json">复制 JSON</button>
-      <button id="download-json">下载 reviewed_practice_seed.json</button>
+      <div class="topbar-controls">
+        <input id="search" type="search" placeholder="搜索题号、章节、题干">
+        <select id="filter">
+          <option value="all">全部</option>
+          <option value="unreviewed">未审核</option>
+          <option value="approved">Approved</option>
+          <option value="needs_fix">Needs Fix</option>
+          <option value="skipped">Skipped</option>
+          <option value="warnings">有 warnings</option>
+        </select>
+        <button id="copy-json">复制 JSON</button>
+        <button id="download-json">下载 reviewed_practice_seed.json</button>
+      </div>
     </header>
     <textarea id="copy-json-fallback" hidden readonly></textarea>
     <section class="layout">
@@ -271,6 +276,12 @@ function renderStyles() {
     body { margin: 0; overflow: hidden; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f8f7f4; color: #1f2933; }
     #app { height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr); }
     .topbar { display: grid; gap: 10px; padding: 16px; border-bottom: 1px solid #ded8cc; background: #fffdf8; }
+    .topbar-primary { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .topbar h1 { margin: 0; font-size: 28px; line-height: 1.1; }
+    .topbar-controls { display: grid; gap: 10px; }
+    .topbar[data-collapsed="true"] { gap: 4px; padding: 8px 16px; }
+    .topbar[data-collapsed="true"] h1 { font-size: 18px; }
+    .topbar[data-collapsed="true"] .topbar-controls { display: none; }
     .layout { min-height: 0; display: grid; grid-template-columns: minmax(260px, 34vw) minmax(0, 1fr); }
     #candidate-list { min-height: 0; border-right: 1px solid #ded8cc; overflow-y: auto; overscroll-behavior: contain; }
     .candidate-row { width: 100%; border: 0; border-bottom: 1px solid #e7e0d3; padding: 12px; text-align: left; background: transparent; cursor: pointer; }
@@ -287,9 +298,11 @@ function renderBrowserScript() {
   return `
     const appData = window.__CANDIDATE_REVIEW_DATA__;
     const state = loadState();
+    const topbarStateKey = appData.storage_key + ".topbarCollapsed";
     let selectedId = appData.candidates[0]?.id ?? null;
     let query = "";
     let filter = "all";
+    let isTopbarCollapsed = localStorage.getItem(topbarStateKey) === "true";
 
     function loadState() {
       try { return JSON.parse(localStorage.getItem(appData.storage_key) || "{}"); }
@@ -342,6 +355,7 @@ function renderBrowserScript() {
     }
     function render() {
       const list = filteredCandidates();
+      renderTopbar();
       document.querySelector("#summary").textContent = "候选题 " + appData.candidates.length + " 道，当前筛选 " + list.length + " 道";
       document.querySelector("#candidate-list").innerHTML = list.map((candidate) => {
         const status = state[candidate.id]?.status || "unreviewed";
@@ -371,6 +385,14 @@ function renderBrowserScript() {
         '<h3>Source Ref</h3><pre>' + escapeHtml(JSON.stringify(selected.source_ref, null, 2)) + '</pre>' +
         '<h3>备注</h3><textarea id="note">' + escapeHtml(note) + '</textarea>';
     }
+    function renderTopbar() {
+      const topbar = document.querySelector(".topbar");
+      const toggle = document.querySelector("#toggle-topbar");
+      if (!topbar?.dataset || !toggle?.setAttribute) return;
+      topbar.dataset.collapsed = String(isTopbarCollapsed);
+      toggle.textContent = isTopbarCollapsed ? "展开工具栏" : "收起工具栏";
+      toggle.setAttribute("aria-expanded", String(!isTopbarCollapsed));
+    }
     function escapeHtml(value) {
       return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
     }
@@ -382,6 +404,11 @@ function renderBrowserScript() {
       if (row) { selectedId = row.dataset.id; render(); return; }
       const action = event.target.closest("[data-status]");
       if (action && selectedId) setStatus(selectedId, action.dataset.status);
+      if (event.target.id === "toggle-topbar") {
+        isTopbarCollapsed = !isTopbarCollapsed;
+        localStorage.setItem(topbarStateKey, String(isTopbarCollapsed));
+        renderTopbar();
+      }
     });
     document.addEventListener("input", (event) => {
       if (event.target.id === "search") { query = event.target.value; render(); }

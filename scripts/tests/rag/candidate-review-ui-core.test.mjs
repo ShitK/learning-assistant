@@ -237,6 +237,10 @@ const extraction = {
   assert.equal(html.includes(".katex{font:normal}"), true);
   assert.equal(html.includes("window.__CANDIDATE_REVIEW_DATA__"), true);
   assert.equal(html.includes("localStorage"), true);
+  assert.equal(html.includes('id="toggle-topbar"'), true);
+  assert.equal(html.includes('data-collapsed="false"'), true);
+  assert.equal(html.includes('.topbar[data-collapsed="true"] .topbar-controls { display: none; }'), true);
+  assert.equal(html.includes('appData.storage_key + ".topbarCollapsed"'), true);
   assert.equal(html.includes("#app { height: 100vh;"), true);
   assert.equal(html.includes("#candidate-list { min-height: 0;"), true);
   assert.equal(html.includes("overflow-y: auto; overscroll-behavior: contain;"), true);
