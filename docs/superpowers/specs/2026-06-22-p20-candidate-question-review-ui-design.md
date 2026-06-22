@@ -132,6 +132,8 @@ interface ReviewedPracticeSeedItem {
   review_status: "reviewed";
   reviewer_note: string;
   question_text: string;
+  original_question_text: string;
+  has_manual_correction: boolean;
   solution_outline: null;
   mistake_causes: [];
   knowledge_points: string[];
@@ -147,6 +149,9 @@ interface ReviewedPracticeSeedItem {
 
 - 浏览器审核状态仍使用 `approved` / `needs_fix` / `skipped`，但导出的 seed 只包含 `approved` 题，并将 `review_status` 写为 `"reviewed"`，对齐后续 `practice_corpus` 语义。
 - `id` 第一版复用 `candidate_id`，方便下游 fixture 保持稳定引用。
+- `question_text` 使用审核页中人工确认后的完整题目内容；如果没有人工修正，则使用原始 OCR 题文。
+- `original_question_text` 始终保留 `candidate_questions.json` 中的 OCR/parser 原文，方便后续追溯差异。
+- `has_manual_correction` 标识导出题文是否经过人工修正。
 - `mistake_causes: []`、`difficulty: null`、`variant_level: null` 是显式占位符，下一阶段人工补齐。
 - `knowledge_points` 第一版可默认从 `source_ref.section_title` 派生一个粗标签，如 `["导数"]` 或 `["导数", "考点 1 导数的概念、几何意义与运算"]`。这些值只是审核 seed 的临时展示标签，不是 PRD 内部 snake_case 知识点 ID。进入正式 `practice_corpus` 前必须人工映射成内部 key。
 - `source_candidate_file`、`source_file`、`mineru_json_file` 优先使用相对项目路径；如果只能得到绝对路径，应在页面和文档中提示该 seed 不应提交或公开分享。
@@ -195,6 +200,12 @@ interface ReviewedPracticeSeedItem {
 - 审核按钮：`approved`、`needs_fix`、`skipped`。
 - 审核备注 textarea。
 
+### 6.4 人工修正与预览
+
+详情面板展示只读的原始识别结果，并提供 `修正题目内容` textarea。该字段用于修正整道题内容，包括题干、公式、选项和换行。页面在本地用 KaTeX 重新渲染 `修正后预览`，帮助人工检查公式是否正确。
+
+修正内容保存到浏览器 `localStorage`，不写回 `candidate_questions.json`。导出 seed 时，`question_text` 使用修正后的内容，`original_question_text` 保留 OCR 原文，`has_manual_correction` 标识是否发生人工修正。
+
 ## 7. 数据流
 
 ```text
@@ -212,7 +223,7 @@ browser index.html
   -> export reviewed_practice_seed.json
 ```
 
-生成页应内联 `katex/dist/katex.min.css`，保证以 `file://` 或本地 HTTP server 打开时都能渲染公式。`复制 JSON` 按钮优先使用 `navigator.clipboard.writeText`；如果页面在 `file://` 下不具备 clipboard 权限，则 fallback 到页面内可全选 textarea 或 `document.execCommand("copy")`。
+生成页应内联 `katex/dist/katex.min.css` 和 `katex/dist/katex.min.js`，保证以 `file://` 或本地 HTTP server 打开时都能渲染原始题文和人工修正后的公式预览。`复制 JSON` 按钮优先使用 `navigator.clipboard.writeText`；如果页面在 `file://` 下不具备 clipboard 权限，则 fallback 到页面内可全选 textarea 或 `document.execCommand("copy")`。
 
 `storage_key` 基于输入文件 hash 生成。重新生成 `candidate_questions.json` 后 hash 变化，旧审核进度不会自动迁移；用户应先导出 seed 再重新生成。
 
@@ -264,5 +275,7 @@ node scripts/rag/build-candidate-review-ui.mjs \
 ```
 
 真实本地候选题文件可生成 72 道候选题的审核页。生成结果位于 ignored `artifacts/rag/candidate-review/`，不进入 Git。页面审核状态保存在浏览器 `localStorage`，最终通过页面按钮下载或复制 `reviewed_practice_seed.json`。
+
+第一版审核页会内联 KaTeX CSS 和 JS，因此直接以 `file://` 打开时也能预览修正后的公式。
 
 该 seed 仍不是正式 `practice_corpus`。下一阶段需要人工补齐 `knowledge_points`、`difficulty`、`variant_level` 和必要解析信息后，再进入 metadata/text search。
