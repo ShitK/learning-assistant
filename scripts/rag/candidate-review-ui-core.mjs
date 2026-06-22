@@ -223,7 +223,11 @@ function getCorrectedQuestionText(candidate, reviewStateItem) {
     typeof reviewStateItem?.corrected_text === "string"
       ? reviewStateItem.corrected_text
       : "";
-  if (!correctedText.trim()) {
+  const normalizedText = String(candidate.normalized_text ?? "");
+  if (
+    !correctedText.trim() ||
+    correctedText.trim() === normalizedText.trim()
+  ) {
     return candidate.normalized_text;
   }
   return correctedText;
@@ -362,7 +366,9 @@ function renderBrowserScript() {
     }
     function getExportQuestionText(candidate) {
       const correctedText = getCorrectionText(candidate);
-      if (!correctedText.trim()) return candidate.normalized_text;
+      if (!correctedText.trim() || correctedText.trim() === candidate.normalized_text.trim()) {
+        return candidate.normalized_text;
+      }
       return correctedText;
     }
     function hasCorrection(candidate) {

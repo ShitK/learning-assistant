@@ -274,6 +274,30 @@ const extraction = {
     reviewState: {
       "candidate-1": {
         status: "approved",
+        corrected_text: "  1. 已知 $f(x)$, 则()\nA. 1\nB. 2  ",
+        note: "",
+        updated_at: "2026-06-22T00:03:00.000Z",
+      },
+    },
+    exportedAt: "2026-06-22T00:04:00.000Z",
+  });
+
+  assert.equal(seed.items[0].question_text, "1. 已知 $f(x)$, 则()\nA. 1\nB. 2");
+  assert.equal(seed.items[0].has_manual_correction, false);
+}
+
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const seed = buildReviewedPracticeSeed({
+    appData,
+    reviewState: {
+      "candidate-1": {
+        status: "approved",
         corrected_text: "   ",
         note: "",
         updated_at: "2026-06-22T00:03:00.000Z",
@@ -543,6 +567,24 @@ const extraction = {
     generatedAt: "2026-06-22T00:00:00.000Z",
   });
   const result = runBrowserCorrectionScenario(appData, "   ");
+  assert.equal(
+    result.browserSeed.items[0].question_text,
+    appData.candidates[0].normalized_text,
+  );
+  assert.equal(result.browserSeed.items[0].has_manual_correction, false);
+}
+
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const result = runBrowserCorrectionScenario(
+    appData,
+    "  1. 已知 $f(x)$, 则()\nA. 1\nB. 2  ",
+  );
   assert.equal(
     result.browserSeed.items[0].question_text,
     appData.candidates[0].normalized_text,
