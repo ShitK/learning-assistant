@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -78,6 +78,10 @@ writeFileSync(inputPath, `${JSON.stringify(fixture, null, 2)}\n`);
   assert.equal(html.includes("window.__CANDIDATE_REVIEW_DATA__"), true);
   assert.equal(html.includes("copy-json-fallback"), true);
   assert.equal(html.includes("reviewed_practice_seed.json"), true);
+  assert.equal(
+    existsSync(join(outputDir, "fonts", "KaTeX_Size1-Regular.woff2")),
+    true,
+  );
 
   const manifest = JSON.parse(
     readFileSync(join(outputDir, "review_manifest.json"), "utf8"),

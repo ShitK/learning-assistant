@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
 import {
@@ -46,6 +46,7 @@ async function main() {
   await mkdir(outputDir, { recursive: true });
   const htmlPath = resolve(outputDir, "index.html");
   const manifestPath = resolve(outputDir, "review_manifest.json");
+  await copyKatexFonts(outputDir);
   await writeFile(htmlPath, renderCandidateReviewHtml(appData, { katexCss, katexJs }));
   await writeFile(
     manifestPath,
@@ -114,6 +115,18 @@ async function readKatexJs() {
     return source.replaceAll("https://", "\\x68ttps://").replaceAll("http://", "\\x68ttp://");
   } catch {
     throw new Error("failed to read KaTeX JS");
+  }
+}
+
+async function copyKatexFonts(outputDir) {
+  try {
+    await cp(
+      resolve("node_modules/katex/dist/fonts"),
+      resolve(outputDir, "fonts"),
+      { recursive: true },
+    );
+  } catch {
+    throw new Error("failed to copy KaTeX fonts");
   }
 }
 
