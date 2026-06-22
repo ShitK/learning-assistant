@@ -515,6 +515,27 @@ const extraction = {
 }
 
 {
+  const duplicateKnowledgePointExtraction = structuredClone(extraction);
+  duplicateKnowledgePointExtraction.candidates[0].source_ref.section_title = "导数";
+  const appData = buildReviewAppData({
+    extraction: duplicateKnowledgePointExtraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const result = runBrowserCorrectionScenario(appData, "1. 修正后 $f(x)$");
+  const nodeSeed = buildReviewedPracticeSeed({
+    appData,
+    reviewState: result.savedState,
+    exportedAt: result.browserSeed.exported_at,
+  });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(result.browserSeed.items[0].knowledge_points)),
+    nodeSeed.items[0].knowledge_points,
+  );
+}
+
+{
   const appData = buildReviewAppData({
     extraction,
     candidateSourceFile: "/tmp/candidate_questions.json",

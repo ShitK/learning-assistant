@@ -371,6 +371,13 @@ function renderBrowserScript() {
     function hasManualCorrection(candidate, questionText) {
       return questionText.trim() !== candidate.normalized_text.trim();
     }
+    function inferKnowledgePoints(candidate) {
+      const points = ["导数"];
+      if (candidate.section_title) {
+        points.push(candidate.section_title);
+      }
+      return Array.from(new Set(points));
+    }
     function setCorrectionText(id, text) {
       state[id] = { ...(state[id] || {}), corrected_text: text, updated_at: new Date().toISOString() };
       saveState();
@@ -456,7 +463,7 @@ function renderBrowserScript() {
             has_manual_correction: hasManualCorrection(candidate, questionText),
             solution_outline: null,
             mistake_causes: [],
-            knowledge_points: candidate.section_title ? ["导数", candidate.section_title] : ["导数"],
+            knowledge_points: inferKnowledgePoints(candidate),
             difficulty: null,
             variant_level: null,
             source_ref: candidate.source_ref,
