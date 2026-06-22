@@ -237,6 +237,43 @@ const proposalArtifact = {
 }
 
 {
+  const unsafeProposalArtifact = structuredClone(proposalArtifact);
+  unsafeProposalArtifact.proposals[0].proposed_tags = {
+    target_skills: [{ tag: "中文标签", confidence: "high", evidence_terms: ["切线"], source: "rule" }],
+    method_tags: [{ tag: "tangent_slope", confidence: "high", evidence_terms: ["切线"], source: "rule" }],
+    feature_flags: [{ tag: "has_root", confidence: "high", evidence_terms: ["根"], source: "rule" }],
+  };
+  const enriched = buildEnrichedPracticeCorpus({
+    corpus,
+    proposalArtifact: unsafeProposalArtifact,
+    acceptRuleProposals: true,
+    sourceCorpusFile: "practice_corpus.json",
+    sourceTagProposalFile: "candidate_tag_proposals.json",
+    generatedAt: "2026-06-23T00:00:00.000Z",
+  });
+  const validation = validateEnrichedPracticeCorpus(enriched);
+  assert.equal(validation.ok, false);
+  assert.equal(validation.errors.some((error) => error.includes("target_skills contains unknown tag: 中文标签")), true);
+  assert.equal(validation.errors.some((error) => error.includes("feature_flags contains unknown tag: has_root")), true);
+}
+
+{
+  const llmProposalArtifact = structuredClone(proposalArtifact);
+  llmProposalArtifact.proposals[0].proposed_tags.target_skills[0].source = "llm";
+  const enriched = buildEnrichedPracticeCorpus({
+    corpus,
+    proposalArtifact: llmProposalArtifact,
+    acceptRuleProposals: true,
+    sourceCorpusFile: "practice_corpus.json",
+    sourceTagProposalFile: "candidate_tag_proposals.json",
+    generatedAt: "2026-06-23T00:00:00.000Z",
+  });
+  assert.notEqual(enriched.items[0].tag_review_meta.review_status, "approved");
+  assert.equal(enriched.items[0].tag_review_meta.review_status, "needs_fix");
+  assert.equal(enriched.items[0].tag_review_meta.tag_source, "llm");
+}
+
+{
   const enriched = buildEnrichedPracticeCorpus({
     corpus,
     proposalArtifact,

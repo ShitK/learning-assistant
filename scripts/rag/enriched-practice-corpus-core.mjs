@@ -145,29 +145,54 @@ function buildItemTagData({ proposal, reviewRecord, acceptRuleProposals }) {
   const methodTags = extractProposalTagKeys(proposal?.proposed_tags?.method_tags);
   const featureFlags = extractProposalTagKeys(proposal?.proposed_tags?.feature_flags);
   const hasNoTags = targetSkills.length === 0 && methodTags.length === 0 && featureFlags.length === 0;
+  const proposalTags = flattenProposalTags(proposal);
+  const hasOnlyRuleTags = proposalTags.every((tag) => tag.source === "rule");
+  const reviewStatus = getProposalReviewStatus({
+    hasNoTags,
+    hasOnlyRuleTags,
+    acceptRuleProposals,
+  });
   return {
     target_skills: targetSkills,
     method_tags: methodTags,
     feature_flags: featureFlags,
     tag_review_meta: {
-      review_status: hasNoTags ? "needs_fix" : acceptRuleProposals ? "approved" : "proposed",
+      review_status: reviewStatus,
       proposal_confidence: summarizeProposalConfidence(proposal),
       has_manual_tag_correction: false,
-      tag_source: "rule",
+      tag_source: summarizeProposalSource(proposalTags),
     },
   };
+}
+
+function getProposalReviewStatus({ hasNoTags, hasOnlyRuleTags, acceptRuleProposals }) {
+  if (hasNoTags) return "needs_fix";
+  if (!hasOnlyRuleTags) return "needs_fix";
+  return acceptRuleProposals ? "approved" : "proposed";
 }
 
 function extractProposalTagKeys(tags = []) {
   return uniqueStrings(tags.map((tag) => tag.tag));
 }
 
-function summarizeProposalConfidence(proposal) {
-  const tags = [
+function flattenProposalTags(proposal) {
+  return [
     ...(proposal?.proposed_tags?.target_skills ?? []),
     ...(proposal?.proposed_tags?.method_tags ?? []),
     ...(proposal?.proposed_tags?.feature_flags ?? []),
   ];
+}
+
+function summarizeProposalSource(tags) {
+  const sources = uniqueStrings(tags.map((tag) => tag.source));
+  if (sources.length === 1 && TAG_SOURCE_VALUES.has(sources[0])) {
+    return sources[0];
+  }
+  return sources.some((source) => source !== "rule") ? "llm" : "rule";
+}
+
+function summarizeProposalConfidence(proposal) {
+  const tags = flattenProposalTags(proposal);
   if (tags.some((tag) => tag.confidence === "high")) return "high";
   if (tags.some((tag) => tag.confidence === "medium")) return "medium";
   if (tags.some((tag) => tag.confidence === "low")) return "low";
@@ -197,6 +222,9 @@ function validateEnrichedItem(item, index, errors) {
   requireStringArray(item.target_skills, `${path}.target_skills`, errors);
   requireStringArray(item.method_tags, `${path}.method_tags`, errors);
   requireStringArray(item.feature_flags, `${path}.feature_flags`, errors);
+  validateKnownTags(item.target_skills, TARGET_SKILL_KEYS, `${path}.target_skills`, errors);
+  validateKnownTags(item.method_tags, METHOD_TAG_KEYS, `${path}.method_tags`, errors);
+  validateKnownTags(item.feature_flags, FEATURE_FLAG_KEYS, `${path}.feature_flags`, errors);
   if (!item.tag_review_meta || typeof item.tag_review_meta !== "object") {
     errors.push(`${path}.tag_review_meta must be an object`);
   } else {
