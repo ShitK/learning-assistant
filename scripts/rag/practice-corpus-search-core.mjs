@@ -85,13 +85,13 @@ export function searchPracticeCorpus({ corpus, query, limit = DEFAULT_LIMIT, inc
   return corpus.items
     .filter((item) => includeVisual || !hasFeatureFlag(item, "needs_visual"))
     .filter((item) => isApprovedOrLegacyCorpusItem(item, corpus.corpus_version))
-    .map((item) => scoreCorpusItem(item, need))
+    .map((item) => scoreCorpusItem(item, need, corpus.corpus_version))
     .filter((candidate) => candidate.score > 0)
     .sort(compareCandidates)
     .slice(0, normalizeLimit(limit));
 }
 
-function scoreCorpusItem(item, need) {
+function scoreCorpusItem(item, need, corpusVersion) {
   const matchedDimensions = [];
   const matchReasons = [];
   let score = 0;
@@ -141,7 +141,7 @@ function scoreCorpusItem(item, need) {
   }
 
   const searchable = `${item.question_text ?? ""}\n${item.search_text ?? ""}\n${itemSectionTitle ?? ""}`;
-  if (itemTargetSkills.length === 0) {
+  if (corpusVersion === "practice-corpus-v0" && itemTargetSkills.length === 0) {
     for (const skill of need.target_skills) {
       if (searchable.includes(skill) || skillIncludesSearchableTerm(skill, searchable)) {
         score += 4;

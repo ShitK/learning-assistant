@@ -163,7 +163,7 @@ const query = {
     generated_at: "2026-06-23T00:00:00.000Z",
     source_corpus_file: "practice_corpus.json",
     source_tag_proposal_file: "candidate_tag_proposals.json",
-    item_count: 6,
+    item_count: 7,
     items: [
       {
         id: "practice-enriched-1",
@@ -289,6 +289,26 @@ const query = {
         },
         review_meta: {},
       },
+      {
+        id: "practice-enriched-empty-target-skills",
+        source_candidate_id: "candidate-empty-target-skills",
+        question_text: "7. 求曲线在某点处的切线斜率.",
+        search_text: "7. 求曲线在某点处的切线斜率.\n导数",
+        knowledge_points: ["derivative"],
+        section_title: "考点 1 导数的概念",
+        target_skills: [],
+        method_tags: [],
+        feature_flags: [],
+        difficulty: null,
+        source_ref: { pdf_page_index: 7, section_title: "考点 1 导数的概念" },
+        tag_review_meta: {
+          review_status: "approved",
+          proposal_confidence: "low",
+          has_manual_tag_correction: false,
+          tag_source: "rule",
+        },
+        review_meta: {},
+      },
     ],
   };
 
@@ -312,6 +332,11 @@ const query = {
   assert.equal(results.some((candidate) => candidate.item.id === "practice-enriched-6"), false);
   assert.equal(results[0].matched_dimensions.includes("target_skill"), true);
   assert.equal(results[0].matched_dimensions.includes("method_tag"), true);
+  const emptyTargetSkillResult = results.find(
+    (candidate) => candidate.item.id === "practice-enriched-empty-target-skills",
+  );
+  assert.notEqual(emptyTargetSkillResult, undefined);
+  assert.equal(emptyTargetSkillResult.matched_dimensions.includes("target_skill"), false);
 
   const includeVisualResults = searchPracticeCorpus({
     corpus: enrichedCorpus,
