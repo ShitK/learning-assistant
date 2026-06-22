@@ -1,4 +1,13 @@
+import {
+  deriveMethodTagsFromTargetSkills,
+  normalizeTargetSkillKeys,
+} from "./practice-tag-taxonomy.mjs";
+
 const DEFAULT_LIMIT = 8;
+const SUPPORTED_CORPUS_VERSIONS = new Set([
+  "practice-corpus-v0",
+  "enriched-practice-corpus-v0",
+]);
 // P2.1 只覆盖导数题库；中文分词暂缓，先用目标技能和小词表做可解释召回。
 const DERIVATIVE_SEARCH_TERMS = [
   "导数",
@@ -20,8 +29,8 @@ export function validatePracticeCorpus(value) {
     return { ok: false, errors: ["corpus must be an object"] };
   }
 
-  if (value.corpus_version !== "practice-corpus-v0") {
-    errors.push("corpus_version must be practice-corpus-v0");
+  if (!SUPPORTED_CORPUS_VERSIONS.has(value.corpus_version)) {
+    errors.push("corpus_version must be practice-corpus-v0 or enriched-practice-corpus-v0");
   }
 
   if (!Array.isArray(value.items)) {
@@ -46,6 +55,8 @@ export function normalizePracticeQuery(query) {
       : null;
   const knowledgePoints = filterStringArray(safeQuery.knowledge_points);
   const mistakeCauses = filterStringArray(safeQuery.mistake_causes);
+  const targetSkillKeys = normalizeTargetSkillKeys(targetSkills);
+  const methodTags = deriveMethodTagsFromTargetSkills(targetSkills);
   const searchTerms = buildSearchTerms({
     questionText,
     targetSkills,
@@ -59,17 +70,21 @@ export function normalizePracticeQuery(query) {
     section_title: sectionTitle,
     mistake_causes: mistakeCauses,
     target_skills: targetSkills,
+    target_skill_keys: targetSkillKeys,
+    method_tags: methodTags,
     search_terms: searchTerms,
   };
 }
 
-export function searchPracticeCorpus({ corpus, query, limit = DEFAULT_LIMIT }) {
+export function searchPracticeCorpus({ corpus, query, limit = DEFAULT_LIMIT, includeVisual = false }) {
   const need = normalizePracticeQuery(query);
   if (need.search_terms.length === 0 && need.knowledge_points.length === 0 && !need.section_title) {
     return [];
   }
 
   return corpus.items
+    .filter((item) => includeVisual || !hasFeatureFlag(item, "needs_visual"))
+    .filter((item) => isApprovedOrLegacyCorpusItem(item, corpus.corpus_version))
     .map((item) => scoreCorpusItem(item, need))
     .filter((candidate) => candidate.score > 0)
     .sort(compareCandidates)
@@ -109,12 +124,30 @@ function scoreCorpusItem(item, need) {
     matchReasons.push(`相关章节：${itemSectionTitle}`);
   }
 
+  const itemTargetSkills = filterStringArray(item.target_skills);
+  const targetSkillMatches = need.target_skill_keys.filter((skill) => itemTargetSkills.includes(skill));
+  if (targetSkillMatches.length > 0) {
+    score += 7 * targetSkillMatches.length;
+    matchedDimensions.push("target_skill");
+    matchReasons.push(`命中目标技能标签：${targetSkillMatches.join(", ")}`);
+  }
+
+  const itemMethodTags = filterStringArray(item.method_tags);
+  const methodTagMatches = need.method_tags.filter((tag) => itemMethodTags.includes(tag));
+  if (methodTagMatches.length > 0) {
+    score += 5 * methodTagMatches.length;
+    matchedDimensions.push("method_tag");
+    matchReasons.push(`命中方法标签：${methodTagMatches.join(", ")}`);
+  }
+
   const searchable = `${item.question_text ?? ""}\n${item.search_text ?? ""}\n${itemSectionTitle ?? ""}`;
-  for (const skill of need.target_skills) {
-    if (searchable.includes(skill) || skillIncludesSearchableTerm(skill, searchable)) {
-      score += 4;
-      matchedDimensions.push("target_skill");
-      matchReasons.push(`命中目标技能：${skill}`);
+  if (itemTargetSkills.length === 0) {
+    for (const skill of need.target_skills) {
+      if (searchable.includes(skill) || skillIncludesSearchableTerm(skill, searchable)) {
+        score += 4;
+        matchedDimensions.push("target_skill");
+        matchReasons.push(`命中目标技能：${skill}`);
+      }
     }
   }
 
@@ -173,6 +206,15 @@ function normalizeLimit(limit) {
   return Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_LIMIT;
 }
 
+function hasFeatureFlag(item, flag) {
+  return filterStringArray(item.feature_flags).includes(flag);
+}
+
+function isApprovedOrLegacyCorpusItem(item, corpusVersion) {
+  if (corpusVersion !== "enriched-practice-corpus-v0") return true;
+  return item.tag_review_meta?.review_status === "approved";
+}
+
 function validateCorpusItem(item, index, errors) {
   const path = `item[${index}]`;
   if (!item || typeof item !== "object" || Array.isArray(item)) {
@@ -190,6 +232,15 @@ function validateCorpusItem(item, index, errors) {
   if ("source_ref" in item && item.source_ref !== null && typeof item.source_ref !== "object") {
     errors.push(`${path}.source_ref must be an object or null when present`);
   }
+  if (item.target_skills !== undefined) {
+    requireStringArray(item.target_skills, `${path}.target_skills`, errors);
+  }
+  if (item.method_tags !== undefined) {
+    requireStringArray(item.method_tags, `${path}.method_tags`, errors);
+  }
+  if (item.feature_flags !== undefined) {
+    requireStringArray(item.feature_flags, `${path}.feature_flags`, errors);
+  }
 }
 
 function requireString(value, key, errors, path) {
@@ -201,6 +252,12 @@ function requireString(value, key, errors, path) {
 function requireNonEmptyString(value, key, errors, path) {
   if (typeof value[key] !== "string" || !value[key].trim()) {
     errors.push(`${path}.${key} must be a non-empty string`);
+  }
+}
+
+function requireStringArray(value, path, errors) {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    errors.push(`${path} must be an array of strings`);
   }
 }
 

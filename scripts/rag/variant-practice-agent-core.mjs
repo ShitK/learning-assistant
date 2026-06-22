@@ -19,7 +19,7 @@ export function recommendVariantPractice({ corpus, query, searchLimit = 8 }) {
   const candidates = searchPracticeCorpus({ corpus, query, limit: searchLimit });
   const selections = selectRecommendationCandidates(rankPracticeCandidates(candidates), need);
   const recommendations = selections.map((selection, index) => buildRecommendation(selection, index));
-  const warnings = buildWarnings({ candidates, recommendations });
+  const warnings = buildWarnings({ corpus, candidates, recommendations });
 
   return {
     agent_version: AGENT_VERSION,
@@ -97,10 +97,18 @@ function isNearTransferCandidate(candidate, need) {
 }
 
 function isMixedApplicationCandidate(candidate, need) {
+  if (candidate.item.section_title === need.section_title) return false;
+  if (!candidate.matched_dimensions.includes("knowledge_point")) return false;
+  if (candidate.matched_dimensions.includes("target_skill")) return false;
+  if (candidate.matched_dimensions.includes("method_tag")) return true;
+  return !hasEnrichedTags(candidate.item);
+}
+
+function hasEnrichedTags(item) {
   return (
-    candidate.item.section_title !== need.section_title &&
-    candidate.matched_dimensions.includes("knowledge_point") &&
-    !candidate.matched_dimensions.includes("target_skill")
+    Array.isArray(item.target_skills) ||
+    Array.isArray(item.method_tags) ||
+    Array.isArray(item.feature_flags)
   );
 }
 
@@ -190,13 +198,32 @@ function buildOverallRationale({ need, recommendations }) {
   return `基于当前错因，当前 corpus 只找到部分相关候选题；建议先使用已推荐题目，后续补充题源后再扩展练习序列。`;
 }
 
-function buildWarnings({ candidates, recommendations }) {
+function buildWarnings({ corpus, candidates, recommendations }) {
   const warnings = [];
   if (candidates.length === 0) {
     warnings.push("no_candidates_found");
-  }
-  if (candidates.length > 0 && recommendations.length < 3) {
+  } else if (isEnrichedCorpus(corpus) && recommendations.length < 3) {
+    warnings.push("insufficient_approved_tagged_items");
+    if (
+      !recommendations.some(
+        (recommendation) => recommendation.recommendation_type === "mixed_application",
+      )
+    ) {
+      warnings.push("no_mixed_application_with_related_method_tags");
+    }
+  } else if (recommendations.length < 3) {
     warnings.push("insufficient_recommendations");
   }
+  if (hasSkippedVisualItems(corpus)) warnings.push("skipped_visual_dependency_items");
   return warnings;
+}
+
+function isEnrichedCorpus(corpus) {
+  return corpus?.corpus_version === "enriched-practice-corpus-v0";
+}
+
+function hasSkippedVisualItems(corpus) {
+  return (corpus?.items ?? []).some(
+    (item) => Array.isArray(item.feature_flags) && item.feature_flags.includes("needs_visual"),
+  );
 }

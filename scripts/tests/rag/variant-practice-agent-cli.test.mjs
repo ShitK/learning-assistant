@@ -129,6 +129,49 @@ writeFileSync(queryPath, `${JSON.stringify(query, null, 2)}\n`);
 }
 
 {
+  const enrichedCorpusPath = join(tmpRoot, "enriched_practice_corpus.json");
+  const enrichedOut = join(tmpRoot, "enriched-agent-out");
+  const enrichedCorpus = {
+    ...corpus,
+    corpus_version: "enriched-practice-corpus-v0",
+    source_corpus_file: "practice_corpus.json",
+    source_tag_proposal_file: "candidate_tag_proposals.json",
+    items: corpus.items.slice(0, 3).map((item, index) => ({
+      ...item,
+      target_skills: index === 2 ? ["monotonicity"] : ["tangent_slope"],
+      method_tags:
+        index === 2
+          ? ["derivative_definition", "monotonicity_by_derivative"]
+          : ["tangent_slope", "derivative_definition"],
+      feature_flags: [],
+      tag_review_meta: {
+        review_status: "approved",
+        proposal_confidence: "high",
+        has_manual_tag_correction: false,
+        tag_source: "rule",
+      },
+    })),
+  };
+  writeFileSync(enrichedCorpusPath, `${JSON.stringify(enrichedCorpus, null, 2)}\n`);
+
+  const result = spawnSync(
+    process.execPath,
+    [scriptPath, "--corpus", enrichedCorpusPath, "--query", queryPath, "--out", enrichedOut, "--limit", "4"],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.includes("Recommendations: 3"), true);
+  assert.equal(result.stdout.includes("求函数"), false);
+  const output = JSON.parse(readFileSync(join(enrichedOut, "recommendations.json"), "utf8"));
+  assert.equal(output.search_summary.corpus_version, "enriched-practice-corpus-v0");
+  assert.deepEqual(
+    output.recommendations.map((recommendation) => recommendation.recommendation_type),
+    ["foundation", "near_transfer", "mixed_application"],
+  );
+}
+
+{
   const invalidLimitOut = join(tmpRoot, "invalid-limit-out");
   const result = spawnSync(
     process.execPath,

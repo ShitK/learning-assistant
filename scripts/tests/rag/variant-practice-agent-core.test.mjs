@@ -197,4 +197,188 @@ const query = {
   assert.equal(noMatchResult.rationale.includes("不强行推荐"), true);
 }
 
+{
+  const enrichedCorpus = {
+    corpus_version: "enriched-practice-corpus-v0",
+    generated_at: "2026-06-23T00:00:00.000Z",
+    source_corpus_file: "practice_corpus.json",
+    source_tag_proposal_file: "candidate_tag_proposals.json",
+    item_count: 4,
+    items: [
+      buildEnrichedTestItem({
+        id: "foundation",
+        section_title: "考点 1 导数的概念",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope", "derivative_definition"],
+      }),
+      buildEnrichedTestItem({
+        id: "near-transfer",
+        section_title: "考点 2 导数与函数的单调性",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope", "derivative_definition"],
+      }),
+      buildEnrichedTestItem({
+        id: "mixed-application",
+        section_title: "考点 3 导数综合应用",
+        target_skills: ["monotonicity"],
+        method_tags: ["derivative_definition", "monotonicity_by_derivative"],
+      }),
+      buildEnrichedTestItem({
+        id: "visual-skip",
+        section_title: "考点 4 导数与零点",
+        target_skills: ["zero_point"],
+        method_tags: ["zero_count"],
+        feature_flags: ["needs_visual"],
+      }),
+    ],
+  };
+
+  const result = recommendVariantPractice({
+    corpus: enrichedCorpus,
+    query: {
+      id: "query-enriched-agent",
+      question_text: "求切线斜率",
+      knowledge_points: ["derivative"],
+      section_title: "考点 1 导数的概念",
+      target_skills: ["切线斜率", "极限式识别导数"],
+      mistake_causes: ["derivative_definition_confusion"],
+    },
+    searchLimit: 10,
+  });
+
+  assert.deepEqual(
+    result.recommendations.map((recommendation) => recommendation.recommendation_type),
+    ["foundation", "near_transfer", "mixed_application"],
+  );
+  assert.equal(
+    result.recommendations.some((recommendation) => recommendation.item_id === "visual-skip"),
+    false,
+  );
+  assert.equal(result.warnings.includes("skipped_visual_dependency_items"), true);
+  assert.equal(result.warnings.includes("insufficient_recommendations"), false);
+}
+
+{
+  const insufficientCorpus = {
+    corpus_version: "enriched-practice-corpus-v0",
+    generated_at: "2026-06-23T00:00:00.000Z",
+    source_corpus_file: "practice_corpus.json",
+    source_tag_proposal_file: "candidate_tag_proposals.json",
+    item_count: 2,
+    items: [
+      buildEnrichedTestItem({
+        id: "foundation-only",
+        section_title: "考点 1 导数的概念",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+      }),
+      buildEnrichedTestItem({
+        id: "near-only",
+        section_title: "考点 2 导数与函数的单调性",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+      }),
+    ],
+  };
+
+  const result = recommendVariantPractice({
+    corpus: insufficientCorpus,
+    query: {
+      id: "query-insufficient",
+      question_text: "求切线斜率",
+      knowledge_points: ["derivative"],
+      section_title: "考点 1 导数的概念",
+      target_skills: ["切线斜率"],
+    },
+    searchLimit: 10,
+  });
+
+  assert.deepEqual(
+    result.recommendations.map((recommendation) => recommendation.recommendation_type),
+    ["foundation", "near_transfer"],
+  );
+  assert.equal(result.warnings.includes("no_mixed_application_with_related_method_tags"), true);
+  assert.equal(result.warnings.includes("insufficient_approved_tagged_items"), true);
+}
+
+{
+  const noCandidateCorpus = {
+    corpus_version: "enriched-practice-corpus-v0",
+    generated_at: "2026-06-23T00:00:00.000Z",
+    source_corpus_file: "practice_corpus.json",
+    source_tag_proposal_file: "candidate_tag_proposals.json",
+    item_count: 2,
+    items: [
+      buildEnrichedTestItem({
+        id: "visual-only",
+        section_title: "考点 4 导数与零点",
+        target_skills: ["zero_point"],
+        method_tags: ["zero_count"],
+        feature_flags: ["needs_visual"],
+      }),
+      {
+        ...buildEnrichedTestItem({
+          id: "needs-fix-only",
+          section_title: "考点 5 综合应用",
+          target_skills: ["tangent_slope"],
+          method_tags: ["tangent_slope"],
+        }),
+        tag_review_meta: {
+          review_status: "needs_fix",
+          proposal_confidence: "low",
+          has_manual_tag_correction: false,
+          tag_source: "rule",
+        },
+      },
+    ],
+  };
+
+  const result = recommendVariantPractice({
+    corpus: noCandidateCorpus,
+    query: {
+      id: "query-no-candidate",
+      question_text: "求切线斜率",
+      knowledge_points: ["derivative"],
+      section_title: "考点 1 导数的概念",
+      target_skills: ["切线斜率"],
+    },
+    searchLimit: 10,
+  });
+
+  assert.deepEqual(result.recommendations, []);
+  assert.equal(result.warnings.includes("no_candidates_found"), true);
+  assert.equal(result.warnings.includes("skipped_visual_dependency_items"), true);
+  assert.equal(result.warnings.includes("insufficient_approved_tagged_items"), false);
+  assert.equal(result.warnings.includes("no_mixed_application_with_related_method_tags"), false);
+}
+
 console.log("variant practice agent core tests passed");
+
+function buildEnrichedTestItem({
+  id,
+  section_title,
+  target_skills,
+  method_tags,
+  feature_flags = [],
+}) {
+  return {
+    id,
+    source_candidate_id: id,
+    question_text: `${id} synthetic derivative question`,
+    search_text: `${id} synthetic derivative question\n导数\n${section_title}`,
+    knowledge_points: ["derivative"],
+    section_title,
+    target_skills,
+    method_tags,
+    feature_flags,
+    difficulty: null,
+    source_ref: { pdf_page_index: 1, section_title },
+    tag_review_meta: {
+      review_status: "approved",
+      proposal_confidence: "high",
+      has_manual_tag_correction: false,
+      tag_source: "rule",
+    },
+    review_meta: {},
+  };
+}

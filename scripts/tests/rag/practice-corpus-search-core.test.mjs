@@ -157,4 +157,172 @@ const query = {
   assert.deepEqual(emptyResults, []);
 }
 
+{
+  const enrichedCorpus = {
+    corpus_version: "enriched-practice-corpus-v0",
+    generated_at: "2026-06-23T00:00:00.000Z",
+    source_corpus_file: "practice_corpus.json",
+    source_tag_proposal_file: "candidate_tag_proposals.json",
+    item_count: 6,
+    items: [
+      {
+        id: "practice-enriched-1",
+        source_candidate_id: "candidate-1",
+        question_text: "1. 已知函数在点处可导，求曲线切线斜率.",
+        search_text: "1. 已知函数在点处可导，求曲线切线斜率.\n导数",
+        knowledge_points: ["derivative"],
+        section_title: "考点 1 导数的概念",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope", "derivative_definition"],
+        feature_flags: [],
+        difficulty: null,
+        source_ref: { pdf_page_index: 1, section_title: "考点 1 导数的概念" },
+        tag_review_meta: {
+          review_status: "approved",
+          proposal_confidence: "high",
+          has_manual_tag_correction: false,
+          tag_source: "rule",
+        },
+        review_meta: {},
+      },
+      {
+        id: "practice-enriched-2",
+        source_candidate_id: "candidate-2",
+        question_text: "2. 讨论函数单调性并求参数范围.",
+        search_text: "2. 讨论函数单调性并求参数范围.\n导数",
+        knowledge_points: ["derivative"],
+        section_title: "考点 2 导数与函数的单调性",
+        target_skills: ["monotonicity", "parameter_range"],
+        method_tags: [
+          "derivative_definition",
+          "monotonicity_by_derivative",
+          "parameter_classification",
+        ],
+        feature_flags: ["has_parameter"],
+        difficulty: null,
+        source_ref: { pdf_page_index: 2, section_title: "考点 2 导数与函数的单调性" },
+        tag_review_meta: {
+          review_status: "approved",
+          proposal_confidence: "high",
+          has_manual_tag_correction: false,
+          tag_source: "rule",
+        },
+        review_meta: {},
+      },
+      {
+        id: "practice-enriched-3",
+        source_candidate_id: "candidate-3",
+        question_text: "3. 如图判断零点个数.",
+        search_text: "3. 如图判断零点个数.\n导数",
+        knowledge_points: ["derivative"],
+        section_title: "考点 4 导数与零点",
+        target_skills: ["zero_point"],
+        method_tags: ["zero_count"],
+        feature_flags: ["needs_visual", "has_graph"],
+        difficulty: null,
+        source_ref: { pdf_page_index: 4, section_title: "考点 4 导数与零点" },
+        tag_review_meta: {
+          review_status: "approved",
+          proposal_confidence: "high",
+          has_manual_tag_correction: false,
+          tag_source: "rule",
+        },
+        review_meta: {},
+      },
+      {
+        id: "practice-enriched-4",
+        source_candidate_id: "candidate-4",
+        question_text: "4. 未审核导数题.",
+        search_text: "4. 未审核导数题.",
+        knowledge_points: ["derivative"],
+        section_title: "考点 5 综合应用",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+        feature_flags: [],
+        difficulty: null,
+        source_ref: { pdf_page_index: 5, section_title: "考点 5 综合应用" },
+        tag_review_meta: {
+          review_status: "needs_fix",
+          proposal_confidence: "low",
+          has_manual_tag_correction: false,
+          tag_source: "rule",
+        },
+        review_meta: {},
+      },
+      {
+        id: "practice-enriched-5",
+        source_candidate_id: "candidate-5",
+        question_text: "5. draft 导数题.",
+        search_text: "5. draft 导数题.\n导数",
+        knowledge_points: ["derivative"],
+        section_title: "考点 5 综合应用",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+        feature_flags: [],
+        difficulty: null,
+        source_ref: { pdf_page_index: 5, section_title: "考点 5 综合应用" },
+        tag_review_meta: {
+          review_status: "proposed",
+          proposal_confidence: "high",
+          has_manual_tag_correction: false,
+          tag_source: "rule",
+        },
+        review_meta: {},
+      },
+      {
+        id: "practice-enriched-6",
+        source_candidate_id: "candidate-6",
+        question_text: "6. skipped 导数题.",
+        search_text: "6. skipped 导数题.\n导数",
+        knowledge_points: ["derivative"],
+        section_title: "考点 6 综合应用",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+        feature_flags: [],
+        difficulty: null,
+        source_ref: { pdf_page_index: 6, section_title: "考点 6 综合应用" },
+        tag_review_meta: {
+          review_status: "skipped",
+          proposal_confidence: "high",
+          has_manual_tag_correction: false,
+          tag_source: "human",
+        },
+        review_meta: {},
+      },
+    ],
+  };
+
+  const validation = validatePracticeCorpus(enrichedCorpus);
+  assert.equal(validation.ok, true);
+
+  const need = normalizePracticeQuery({
+    id: "query-enriched",
+    question_text: "求切线斜率",
+    knowledge_points: ["derivative"],
+    section_title: "考点 1 导数的概念",
+    target_skills: ["切线斜率", "极限式识别导数"],
+  });
+  assert.deepEqual(need.target_skill_keys, ["tangent_slope", "derivative_definition_limit"]);
+  assert.deepEqual(need.method_tags, ["tangent_slope", "derivative_definition"]);
+
+  const results = searchPracticeCorpus({ corpus: enrichedCorpus, query: need, limit: 10 });
+  assert.equal(results.some((candidate) => candidate.item.id === "practice-enriched-3"), false);
+  assert.equal(results.some((candidate) => candidate.item.id === "practice-enriched-4"), false);
+  assert.equal(results.some((candidate) => candidate.item.id === "practice-enriched-5"), false);
+  assert.equal(results.some((candidate) => candidate.item.id === "practice-enriched-6"), false);
+  assert.equal(results[0].matched_dimensions.includes("target_skill"), true);
+  assert.equal(results[0].matched_dimensions.includes("method_tag"), true);
+
+  const includeVisualResults = searchPracticeCorpus({
+    corpus: enrichedCorpus,
+    query: { ...need, target_skills: ["零点"] },
+    limit: 10,
+    includeVisual: true,
+  });
+  assert.equal(
+    includeVisualResults.some((candidate) => candidate.item.id === "practice-enriched-3"),
+    true,
+  );
+}
+
 console.log("practice corpus search core tests passed");
