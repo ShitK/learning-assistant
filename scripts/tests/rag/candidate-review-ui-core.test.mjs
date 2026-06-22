@@ -237,6 +237,9 @@ const extraction = {
   assert.equal(html.includes(".katex{font:normal}"), true);
   assert.equal(html.includes("window.__CANDIDATE_REVIEW_DATA__"), true);
   assert.equal(html.includes("localStorage"), true);
+  assert.equal(html.includes("#app { height: 100vh;"), true);
+  assert.equal(html.includes("#candidate-list { min-height: 0;"), true);
+  assert.equal(html.includes("overflow-y: auto; overscroll-behavior: contain;"), true);
   assert.equal(html.includes("copy-json-fallback"), true);
   assert.equal(html.includes("reviewed_practice_seed.json"), true);
   assert.equal(html.includes("<script>alert(1)</script>"), false);

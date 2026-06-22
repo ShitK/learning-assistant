@@ -267,13 +267,15 @@ function validateSourceRef(sourceRef, errors, path) {
 
 function renderStyles() {
   return `
-    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f8f7f4; color: #1f2933; }
+    html, body { height: 100%; }
+    body { margin: 0; overflow: hidden; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f8f7f4; color: #1f2933; }
+    #app { height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr); }
     .topbar { display: grid; gap: 10px; padding: 16px; border-bottom: 1px solid #ded8cc; background: #fffdf8; }
-    .layout { display: grid; grid-template-columns: minmax(260px, 34vw) 1fr; min-height: calc(100vh - 170px); }
-    #candidate-list { border-right: 1px solid #ded8cc; overflow: auto; }
+    .layout { min-height: 0; display: grid; grid-template-columns: minmax(260px, 34vw) minmax(0, 1fr); }
+    #candidate-list { min-height: 0; border-right: 1px solid #ded8cc; overflow-y: auto; overscroll-behavior: contain; }
     .candidate-row { width: 100%; border: 0; border-bottom: 1px solid #e7e0d3; padding: 12px; text-align: left; background: transparent; cursor: pointer; }
     .candidate-row[aria-selected="true"] { background: #efe8d9; }
-    #candidate-detail { padding: 22px; overflow: auto; }
+    #candidate-detail { min-height: 0; padding: 22px; overflow-y: auto; }
     .question-body { line-height: 1.85; font-size: 17px; }
     .actions { display: flex; gap: 8px; margin: 16px 0; }
     textarea { width: 100%; min-height: 90px; }
