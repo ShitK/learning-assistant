@@ -152,8 +152,8 @@ interface ReviewedPracticeSeedItem {
 - `question_text` 使用审核页中人工确认后的完整题目内容；如果没有人工修正，则使用原始 OCR 题文。
 - `original_question_text` 始终保留 `candidate_questions.json` 中的 OCR/parser 原文，方便后续追溯差异。
 - `has_manual_correction` 标识导出题文是否经过人工修正。
-- `mistake_causes: []`、`difficulty: null`、`variant_level: null` 是显式占位符，下一阶段人工补齐。
-- `knowledge_points` 第一版可默认从 `source_ref.section_title` 派生一个粗标签，如 `["导数"]` 或 `["导数", "考点 1 导数的概念、几何意义与运算"]`。这些值只是审核 seed 的临时展示标签，不是 PRD 内部 snake_case 知识点 ID。进入正式 `practice_corpus` 前必须人工映射成内部 key。
+- `mistake_causes: []`、`difficulty: null`、`variant_level: null` 是 seed 阶段显式占位符；其中 `variant_level` 不进入正式 corpus。
+- `knowledge_points` 第一版可默认从 `source_ref.section_title` 派生一个粗标签，如 `["导数"]` 或 `["导数", "考点 1 导数的概念、几何意义与运算"]`。这些值只是审核 seed 的临时展示标签，不是 PRD 内部 snake_case 知识点 ID；进入 `practice_corpus` 时由生成器归一化为 `["derivative"]`。
 - `source_candidate_file`、`source_file`、`mineru_json_file` 优先使用相对项目路径；如果只能得到绝对路径，应在页面和文档中提示该 seed 不应提交或公开分享。
 
 ## 6. 页面设计
@@ -256,8 +256,7 @@ browser index.html
 
 ```text
 reviewed_practice_seed.json
--> 人工补齐 10-15 道题的 knowledge_points / difficulty / variant_level
--> practice_corpus fixture
+-> build-practice-corpus.mjs 生成 practice_corpus fixture
 -> metadata/text search
 -> 变式题推荐模块接入
 ```
@@ -278,4 +277,11 @@ node scripts/rag/build-candidate-review-ui.mjs \
 
 第一版审核页会内联 KaTeX CSS 和 JS，因此直接以 `file://` 打开时也能预览修正后的公式。
 
-该 seed 仍不是正式 `practice_corpus`。下一阶段需要人工补齐 `knowledge_points`、`difficulty`、`variant_level` 和必要解析信息后，再进入 metadata/text search。
+该 seed 仍不是正式 `practice_corpus`。下一阶段通过 `scripts/rag/build-practice-corpus.mjs` 生成 ignored artifact：
+
+```text
+artifacts/rag/reviewed_practice_seed.json
+-> artifacts/rag/practice-corpus/practice_corpus.json
+```
+
+`practice_corpus.json` 是本地生成的 ignored artifact，不提交 Git。第一版 `practice_corpus` 只保留检索需要的最小字段：`question_text`、`search_text`、`knowledge_points: ["derivative"]`、`section_title`、`difficulty`、`source_ref` 和 `review_meta`。其中 `difficulty` 是题目本体难度，占位为 `null`；`review_meta` 只用于审计，不参与检索排序；`variant_level` 不进入 corpus，本阶段以后由“当前错题 -> 推荐结果”动态产生。
