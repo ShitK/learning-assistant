@@ -6,6 +6,7 @@ import {
   summarizeTagProposals,
   validateTagProposalArtifact,
 } from "../../rag/practice-tag-proposal-core.mjs";
+import { TARGET_SKILL_TO_METHOD_TAGS } from "../../rag/practice-tag-taxonomy.mjs";
 
 const baseItem = {
   id: "practice-candidate-1",
@@ -81,7 +82,7 @@ const corpus = {
   assert.equal(proposal.proposed_tags.target_skills[0].display_name, "切线斜率");
   assert.deepEqual(
     proposal.proposed_tags.method_tags.map((tag) => tag.tag),
-    ["derivative_definition", "tangent_slope"],
+    TARGET_SKILL_TO_METHOD_TAGS.tangent_slope,
   );
   assert.equal(
     proposal.proposed_tags.feature_flags.some((tag) => tag.tag === "has_choice_options"),
@@ -172,3 +173,5 @@ const corpus = {
   assert.equal(summary.target_skill_distribution.extrema, 1);
   assert.equal(summary.multi_tag_items >= 1, true);
 }
+
+console.log("practice tag proposal core tests passed");

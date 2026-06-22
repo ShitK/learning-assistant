@@ -149,3 +149,5 @@ writeFileSync(reviewPath, `${JSON.stringify(reviewRecords, null, 2)}\n`);
   assert.equal(result.status, 1);
   assert.equal(result.stderr.includes("failed to parse tag proposal JSON"), true);
 }
+
+console.log("enriched practice corpus cli tests passed");

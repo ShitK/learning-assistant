@@ -122,3 +122,5 @@ writeFileSync(corpusPath, `${JSON.stringify(corpus, null, 2)}\n`);
   assert.equal(result.stderr.includes("invalid practice corpus"), true);
   assert.equal(result.stderr.includes("切线斜率"), false);
 }
+
+console.log("practice tag proposal cli tests passed");

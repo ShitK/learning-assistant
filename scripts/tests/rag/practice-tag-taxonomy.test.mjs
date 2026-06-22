@@ -36,3 +36,5 @@ for (const methodTags of Object.values(TARGET_SKILL_TO_METHOD_TAGS)) {
     );
   }
 }
+
+console.log("practice tag taxonomy tests passed");

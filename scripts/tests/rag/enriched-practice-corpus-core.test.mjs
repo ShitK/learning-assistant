@@ -290,3 +290,5 @@ const proposalArtifact = {
   assert.equal(summary.needs_visual_items, 1);
   assert.equal(summary.target_skill_distribution.tangent_slope, 1);
 }
+
+console.log("enriched practice corpus core tests passed");

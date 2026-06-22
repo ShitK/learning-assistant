@@ -1,6 +1,7 @@
 import {
   FEATURE_FLAG_DISPLAY_NAMES,
   METHOD_TAG_DISPLAY_NAMES,
+  TARGET_SKILL_TO_METHOD_TAGS,
   TARGET_SKILL_DISPLAY_NAMES,
 } from "./practice-tag-taxonomy.mjs";
 
@@ -215,15 +216,7 @@ function addTargetSkill(targetSkills, sourceText, rule) {
 }
 
 function addMethodTagsForTarget(methodTags, targetTag) {
-  const rules = {
-    derivative_definition_limit: ["derivative_definition"],
-    tangent_slope: ["derivative_definition", "tangent_slope"],
-    monotonicity: ["monotonicity_by_derivative"],
-    extrema: ["extremum_by_derivative"],
-    zero_point: ["zero_count"],
-    parameter_range: ["parameter_classification"],
-  };
-  for (const methodTag of rules[targetTag.tag] ?? []) {
+  for (const methodTag of TARGET_SKILL_TO_METHOD_TAGS[targetTag.tag] ?? []) {
     pushUniqueTag(methodTags, {
       tag: methodTag,
       display_name: METHOD_TAG_DISPLAY_NAMES[methodTag] ?? methodTag,

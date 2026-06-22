@@ -2205,6 +2205,7 @@ P2.2 解决 P2.1 推荐不足的核心原因：题库只有全文和章节，缺
 - `enriched_practice_corpus.json` 才是 Agent 消费的本地 fixture。
 - 标签使用 snake_case 内部 key，中文只作为展示名。
 - `needs_visual` 题默认不进入文本推荐。
+- 第一版规则会把“如图”作为保守 visual dependency 信号；后续 tag review UI 需要允许人工把文本已足够的图像题修正为仅 `has_graph`。
 
 工具链仍保持本地 artifact 边界：
 
