@@ -318,6 +318,8 @@ function renderStyles() {
     #candidate-list { min-height: 0; border-right: 1px solid #ded8cc; overflow-y: auto; overscroll-behavior: contain; }
     .candidate-row { width: 100%; border: 0; border-bottom: 1px solid #e7e0d3; padding: 12px; text-align: left; background: transparent; cursor: pointer; }
     .candidate-row[aria-selected="true"] { background: #efe8d9; }
+    .candidate-row.status-needs-fix { background: #fff1f0; box-shadow: inset 4px 0 0 #c2410c; }
+    .candidate-row.status-needs-fix[aria-selected="true"] { background: #f8d7da; }
     #candidate-detail { min-height: 0; padding: 22px; overflow-y: auto; }
     .question-body { line-height: 1.85; font-size: 17px; }
     .original-question { color: #516171; background: #fffdf8; border: 1px solid #e7e0d3; padding: 12px; }
@@ -376,6 +378,12 @@ function renderBrowserScript() {
     }
     function hasManualCorrection(candidate, questionText) {
       return questionText.trim() !== candidate.normalized_text.trim();
+    }
+    function getStatusClass(status) {
+      if (status === "needs_fix") return "status-needs-fix";
+      if (status === "approved") return "status-approved";
+      if (status === "skipped") return "status-skipped";
+      return "status-unreviewed";
     }
     function inferKnowledgePoints(candidate) {
       const points = ["导数"];
@@ -486,7 +494,7 @@ function renderBrowserScript() {
       document.querySelector("#candidate-list").innerHTML = list.map((candidate) => {
         const status = state[candidate.id]?.status || "unreviewed";
         const correctionMark = hasCorrection(candidate) ? " · corrected" : "";
-        return '<button class="candidate-row" aria-selected="' + (candidate.id === selectedId) + '" data-id="' + escapeAttribute(candidate.id) + '">' +
+        return '<button class="candidate-row ' + escapeAttribute(getStatusClass(status)) + '" aria-selected="' + (candidate.id === selectedId) + '" data-id="' + escapeAttribute(candidate.id) + '">' +
           '<strong>' + escapeHtml(candidate.question_number || "-") + '</strong> ' +
           escapeHtml(candidate.section_title || "未分组") +
           '<br><small>' + escapeHtml(status) + ' · ' + escapeHtml(candidate.extraction_confidence) + ' · warnings ' + escapeHtml(candidate.warnings.length) + escapeHtml(correctionMark) + '</small>' +

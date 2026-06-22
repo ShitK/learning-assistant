@@ -345,6 +345,7 @@ const extraction = {
   assert.equal(html.includes("#app { height: 100vh;"), true);
   assert.equal(html.includes("#candidate-list { min-height: 0;"), true);
   assert.equal(html.includes("overflow-y: auto; overscroll-behavior: contain;"), true);
+  assert.equal(html.includes(".candidate-row.status-needs-fix"), true);
   assert.equal(html.includes("copy-json-fallback"), true);
   assert.equal(html.includes("reviewed_practice_seed.json"), true);
   assert.equal(html.includes("<script>alert(1)</script>"), false);
@@ -408,6 +409,32 @@ const extraction = {
   assert.equal(listHtml.includes('onerror="alert(2)"'), false);
   assert.equal(listHtml.includes("&quot; onclick=&quot;alert(1)"), true);
   assert.equal(listHtml.includes("&lt;/small&gt;&lt;img"), true);
+}
+
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const html = renderCandidateReviewHtml(appData, {
+    katexCss: ".katex{}",
+    katexJs: "window.katex={renderToString:function(){return '';}};",
+  });
+  const listHtml = renderBrowserListHtml(html, {
+    initialReviewState: {
+      "candidate-1": {
+        status: "needs_fix",
+        note: "",
+        updated_at: "2026-06-22T00:00:00.000Z",
+      },
+    },
+    storageKey: appData.storage_key,
+  });
+
+  assert.equal(listHtml.includes("status-needs-fix"), true);
+  assert.equal(listHtml.includes("needs_fix"), true);
 }
 
 {
@@ -643,12 +670,19 @@ function extractScriptById(html, scriptId) {
   return match[1];
 }
 
-function renderBrowserListHtml(html) {
+function renderBrowserListHtml(
+  html,
+  { initialReviewState = null, storageKey = null } = {},
+) {
   const katexScript = extractScriptById(html, "katex-runtime");
   const dataScript = extractScriptById(html, "candidate-review-data");
   const appScript = extractScriptById(html, "candidate-review-app");
 
   const nodes = new Map();
+  const storage = new Map();
+  if (initialReviewState && storageKey) {
+    storage.set(storageKey, JSON.stringify(initialReviewState));
+  }
   const document = {
     addEventListener() {},
     execCommand() {
@@ -685,10 +719,12 @@ function renderBrowserListHtml(html) {
     },
     document,
     localStorage: {
-      getItem() {
-        return null;
+      getItem(key) {
+        return storage.get(key) ?? null;
       },
-      setItem() {},
+      setItem(key, value) {
+        storage.set(key, value);
+      },
     },
     navigator: {},
     window: {},
