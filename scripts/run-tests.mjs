@@ -21,6 +21,8 @@ const suites = {
     "scripts/tests/rag/practice-tag-taxonomy.test.mjs",
     "scripts/tests/rag/practice-tag-proposal-core.test.mjs",
     "scripts/tests/rag/practice-tag-proposal-cli.test.mjs",
+    "scripts/tests/rag/enriched-practice-corpus-core.test.mjs",
+    "scripts/tests/rag/enriched-practice-corpus-cli.test.mjs",
     "scripts/tests/rag/variant-practice-agent-core.test.mjs",
     "scripts/tests/rag/variant-practice-agent-cli.test.mjs",
     "scripts/tests/image-diagnosis/vision-extraction-parser.test.mjs",
