@@ -162,7 +162,10 @@ writeFileSync(queryPath, `${JSON.stringify(query, null, 2)}\n`);
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout.includes("Recommendations: 3"), true);
-  assert.equal(result.stdout.includes("求函数"), false);
+  for (const item of enrichedCorpus.items) {
+    assert.equal(result.stdout.includes(item.question_text), false);
+  }
+  assert.equal(result.stdout.includes(query.question_text), false);
   const output = JSON.parse(readFileSync(join(enrichedOut, "recommendations.json"), "utf8"));
   assert.equal(output.search_summary.corpus_version, "enriched-practice-corpus-v0");
   assert.deepEqual(

@@ -2184,12 +2184,130 @@ P2.1 不是把搜索结果原样展示给学生。搜索工具只负责召回候
 
 ---
 
+## 19. P2.2 题源 metadata enrichment
+
+### 当前状态
+
+已完成本地 deterministic tag proposal / enriched corpus 工具链，并通过本地测试验证。真实教辅题源 artifact 仍保留本地，不进入 Git。
+
+本次真实本地 smoke 的 summary 是：69 道 corpus item 生成 tag proposal，其中 57 道 high confidence、1 道 needs fix、0 道 needs visual；阈值通过后生成 enriched corpus，其中 68 道 approved、1 道 needs fix。 enriched Agent evaluation 从 12 道候选中推荐 2 道，并给出 `insufficient_approved_tagged_items` 和 `no_mixed_application_with_related_method_tags`，说明 P2.2 已能更明确解释推荐缺口，但还没有把所有场景稳定提升到 3 道推荐。
+
+### 功能价值
+
+P2.2 解决 P2.1 推荐不足的核心原因：题库只有全文和章节，缺少可解释的技能、方法和题型标签。它让 Variant Practice Agent 能基于结构化 metadata 选择巩固题、近迁移题和综合应用题。
+
+对 MathTrace 来说，这一步把“教辅资料能进入 corpus”继续推进为“corpus 能被解释性推荐规则消费”。它不是换一个更复杂的检索算法，而是先补足题源结构信息，让后续 pgvector、embedding 或前端推荐有更可靠的题目标签层。
+
+### 关键设计
+
+- `practice_corpus.json` 保持原始人工审核题源。
+- `candidate_tag_proposals.json` 是机器建议，不是最终 truth。
+- `enriched_practice_corpus.json` 才是 Agent 消费的本地 fixture。
+- 标签使用 snake_case 内部 key，中文只作为展示名。
+- `needs_visual` 题默认不进入文本推荐。
+
+工具链仍保持本地 artifact 边界：
+
+```text
+practice_corpus.json
+-> candidate_tag_proposals.json
+-> tag_proposal_summary.json
+-> enriched_practice_corpus.json
+-> enriched Agent evaluation
+```
+
+proposal summary 决定第一版是否可以用 `--accept-rule-proposals` 做本地评估。如果 high confidence、needs fix 和 needs visual 的比例不过阈值，下一步应先做轻量标签审核页，而不是把低质量标签直接喂给 Agent。
+
+### 技术决策与取舍
+
+我没有第一步上 pgvector 或 embedding，因为 P2.1 的问题首先不是向量召回，而是题源 metadata 太薄。先用 deterministic proposal 建立可审核标签层，可以降低人工标注成本，也能为后续 embedding_text / pgvector 提供更干净的文本和标签依据。
+
+我也没有让 LLM 直接给所有题打最终标签。P2.2 仍然把机器输出定位成 proposal，最终进入 enriched corpus 的标签必须是 accepted 或人工审核后的结果。这样可以避免模型或规则把错误标签静默写进正式题源。
+
+当前 smoke 仍只推荐 2 道题，所以我不会把 P2.2 描述成“推荐质量已经完全解决”。更准确的结论是：metadata enrichment 让缺口更可诊断，下一步可以聚焦补充 approved tagged items 或补一个轻量 tag review UI，而不是盲目升级检索技术。
+
+### 性能收益（如适用）
+
+本阶段没有宣称线上性能提升；收益主要是本地 deterministic pipeline 可重复、无外部模型成本、无网络依赖，适合作为黑客松 demo 的稳定题源加工链路。
+
+另一个实际收益是验证效率：tag proposal、enriched corpus 和 Agent evaluation 都能用 Node CLI 在本地跑完，stdout 只输出 summary counts，不打印完整教辅题干、完整 corpus、PDF/MinerU JSON 或 recommendation artifact。
+
+### 面试官可能怎么问
+
+1. 为什么 P2.2 还不接向量库？
+2. 为什么不用 LLM 直接给所有题打标签？
+3. 如何避免机器标签污染推荐结果？
+4. 为什么标签用英文 key 而不是中文？
+5. 图像题为什么跳过？
+6. 这和传统 RAG 的 embedding 检索有什么关系？
+7. 本地 smoke 仍然只有 2 道推荐，说明什么？
+8. 什么情况下需要做 tag review UI？
+
+### 推荐回答
+
+我会这样回答：
+
+P2.1 已经能从题库召回候选题，但推荐只能稳定给出 2 道，说明瓶颈不在“有没有向量库”，而在“题目结构信息不够”。所以 P2.2 先做 metadata enrichment，把每道题的目标技能、解法方法、题型特征结构化出来。机器只做 proposal，最终进入 corpus 的标签必须是明确 accepted 或人工审核过的结果，这样不会让模型或规则直接污染正式题库。
+
+我没有立刻接 pgvector，是因为 embedding 更擅长语义召回，但它不会凭空知道一道题到底训练切线斜率、导数定义、单调性还是参数分类。如果 metadata 层太薄，向量检索可能只是更快地召回一批“看起来像导数题”的候选。P2.2 先把标签层补出来，后续 embedding_text 也能拼得更干净。
+
+这次 enriched evaluation 仍然推荐 2 道，并返回两个具体 warning。我的理解不是“失败”，而是规则现在能说清楚缺口在哪里：approved tagged items 还不够，且没有找到带相关 method tags 的综合应用题。下一步应该补轻量标签审核或扩充审核后的标签质量，再考虑 pgvector。
+
+### 可能被继续追问
+
+- rule-based proposal 会不会过拟合导数专题？
+- 标签体系扩到多个专题时如何治理 key？
+- 人工审核的最小 UI 应该长什么样？
+- 如果 LLM 未来参与 proposal，怎么记录 source 和 confidence？
+- enriched corpus 进入正式产品前如何处理版权和图像题？
+- 如何用 evaluation 指标判断 metadata 是否足够好？
+
+### 反思与后续优化
+
+下一步可以根据 proposal summary 决定是否做轻量标签审核页；如果标签层稳定但召回仍不足，再做 embedding_text 和 pgvector prototype。
+
+P2.2 也暴露了一个边界：deterministic rules 能快速生成第一版标签，但不能替代人工确认。当前 1 道 needs-fix item 和仍不足的 mixed application 推荐，都说明后续要么补审核流程，要么扩充 method tags 规则和真实题源，而不是让 Agent 硬凑第三道题。
+
+### 项目中的真实证据
+
+- 代码：
+  - `scripts/rag/practice-tag-proposal-core.mjs`
+  - `scripts/rag/build-practice-tag-proposals.mjs`
+  - `scripts/rag/enriched-practice-corpus-core.mjs`
+  - `scripts/rag/build-enriched-practice-corpus.mjs`
+  - `scripts/rag/variant-practice-agent-core.mjs`
+- 测试：
+  - `scripts/tests/rag/practice-tag-proposal-core.test.mjs`
+  - `scripts/tests/rag/practice-tag-proposal-cli.test.mjs`
+  - `scripts/tests/rag/enriched-practice-corpus-core.test.mjs`
+  - `scripts/tests/rag/enriched-practice-corpus-cli.test.mjs`
+  - `scripts/tests/rag/variant-practice-agent-cli.test.mjs`
+- 文档：
+  - `docs/superpowers/specs/2026-06-23-p22-metadata-tag-proposal-design.md`
+- 本地 artifact（不提交）：
+  - `artifacts/rag/tag-proposals/candidate_tag_proposals.json`
+  - `artifacts/rag/tag-proposals/tag_proposal_summary.json`
+  - `artifacts/rag/enriched-practice-corpus/enriched_practice_corpus.json`
+  - `artifacts/rag/enriched-practice-corpus/enrichment_summary.json`
+  - `artifacts/rag/variant-practice-agent/recommendations.json`
+- 验证：
+  - `node scripts/tests/rag/variant-practice-agent-cli.test.mjs`
+  - `node scripts/run-tests.mjs default`
+  - `npm run lint`
+  - `npm run build`
+  - `node scripts/rag/build-practice-tag-proposals.mjs --corpus artifacts/rag/practice-corpus/practice_corpus.json --out artifacts/rag/tag-proposals`
+  - `node scripts/rag/build-enriched-practice-corpus.mjs --corpus artifacts/rag/practice-corpus/practice_corpus.json --proposals artifacts/rag/tag-proposals/candidate_tag_proposals.json --accept-rule-proposals --out artifacts/rag/enriched-practice-corpus`
+  - `node scripts/rag/recommend-variant-practice.mjs --corpus artifacts/rag/enriched-practice-corpus/enriched_practice_corpus.json --query /tmp/mathtrace-p22-query.json --out artifacts/rag/variant-practice-agent --limit 12`
+
+---
+
 ## 后续可追加的阶段
 
 这些阶段还没有完全完成，后续实现后可以继续按同一模板追加：
 
 - 真实云端 migration apply、Auth/RLS 用户策略和多用户画像。
 - 数据库支持的图片确认草稿版本审计。
+- P2.2 轻量标签审核页和多专题 tag key 治理。
 - 变式题推荐模块的前端 demo 接入。
 - 图像题 corpus 处理和图文混合题召回。
 - 动态生成变式练习题。
@@ -2206,15 +2324,15 @@ P2.1 不是把搜索结果原样展示给学生。搜索工具只负责召回候
 
 ### Demo 稳定性
 
-重点阶段：1、2、6、9、10、11、12、13、14、15、16、17。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像；P1.6a 用 `npm run test:smoke` 和浏览器 checklist 锁住合并前主路径；P1.7/P1.8 未配置数据库时仍保持 demo 可运行；P1.10 读取 evidence 失败、数据库未配置或无事件时继续使用 P1.9 fallback；P2.0 题源工具只生成本地 ignored artifact，不影响 `sample_diagnosis`。
+重点阶段：1、2、6、9、10、11、12、13、14、15、16、17、19。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像；P1.6a 用 `npm run test:smoke` 和浏览器 checklist 锁住合并前主路径；P1.7/P1.8 未配置数据库时仍保持 demo 可运行；P1.10 读取 evidence 失败、数据库未配置或无事件时继续使用 P1.9 fallback；P2.0/P2.2 题源工具只生成本地 ignored artifact，不影响 `sample_diagnosis`。
 
 ### Agent 工程化
 
-重点阶段：4、5、13、14、15、16、17。核心表达：先用确定性 pipeline 表达 Agent 流程，再逐步把适合的环节替换为模型或工具调用；长期记忆不是模型自由记忆，而是确认后的学习证据先进入 `diagnosis_runs` / `memory_events`，再投影成 `student_profiles` 当前画像。P1.9 把展示派生收口到前端 view model，P1.10 再用只读 evidence API 解释推荐依据，说明 Agent 产生的结构化事实、当前画像和 UI 解释层要分开。P2.0 开始把 RAG 拆成题源工程、人工审核、corpus fixture 和后续检索模块，而不是把“向量库”直接塞进 Agent 主链路。可以类比 Hermes persistent memory / session search 的分层、mem0 的按用户范围检索思路和 OpenClaw 的可检查上下文边界，但 MathTrace 没集成这些库，只借鉴分层、门控和安全边界原则。
+重点阶段：4、5、13、14、15、16、17、18、19。核心表达：先用确定性 pipeline 表达 Agent 流程，再逐步把适合的环节替换为模型或工具调用；长期记忆不是模型自由记忆，而是确认后的学习证据先进入 `diagnosis_runs` / `memory_events`，再投影成 `student_profiles` 当前画像。P1.9 把展示派生收口到前端 view model，P1.10 再用只读 evidence API 解释推荐依据，说明 Agent 产生的结构化事实、当前画像和 UI 解释层要分开。P2.0 开始把 RAG 拆成题源工程、人工审核、corpus fixture 和后续检索模块，P2.1/P2.2 再用本地 Agent 和 metadata enrichment 证明题源如何服务“下一步练什么”，而不是把“向量库”直接塞进 Agent 主链路。可以类比 Hermes persistent memory / session search 的分层、mem0 的按用户范围检索思路和 OpenClaw 的可检查上下文边界，但 MathTrace 没集成这些库，只借鉴分层、门控和安全边界原则。
 
 ### 长期记忆与数据持久化
 
-重点阶段：6、13、14、15、16、17。核心表达：localStorage 只是 demo fallback，Postgres 才是服务端事实层；P1.7 存诊断运行、错题本条目和画像变化事件，P1.8 再用 `student_profiles` 保存从 gated `memory_events` 投影出的当前画像快照；P1.9 的“薄弱指数”只是从 `mastery_scores` 派生的展示值，不写回 DB；P1.10 读取最近 `memory_events` 摘要增强推荐依据，但不暴露完整事件、完整诊断或题目正文。P2.0 的 RAG 题源 corpus 仍是检索层，不是画像事实层；它不会替代 `memory_events`、`student_profiles` 或 evidence API。面试时要说清楚当前仍固定 `demo_student_001`，无登录、真实多用户、面向用户的 RLS 策略或老师端，前端不直连数据库，service role only server side。
+重点阶段：6、13、14、15、16、17、19。核心表达：localStorage 只是 demo fallback，Postgres 才是服务端事实层；P1.7 存诊断运行、错题本条目和画像变化事件，P1.8 再用 `student_profiles` 保存从 gated `memory_events` 投影出的当前画像快照；P1.9 的“薄弱指数”只是从 `mastery_scores` 派生的展示值，不写回 DB；P1.10 读取最近 `memory_events` 摘要增强推荐依据，但不暴露完整事件、完整诊断或题目正文。P2.0/P2.2 的 RAG 题源 corpus 和 enriched corpus 仍是检索层，不是画像事实层；它不会替代 `memory_events`、`student_profiles` 或 evidence API。面试时要说清楚当前仍固定 `demo_student_001`，无登录、真实多用户、面向用户的 RLS 策略或老师端，前端不直连数据库，service role only server side。
 
 ### 前端状态管理
 
@@ -2222,12 +2340,12 @@ P2.1 不是把搜索结果原样展示给学生。搜索工具只负责召回候
 
 ### 测试策略
 
-重点阶段：3、4、5、6、7、9、10、11、12、13、14、15、16、17。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界；P1.6a 用 smoke 测试验证 Demo 主路径和 API contract 是否仍能跑通；P1.7/P1.8 需要覆盖数据库未配置、fake repo 写入、只读错题本 API 和云端画像投影/读取；P1.9 用 view model/UI 测试锁住薄弱指数、错因筛选和“不声称读取完整 `memory_events`”的展示边界；P1.10 增加 evidence service/client/UI/architecture 边界测试；P2.0 题源工具用 Node 脚本测试覆盖 OCR 候选映射、审核页导出、corpus schema、CLI 默认输出和敏感输出边界。
+重点阶段：3、4、5、6、7、9、10、11、12、13、14、15、16、17、18、19。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界；P1.6a 用 smoke 测试验证 Demo 主路径和 API contract 是否仍能跑通；P1.7/P1.8 需要覆盖数据库未配置、fake repo 写入、只读错题本 API 和云端画像投影/读取；P1.9 用 view model/UI 测试锁住薄弱指数、错因筛选和“不声称读取完整 `memory_events`”的展示边界；P1.10 增加 evidence service/client/UI/architecture 边界测试；P2.0-P2.2 题源工具用 Node 脚本测试覆盖 OCR 候选映射、审核页导出、corpus schema、tag proposal、enriched corpus、Agent evaluation、CLI 默认输出和敏感输出边界。
 
 ### 性能收益
 
-重点阶段：1、2、3、4、5、6、7、8、9、10、11、12、13、14、15、16、17。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退、`npm run test:eval`、`npm run test:smoke`、数据库未配置 no-op 降级、`student_profiles` 当前画像快照读取，P1.9 只在前端纯函数中派生画像展示，P1.10 读取最近 N 条 `memory_events` 摘要而不是前端拉全量历史，以及 P2.0 用 9MB 导数切片、本地静态审核页和 Node CLI 快速验证 69 道可用 corpus item。
+重点阶段：1、2、3、4、5、6、7、8、9、10、11、12、13、14、15、16、17、19。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退、`npm run test:eval`、`npm run test:smoke`、数据库未配置 no-op 降级、`student_profiles` 当前画像快照读取，P1.9 只在前端纯函数中派生画像展示，P1.10 读取最近 N 条 `memory_events` 摘要而不是前端拉全量历史，P2.0 用 9MB 导数切片、本地静态审核页和 Node CLI 快速验证 69 道可用 corpus item，以及 P2.2 用本地 deterministic pipeline 生成 proposal、enriched corpus 和 Agent evaluation。
 
 ### 范围控制
 
-重点阶段：1、8、11、13、14、15、16、17。核心表达：不提前做登录、老师端、完整 RAG 和复杂 Agent 框架；先验证错因诊断闭环和可信写入边界，再用 P1.7/P1.8 引入最小数据库底座和当前画像快照。P1.9 只改展示语义；P1.10 只新增 profile evidence 摘要 API，不新增 DB schema、正向练习证据表或完整历史事件浏览。P2.0 只完成教辅题源到本地 corpus 的前置闭环，仍不上 pgvector、embedding、检索 API 或产品前端推荐；多用户画像和 RLS 用户策略也仍属于后续演进。
+重点阶段：1、8、11、13、14、15、16、17、19。核心表达：不提前做登录、老师端、完整 RAG 和复杂 Agent 框架；先验证错因诊断闭环和可信写入边界，再用 P1.7/P1.8 引入最小数据库底座和当前画像快照。P1.9 只改展示语义；P1.10 只新增 profile evidence 摘要 API，不新增 DB schema、正向练习证据表或完整历史事件浏览。P2.0/P2.2 只完成教辅题源到本地 corpus、proposal 和 enriched corpus 的前置闭环，仍不上 pgvector、embedding、检索 API 或产品前端推荐；多用户画像和 RLS 用户策略也仍属于后续演进。
