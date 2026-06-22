@@ -207,6 +207,7 @@ import {
   FEATURE_FLAG_DISPLAY_NAMES,
   METHOD_TAG_DISPLAY_NAMES,
   normalizeTargetSkillKeys,
+  TARGET_SKILL_TO_METHOD_TAGS,
   TARGET_SKILL_DISPLAY_NAMES,
 } from "../../rag/practice-tag-taxonomy.mjs";
 
@@ -227,6 +228,16 @@ assert.deepEqual(
 
 assert.deepEqual(normalizeTargetSkillKeys("切线斜率"), []);
 assert.deepEqual(deriveMethodTagsFromTargetSkills(["未知技能"]), []);
+
+for (const methodTags of Object.values(TARGET_SKILL_TO_METHOD_TAGS)) {
+  for (const methodTag of methodTags) {
+    assert.equal(
+      typeof METHOD_TAG_DISPLAY_NAMES[methodTag],
+      "string",
+      `${methodTag} must have a display name`,
+    );
+  }
+}
 ```
 
 - [ ] **Step 2: Run taxonomy test to verify it fails**
@@ -280,7 +291,7 @@ const TARGET_SKILL_ALIASES = Object.freeze({
   参数范围: "parameter_range",
 });
 
-const TARGET_SKILL_TO_METHOD_TAGS = Object.freeze({
+export const TARGET_SKILL_TO_METHOD_TAGS = Object.freeze({
   derivative_geometric_meaning: ["derivative_definition", "tangent_slope"],
   tangent_slope: ["tangent_slope", "derivative_definition"],
   derivative_definition_limit: ["derivative_definition"],
@@ -391,8 +402,16 @@ const corpus = {
       ...baseItem,
       id: "practice-candidate-5",
       source_candidate_id: "candidate-5",
-      question_text: "5. 计算函数值.",
-      search_text: "5. 计算函数值.",
+      question_text: "5. 观察函数图像信息，文字已给出所有条件.",
+      search_text: "5. 观察函数图像信息，文字已给出所有条件.\n导数\n考点 5 综合应用",
+      section_title: "考点 5 综合应用",
+    },
+    {
+      ...baseItem,
+      id: "practice-candidate-6",
+      source_candidate_id: "candidate-6",
+      question_text: "6. 计算函数值.",
+      search_text: "6. 计算函数值.",
       section_title: null,
       source_ref: null,
     },
@@ -447,6 +466,18 @@ const corpus = {
 
 {
   const proposal = proposeTagsForItem(corpus.items[4]);
+  assert.equal(
+    proposal.proposed_tags.feature_flags.some((tag) => tag.tag === "has_graph"),
+    true,
+  );
+  assert.equal(
+    proposal.proposed_tags.feature_flags.some((tag) => tag.tag === "needs_visual"),
+    false,
+  );
+}
+
+{
+  const proposal = proposeTagsForItem(corpus.items[5]);
   assert.deepEqual(proposal.proposed_tags.target_skills, []);
   assert.equal(proposal.warnings.includes("no_tags_proposed"), true);
 }
@@ -458,8 +489,8 @@ const corpus = {
     generatedAt: "2026-06-23T00:00:00.000Z",
   });
   assert.equal(artifact.proposal_version, "practice-tag-proposal-v0");
-  assert.equal(artifact.item_count, 5);
-  assert.equal(artifact.proposals.length, 5);
+  assert.equal(artifact.item_count, 6);
+  assert.equal(artifact.proposals.length, 6);
   assert.equal(artifact.proposals[0].item_id, "practice-candidate-1");
 
   const validation = validateTagProposalArtifact(artifact);
@@ -479,7 +510,7 @@ const corpus = {
   });
   const summary = summarizeTagProposals(artifact);
   assert.equal(summary.proposal_version, "practice-tag-proposal-v0");
-  assert.equal(summary.item_count, 5);
+  assert.equal(summary.item_count, 6);
   assert.equal(summary.high_confidence_items >= 3, true);
   assert.equal(summary.needs_visual_items, 1);
   assert.equal(summary.warning_distribution.no_tags_proposed, 1);
@@ -533,7 +564,7 @@ export function proposeTagsForItem(item) {
     tag: "derivative_definition_limit",
     displayName: TARGET_SKILL_DISPLAY_NAMES.derivative_definition_limit,
     terms: ["极限"],
-    confidence: sourceText.includes("lim") || sourceText.includes("Δx") ? "high" : "medium",
+    confidence: hasDerivativeLimitShape(sourceText) ? "high" : "medium",
   });
   addTargetSkill(targetSkills, sourceText, {
     tag: "tangent_slope",
@@ -700,6 +731,10 @@ function buildSourceText(item) {
     .join("\n");
 }
 
+function hasDerivativeLimitShape(sourceText) {
+  return /\blim\b|Δx|→/.test(sourceText);
+}
+
 function addTargetSkill(targetSkills, sourceText, rule) {
   const evidenceTerms = rule.terms.filter((term) => sourceText.includes(term));
   if (evidenceTerms.length === 0) return;
@@ -724,7 +759,7 @@ function addMethodTagsForTarget(methodTags, targetTag) {
   for (const methodTag of rules[targetTag.tag] ?? []) {
     pushUniqueTag(methodTags, {
       tag: methodTag,
-      display_name: METHOD_TAG_DISPLAY_NAMES[methodTag],
+      display_name: METHOD_TAG_DISPLAY_NAMES[methodTag] ?? methodTag,
       confidence: targetTag.confidence,
       evidence_terms: targetTag.evidence_terms,
       source: "rule",
@@ -1354,6 +1389,53 @@ const proposalArtifact = {
 }
 
 {
+  assert.throws(
+    () =>
+      buildEnrichedPracticeCorpus({
+        corpus,
+        proposalArtifact,
+        reviewRecords: [
+          {
+            item_id: "practice-candidate-1",
+            review_status: "approved",
+            reviewed_tags: {
+              target_skills: ["has_root"],
+              method_tags: ["unknown_method"],
+              feature_flags: ["has_root"],
+            },
+            has_manual_tag_correction: true,
+            tag_source: "human",
+          },
+        ],
+        sourceCorpusFile: "practice_corpus.json",
+        sourceTagProposalFile: "candidate_tag_proposals.json",
+        generatedAt: "2026-06-23T00:00:00.000Z",
+      }),
+    /invalid tag review records/,
+  );
+  assert.throws(
+    () =>
+      buildEnrichedPracticeCorpus({
+        corpus,
+        proposalArtifact,
+        reviewRecords: [
+          {
+            item_id: "practice-candidate-1",
+            review_status: "done",
+            reviewed_tags: { target_skills: [], method_tags: [], feature_flags: [] },
+            has_manual_tag_correction: false,
+            tag_source: "robot",
+          },
+        ],
+        sourceCorpusFile: "practice_corpus.json",
+        sourceTagProposalFile: "candidate_tag_proposals.json",
+        generatedAt: "2026-06-23T00:00:00.000Z",
+      }),
+    /invalid tag review records/,
+  );
+}
+
+{
   const enriched = buildEnrichedPracticeCorpus({
     corpus,
     proposalArtifact,
@@ -1404,9 +1486,18 @@ Expected: FAIL with module-not-found for `enriched-practice-corpus-core.mjs`.
 Create `scripts/rag/enriched-practice-corpus-core.mjs`. Implement exactly these exported functions:
 
 ```js
+import {
+  FEATURE_FLAG_DISPLAY_NAMES,
+  METHOD_TAG_DISPLAY_NAMES,
+  TARGET_SKILL_DISPLAY_NAMES,
+} from "./practice-tag-taxonomy.mjs";
+
 const ENRICHED_CORPUS_VERSION = "enriched-practice-corpus-v0";
 const REVIEW_STATUS_VALUES = new Set(["proposed", "approved", "needs_fix", "skipped"]);
 const TAG_SOURCE_VALUES = new Set(["rule", "human", "llm"]);
+const TARGET_SKILL_KEYS = new Set(Object.keys(TARGET_SKILL_DISPLAY_NAMES));
+const METHOD_TAG_KEYS = new Set(Object.keys(METHOD_TAG_DISPLAY_NAMES));
+const FEATURE_FLAG_KEYS = new Set(Object.keys(FEATURE_FLAG_DISPLAY_NAMES));
 
 export function buildEnrichedPracticeCorpus({
   corpus,
@@ -1417,6 +1508,10 @@ export function buildEnrichedPracticeCorpus({
   sourceTagProposalFile,
   generatedAt,
 }) {
+  const reviewErrors = validateReviewRecords(reviewRecords);
+  if (reviewErrors.length > 0) {
+    throw new Error(`invalid tag review records: ${reviewErrors.join(", ")}`);
+  }
   const proposalsByItemId = new Map((proposalArtifact?.proposals ?? []).map((proposal) => [proposal.item_id, proposal]));
   const reviewsByItemId = new Map(reviewRecords.map((record) => [record.item_id, record]));
   const items = (corpus?.items ?? []).map((item) => {
@@ -1488,6 +1583,41 @@ export function validateEnrichedPracticeCorpus(value) {
 In the same file, implement local helpers:
 
 ```js
+function validateReviewRecords(records) {
+  const errors = [];
+  if (!Array.isArray(records)) {
+    return ["review records must be an array"];
+  }
+  records.forEach((record, index) => {
+    const path = `reviewRecords[${index}]`;
+    if (!record || typeof record !== "object" || Array.isArray(record)) {
+      errors.push(`${path} must be an object`);
+      return;
+    }
+    if (typeof record.item_id !== "string" || !record.item_id.trim()) {
+      errors.push(`${path}.item_id must be a non-empty string`);
+    }
+    if (!REVIEW_STATUS_VALUES.has(record.review_status)) {
+      errors.push(`${path}.review_status is invalid`);
+    }
+    if (!TAG_SOURCE_VALUES.has(record.tag_source ?? "human")) {
+      errors.push(`${path}.tag_source is invalid`);
+    }
+    validateKnownTags(record.reviewed_tags?.target_skills, TARGET_SKILL_KEYS, `${path}.reviewed_tags.target_skills`, errors);
+    validateKnownTags(record.reviewed_tags?.method_tags, METHOD_TAG_KEYS, `${path}.reviewed_tags.method_tags`, errors);
+    validateKnownTags(record.reviewed_tags?.feature_flags, FEATURE_FLAG_KEYS, `${path}.reviewed_tags.feature_flags`, errors);
+  });
+  return errors;
+}
+
+function validateKnownTags(values, allowedValues, path, errors) {
+  for (const value of uniqueStrings(values)) {
+    if (!allowedValues.has(value)) {
+      errors.push(`${path} contains unknown tag: ${value}`);
+    }
+  }
+}
+
 function buildItemTagData({ proposal, reviewRecord, acceptRuleProposals }) {
   if (reviewRecord) {
     return {
@@ -1920,7 +2050,7 @@ const enrichedCorpus = {
   generated_at: "2026-06-23T00:00:00.000Z",
   source_corpus_file: "practice_corpus.json",
   source_tag_proposal_file: "candidate_tag_proposals.json",
-  item_count: 4,
+  item_count: 6,
   items: [
     {
       id: "practice-enriched-1",
@@ -1982,6 +2112,36 @@ const enrichedCorpus = {
       tag_review_meta: { review_status: "needs_fix", proposal_confidence: "low", has_manual_tag_correction: false, tag_source: "rule" },
       review_meta: {},
     },
+    {
+      id: "practice-enriched-5",
+      source_candidate_id: "candidate-5",
+      question_text: "5. draft 导数题.",
+      search_text: "5. draft 导数题.\n导数",
+      knowledge_points: ["derivative"],
+      section_title: "考点 5 综合应用",
+      target_skills: ["tangent_slope"],
+      method_tags: ["tangent_slope"],
+      feature_flags: [],
+      difficulty: null,
+      source_ref: { pdf_page_index: 5, section_title: "考点 5 综合应用" },
+      tag_review_meta: { review_status: "proposed", proposal_confidence: "high", has_manual_tag_correction: false, tag_source: "rule" },
+      review_meta: {},
+    },
+    {
+      id: "practice-enriched-6",
+      source_candidate_id: "candidate-6",
+      question_text: "6. skipped 导数题.",
+      search_text: "6. skipped 导数题.\n导数",
+      knowledge_points: ["derivative"],
+      section_title: "考点 6 综合应用",
+      target_skills: ["tangent_slope"],
+      method_tags: ["tangent_slope"],
+      feature_flags: [],
+      difficulty: null,
+      source_ref: { pdf_page_index: 6, section_title: "考点 6 综合应用" },
+      tag_review_meta: { review_status: "skipped", proposal_confidence: "high", has_manual_tag_correction: false, tag_source: "human" },
+      review_meta: {},
+    },
   ],
 };
 
@@ -2002,6 +2162,8 @@ const enrichedCorpus = {
   const results = searchPracticeCorpus({ corpus: enrichedCorpus, query: need, limit: 10 });
   assert.equal(results.some((candidate) => candidate.item.id === "practice-enriched-3"), false);
   assert.equal(results.some((candidate) => candidate.item.id === "practice-enriched-4"), false);
+  assert.equal(results.some((candidate) => candidate.item.id === "practice-enriched-5"), false);
+  assert.equal(results.some((candidate) => candidate.item.id === "practice-enriched-6"), false);
   assert.equal(results[0].matched_dimensions.includes("target_skill"), true);
   assert.equal(results[0].matched_dimensions.includes("method_tag"), true);
 
@@ -2101,6 +2263,7 @@ if (itemTargetSkills.length === 0) {
 
 ```js
 function hasFeatureFlag(item, flag) {
+  // Legacy practice-corpus-v0 items do not have feature_flags, so this returns false for them.
   return filterStringArray(item.feature_flags).includes(flag);
 }
 
@@ -2229,6 +2392,57 @@ Modify `scripts/tests/rag/variant-practice-agent-core.test.mjs` and add a synthe
   assert.equal(result.warnings.includes("no_mixed_application_with_related_method_tags"), true);
   assert.equal(result.warnings.includes("insufficient_approved_tagged_items"), true);
 }
+
+{
+  const noCandidateCorpus = {
+    corpus_version: "enriched-practice-corpus-v0",
+    generated_at: "2026-06-23T00:00:00.000Z",
+    source_corpus_file: "practice_corpus.json",
+    source_tag_proposal_file: "candidate_tag_proposals.json",
+    item_count: 2,
+    items: [
+      buildEnrichedTestItem({
+        id: "visual-only",
+        section_title: "考点 4 导数与零点",
+        target_skills: ["zero_point"],
+        method_tags: ["zero_count"],
+        feature_flags: ["needs_visual"],
+      }),
+      {
+        ...buildEnrichedTestItem({
+          id: "needs-fix-only",
+          section_title: "考点 5 综合应用",
+          target_skills: ["tangent_slope"],
+          method_tags: ["tangent_slope"],
+        }),
+        tag_review_meta: {
+          review_status: "needs_fix",
+          proposal_confidence: "low",
+          has_manual_tag_correction: false,
+          tag_source: "rule",
+        },
+      },
+    ],
+  };
+
+  const result = recommendVariantPractice({
+    corpus: noCandidateCorpus,
+    query: {
+      id: "query-no-candidate",
+      question_text: "求切线斜率",
+      knowledge_points: ["derivative"],
+      section_title: "考点 1 导数的概念",
+      target_skills: ["切线斜率"],
+    },
+    searchLimit: 10,
+  });
+
+  assert.deepEqual(result.recommendations, []);
+  assert.equal(result.warnings.includes("no_candidates_found"), true);
+  assert.equal(result.warnings.includes("skipped_visual_dependency_items"), true);
+  assert.equal(result.warnings.includes("insufficient_approved_tagged_items"), false);
+  assert.equal(result.warnings.includes("no_mixed_application_with_related_method_tags"), false);
+}
 ```
 
 Add this helper at the bottom of the test file:
@@ -2316,21 +2530,36 @@ function hasEnrichedTags(item) {
 ```js
 function buildWarnings({ corpus, candidates, recommendations }) {
   const warnings = [];
-  if (candidates.length === 0) warnings.push("no_candidates_found");
-  if (hasSkippedVisualItems(corpus)) warnings.push("skipped_visual_dependency_items");
-  if (recommendations.length < 3 && isEnrichedCorpus(corpus)) {
+  if (candidates.length === 0) {
+    warnings.push("no_candidates_found");
+  } else if (isEnrichedCorpus(corpus) && recommendations.length < 3) {
     warnings.push("insufficient_approved_tagged_items");
     if (!recommendations.some((recommendation) => recommendation.recommendation_type === "mixed_application")) {
       warnings.push("no_mixed_application_with_related_method_tags");
     }
-  } else if (candidates.length > 0 && recommendations.length < 3) {
+  } else if (recommendations.length < 3) {
     warnings.push("insufficient_recommendations");
   }
+  if (hasSkippedVisualItems(corpus)) warnings.push("skipped_visual_dependency_items");
   return warnings;
 }
 ```
 
 Then update the `recommendVariantPractice` call site to pass `corpus` into `buildWarnings`.
+
+Add the helper implementations:
+
+```js
+function isEnrichedCorpus(corpus) {
+  return corpus?.corpus_version === "enriched-practice-corpus-v0";
+}
+
+function hasSkippedVisualItems(corpus) {
+  return (corpus?.items ?? []).some((item) =>
+    Array.isArray(item.feature_flags) && item.feature_flags.includes("needs_visual"),
+  );
+}
+```
 
 - [ ] **Step 8: Run Agent core test to verify it passes**
 
@@ -2555,7 +2784,7 @@ Expected: stdout prints only summary counts. Final answer may report `Recommenda
 Modify `interview/mathtrace-project-narrative.md` with a new P2.2 section or an extension to the existing P2 RAG section. Include:
 
 ```md
-## P2.2 题源 metadata enrichment
+## 19. P2.2 题源 metadata enrichment
 
 ### 当前状态
 已完成本地 deterministic tag proposal / enriched corpus 工具链，并通过本地测试验证。真实教辅题源 artifact 仍保留本地，不进入 Git。
