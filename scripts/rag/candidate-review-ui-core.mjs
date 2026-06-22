@@ -50,7 +50,7 @@ export function renderMathTextToHtml(text) {
   let html = "";
 
   for (const match of source.matchAll(MATH_PATTERN)) {
-    html += escapeHtml(source.slice(cursor, match.index));
+    html += renderPlainTextSegment(source.slice(cursor, match.index));
     const delimiter = match[1];
     const math = match[2];
     try {
@@ -66,9 +66,9 @@ export function renderMathTextToHtml(text) {
     cursor = match.index + match[0].length;
   }
 
-  html += escapeHtml(source.slice(cursor));
+  html += renderPlainTextSegment(source.slice(cursor));
   return {
-    html: html.replace(/\n/g, "<br>"),
+    html,
     warnings: [...new Set(warnings)],
   };
 }
@@ -246,6 +246,10 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function renderPlainTextSegment(value) {
+  return escapeHtml(value).replace(/\n/g, "<br>");
+}
+
 function escapeScriptJson(value) {
   return JSON.stringify(value)
     .replaceAll("https://", "\\x68ttps://")
@@ -409,7 +413,7 @@ function renderBrowserScript() {
       let cursor = 0;
       let html = "";
       for (const match of source.matchAll(pattern)) {
-        html += escapeHtml(source.slice(cursor, match.index));
+        html += renderPlainTextSegment(source.slice(cursor, match.index));
         const delimiter = match[1];
         const math = match[2];
         try {
@@ -424,8 +428,8 @@ function renderBrowserScript() {
         }
         cursor = match.index + match[0].length;
       }
-      html += escapeHtml(source.slice(cursor));
-      return { html: html.replace(/\\n/g, "<br>"), warnings: [...new Set(warnings)] };
+      html += renderPlainTextSegment(source.slice(cursor));
+      return { html, warnings: [...new Set(warnings)] };
     }
     function renderCorrectionPreview() {
       const selected = appData.candidates.find((candidate) => candidate.id === selectedId);
@@ -537,6 +541,9 @@ function renderBrowserScript() {
     }
     function escapeHtml(value) {
       return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+    }
+    function renderPlainTextSegment(value) {
+      return escapeHtml(value).replace(/\\n/g, "<br>");
     }
     function escapeAttribute(value) {
       return escapeHtml(value);

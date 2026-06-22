@@ -148,6 +148,16 @@ const extraction = {
 }
 
 {
+  const plainLineBreak = renderMathTextToHtml("第一行\n第二行");
+  assert.equal(plainLineBreak.html, "第一行<br>第二行");
+
+  const sqrt = renderMathTextToHtml(String.raw`$\sqrt{x^{2}+\frac{1}{9}}$`);
+  assert.equal(sqrt.html.includes("<svg"), true);
+  assert.equal(/<svg[\s\S]*?<br>[\s\S]*?<\/svg>/.test(sqrt.html), false);
+  assert.deepEqual(sqrt.warnings, []);
+}
+
+{
   const appData = buildReviewAppData({
     extraction,
     candidateSourceFile: "/tmp/candidate_questions.json",
@@ -539,6 +549,25 @@ const extraction = {
   });
   const result = runBrowserCorrectionScenario(
     appData,
+    String.raw`1. $\sqrt{x^{2}+\frac{1}{9}}$`,
+    {
+      katexJs:
+        "window.katex={renderToString:function(){return '<svg><path d=\"M1\\nL2\"></path></svg>';}};",
+    },
+  );
+  assert.equal(result.previewHtml.includes("<svg"), true);
+  assert.equal(/<svg[\s\S]*?<br>[\s\S]*?<\/svg>/.test(result.previewHtml), false);
+}
+
+{
+  const appData = buildReviewAppData({
+    extraction,
+    candidateSourceFile: "/tmp/candidate_questions.json",
+    candidateSourceSha256: "abc123456789",
+    generatedAt: "2026-06-22T00:00:00.000Z",
+  });
+  const result = runBrowserCorrectionScenario(
+    appData,
     "1. 修正 <script>alert(1)</script> $x$",
   );
   assert.equal(result.previewHtml.includes("<script>alert(1)</script>"), false);
@@ -737,11 +766,12 @@ function renderBrowserListHtml(
 function runBrowserCorrectionScenario(
   appData,
   editedText,
-  { initialReviewState = null, searchText = "" } = {},
+  { initialReviewState = null, katexJs = null, searchText = "" } = {},
 ) {
   const html = renderCandidateReviewHtml(appData, {
     katexCss: ".katex{}",
     katexJs:
+      katexJs ??
       'window.katex={renderToString:function(value){return \'<span class="katex">\' + value + "</span>";}};',
   });
   const katexScript = extractScriptById(html, "katex-runtime");
