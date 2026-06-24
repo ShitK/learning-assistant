@@ -2184,28 +2184,76 @@ P2.1 不是把搜索结果原样展示给学生。搜索工具只负责召回候
 
 ---
 
-## 19. P2.2 题源 metadata enrichment
+## 19. P2.2 题源 metadata enrichment（题源元数据增强）
 
 ### 当前状态
 
-已完成本地 deterministic tag proposal / enriched corpus 工具链，并通过本地测试验证。真实教辅题源 artifact 仍保留本地，不进入 Git。
+已完成本地 `deterministic tag proposal`（确定性规则生成标签建议）/ `enriched corpus`（带标签增强题库）工具链，并通过本地测试验证。真实教辅题源 `artifact`（本地生成的中间产物文件）仍保留本地，不进入 `Git`（版本控制历史）。
 
-本次真实本地 smoke 的 summary 是：69 道 corpus item 生成 tag proposal，其中 57 道 high confidence、1 道 needs fix、0 道 needs visual；阈值通过后生成 enriched corpus，其中 68 道 approved、1 道 needs fix。 enriched Agent evaluation 从 12 道候选中推荐 2 道，并给出 `insufficient_approved_tagged_items` 和 `no_mixed_application_with_related_method_tags`，说明 P2.2 已能更明确解释推荐缺口，但还没有把所有场景稳定提升到 3 道推荐。
+本次真实本地 `smoke`（端到端冒烟验证）的 `summary`（汇总结果）是：69 道 `corpus item`（题库条目）生成 `tag proposal`（标签建议），其中 57 道 `high confidence`（高置信度）、1 道 `needs fix`（需要修正）、0 道 `needs visual`（依赖原图）；阈值通过后生成 `enriched corpus`（带标签增强题库），其中 68 道 `approved`（已接受，可被 Agent 推荐逻辑消费）、1 道 `needs fix`（需要人工修正）。`enriched Agent evaluation`（基于带标签题库的 Agent 推荐评估）从 12 道候选中推荐 2 道，并给出 `insufficient_approved_tagged_items`（已通过标签审核的题目不足）和 `no_mixed_application_with_related_method_tags`（没有找到带相关方法标签的综合应用题），说明 P2.2 已能更明确解释推荐缺口，但还没有把所有场景稳定提升到 3 道推荐。
 
 ### 功能价值
 
-P2.2 解决 P2.1 推荐不足的核心原因：题库只有全文和章节，缺少可解释的技能、方法和题型标签。它让 Variant Practice Agent 能基于结构化 metadata 选择巩固题、近迁移题和综合应用题。
+P2.2 解决 P2.1 推荐不足的核心原因：题库只有全文和章节，缺少可解释的技能、方法和题型标签。它让 `Variant Practice Agent`（变式练习推荐 Agent）能基于结构化 `metadata`（题目元数据）选择巩固题、近迁移题和综合应用题。
 
-对 MathTrace 来说，这一步把“教辅资料能进入 corpus”继续推进为“corpus 能被解释性推荐规则消费”。它不是换一个更复杂的检索算法，而是先补足题源结构信息，让后续 pgvector、embedding 或前端推荐有更可靠的题目标签层。
+对 MathTrace 来说，这一步把“教辅资料能进入 `corpus`（题库语料）”继续推进为“`corpus`（题库语料）能被解释性推荐规则消费”。它不是换一个更复杂的检索算法，而是先补足题源结构信息，让后续 `pgvector`（Postgres 的向量检索扩展）、`embedding`（文本向量表示）或前端推荐有更可靠的题目标签层。
 
 ### 关键设计
 
-- `practice_corpus.json` 保持原始人工审核题源。
-- `candidate_tag_proposals.json` 是机器建议，不是最终 truth。
-- `enriched_practice_corpus.json` 才是 Agent 消费的本地 fixture。
-- 标签使用 snake_case 内部 key，中文只作为展示名。
-- `needs_visual` 题默认不进入文本推荐。
-- 第一版规则会把“如图”作为保守 visual dependency 信号；后续 tag review UI 需要允许人工把文本已足够的图像题修正为仅 `has_graph`。
+P2.2 的核心不是“再做一个搜索脚本”，而是在 P2.0/P2.1 已经得到可用题库后，给每道题补一层 `Agent`（负责推荐练习的程序逻辑）能理解的结构化语义。对一个没接触过项目的人，可以把这一阶段理解成三步：
+
+```text
+practice_corpus.json
+-> candidate_tag_proposals.json
+-> enriched_practice_corpus.json
+```
+
+第一步，`practice_corpus.json`（人工审核后的原始练习题库文件）是 P2.0 产出的“人工审核后的原始题库”。它保留题干、来源页码、章节、搜索文本和 `knowledge_points: ["derivative"]`（粗粒度知识点字段，当前表示导数专题），但它还不知道每道题到底练“切线斜率”、练“单调性”，还是练“参数范围”。这意味着 P2.1 `Agent`（变式练习推荐逻辑）只能根据章节、全文关键词和粗粒度知识点做推荐，能召回相关题，但很难稳定区分“巩固题、近迁移题、综合应用题”。
+
+第二步，`candidate_tag_proposals.json`（机器生成的候选标签建议文件）是“机器标签建议稿”。它不是正式题库，也不是最终 `truth`（事实真值）。脚本会读取每道题的 `question_text`（题干文本）、`search_text`（用于检索的拼接文本）、`section_title`（章节标题）和 `source_ref.section_title`（来源引用里的章节标题），拼成一个用于规则判断的 `source text`（规则输入文本），再用一组导数专题规则提出标签建议。每个建议标签都带四类信息：
+
+```json
+{
+  "tag": "tangent_slope",
+  "display_name": "切线斜率",
+  "confidence": "high",
+  "evidence_terms": ["切线", "斜率"],
+  "source": "rule"
+}
+```
+
+这里的设计重点是可审核：`tag`（内部标签 key）是系统内部稳定 key，`display_name`（中文展示名）只负责中文展示，`confidence`（置信度）表示规则确信程度，`evidence_terms`（命中证据词）说明为什么命中，`source`（标签来源）说明这是规则生成而不是人工确认或 `LLM`（大语言模型）判断。这样以后做 `tag review UI`（标签审核界面）时，用户看到的不是一个黑盒结论，而是“这题因为出现了这些词，所以系统建议打这些标签”。
+
+第三步，`enriched_practice_corpus.json`（Agent 真正使用的带标签题库文件）是“Agent 真正消费的带标签题库”。它把原始题目和标签合在一起，并给每道题加 `tag_review_meta`（标签审核元信息）。如果有人工审核记录，就用人工审核后的 `reviewed_tags`（人工确认后的标签）；如果没有人工审核记录，第一版本地评估可以用 `--accept-rule-proposals`（接受纯规则建议的本地评估开关）把纯规则、非空的 `proposal`（标签建议）临时升级为 `approved`（已接受）。没有标签、混入非 `rule source`（非规则来源）或被审核为 `needs_fix`（需要修正）/ `skipped`（跳过）的题不会被搜索层当成 `approved tagged item`（已通过标签审核的可推荐题目）消费。
+
+这三层分开的好处是，数据边界很清楚：
+
+- `practice_corpus.json`（人工审核后的原始练习题库文件）：题目内容层，来自 `OCR`（光学字符识别）/ `MinerU`（PDF 解析工具）和人工题干审核。
+- `candidate_tag_proposals.json`（机器生成的候选标签建议文件）：机器建议层，便宜、可重复、可批量生成，但不能直接当真值。
+- `enriched_practice_corpus.json`（Agent 使用的带标签题库文件）：检索消费层，只有 `accepted`（已接受）或人工确认后的标签才进入 `Agent`（推荐逻辑）推荐路径。
+
+P2.2 的标签体系分成三类：
+
+- `target_skills`（目标能力标签）表示这道题训练什么能力，例如 `tangent_slope`（切线斜率）、`derivative_definition_limit`（极限式识别导数）、`monotonicity`（单调性）、`extrema`（极值最值）、`zero_point`（零点）、`parameter_range`（参数范围）。这是 `Agent`（推荐逻辑）判断“当前错题和候选题是不是同一目标能力”的主信号。
+- `method_tags`（解题方法标签）表示这道题可能用什么方法，例如 `derivative_definition`（导数定义式）、`monotonicity_by_derivative`（用导数判断单调性）、`extremum_by_derivative`（用导数判断极值最值）、`zero_count`（零点个数）、`parameter_classification`（参数分类讨论）、`inequality_with_derivative`（用导数处理不等式）。它服务于“综合应用/方法迁移”判断：有些题目标技能不同，但底层方法相近，仍然适合做迁移练习。
+- `feature_flags`（题目特征标记）表示题目形态和推荐注意事项，例如 `has_choice_options`（选择题选项）、`has_fill_blank`（填空题空线）、`has_ln_exp`（含对数或指数）、`has_square_root`（含根号）、`has_graph`（涉及图像）、`needs_visual`（必须看原图）。这些标签不决定知识点，但能帮助 `Agent`（推荐逻辑）过滤或解释题目。例如 `needs_visual`（必须看原图）表示当前文本不足以还原题意，文本 `Agent`（纯文本推荐逻辑）默认跳过，避免推荐一道缺图题给学生。
+
+第一版规则是 `deterministic`（确定性、可重复）的：看到“切线/斜率”就建议 `tangent_slope`（切线斜率），看到“单调/递增/递减”就建议 `monotonicity`（单调性），看到“极值/最值/最大值/最小值”就建议 `extrema`（极值最值），看到“参数/恒成立/取值范围”就建议 `parameter_range`（参数范围）；再根据目标技能派生方法标签，例如 `tangent_slope`（切线斜率）会派生 `tangent_slope`（切线斜率方法）和 `derivative_definition`（导数定义式），`parameter_range`（参数范围）会派生 `parameter_classification`（参数分类讨论）。题型特征则通过 `A. B. C. D.`（选择题选项）、`____`（填空空线）、`ln`（自然对数）、`sqrt/√/根号`（根号结构）、`如图/图像/图象`（图像相关描述）等信号生成。
+
+这里有一个刻意保守的边界：第一版规则会把“如图”作为 `visual dependency`（必须依赖原图才能解题）的强信号处理，可能把部分文字已足够的图像题过度标成 `needs_visual`（必须看原图）。我在文档里明确记录这个取舍，因为这是宁可少推荐，也不推荐学生做不了的题。后续 `tag review UI`（标签审核界面）需要允许人工把这类题从 `needs_visual`（必须看原图）修正为仅 `has_graph`（涉及图像但文本可能足够）。
+
+Agent 消费 enriched corpus 时，流程也从“全文搜索”升级为“结构化匹配 + 文本兜底”：
+
+```text
+Practice Query（当前错题转成的练习需求）
+-> 归一化中文 target_skills（目标能力请求）到 snake_case key（内部英文标签 key）
+-> 从 target_skills（目标能力请求）派生 query method_tags（查询侧方法标签）
+-> searchPracticeCorpus（题库检索函数）过滤 needs_visual（必须看原图）和未 approved（未接受）的标签
+-> 按 knowledge_point（知识点）/ section_title（章节标题）/ target_skill（目标能力）/ method_tag（解题方法）/ query_term（关键词）打分
+-> Variant Practice Agent（变式练习推荐 Agent）选择 foundation（巩固题）/ near_transfer（近迁移题）/ mixed_application（综合应用题）
+```
+
+其中 `foundation`（巩固题）更偏同章节同知识点巩固；`near_transfer`（近迁移题）要求不同章节但命中同知识点和 `target_skill`（目标能力标签）；`mixed_application`（综合应用题）则避免直接命中同一个 `target_skill`（目标能力标签），转而依赖相关 `method_tags`（解题方法标签），用来寻找方法相近但题目外观不同的迁移应用题。
 
 工具链仍保持本地 artifact 边界：
 
@@ -2214,83 +2262,94 @@ practice_corpus.json
 -> candidate_tag_proposals.json
 -> tag_proposal_summary.json
 -> enriched_practice_corpus.json
+-> enrichment_summary.json
 -> enriched Agent evaluation
 ```
 
-proposal summary 决定第一版是否可以用 `--accept-rule-proposals` 做本地评估。如果 high confidence、needs fix 和 needs visual 的比例不过阈值，下一步应先做轻量标签审核页，而不是把低质量标签直接喂给 Agent。
+`proposal summary`（标签建议汇总）决定第一版是否可以用 `--accept-rule-proposals`（接受纯规则建议的本地评估开关）做本地评估。如果 `high confidence`（高置信度）、`needs fix`（需要修正）和 `needs visual`（依赖原图）的比例不过阈值，下一步应先做轻量标签审核页，而不是把低质量标签直接喂给 `Agent`（推荐逻辑）。
 
 ### 技术决策与取舍
 
-我没有第一步上 pgvector 或 embedding，因为 P2.1 的问题首先不是向量召回，而是题源 metadata 太薄。先用 deterministic proposal 建立可审核标签层，可以降低人工标注成本，也能为后续 embedding_text / pgvector 提供更干净的文本和标签依据。
+我没有第一步上 `pgvector`（Postgres 向量检索扩展）或 `embedding`（文本向量表示），因为 P2.1 的问题首先不是向量召回，而是题源 `metadata`（结构化元数据）太薄。先用 `deterministic proposal`（确定性标签建议）建立可审核标签层，可以降低人工标注成本，也能为后续 `embedding_text`（用于生成向量的文本字段）/ `pgvector`（向量检索扩展）提供更干净的文本和标签依据。
 
-我也没有让 LLM 直接给所有题打最终标签。P2.2 仍然把机器输出定位成 proposal，最终进入 enriched corpus 的标签必须是 accepted 或人工审核后的结果。这样可以避免模型或规则把错误标签静默写进正式题源。
+我也没有让 `LLM`（大语言模型）直接给所有题打最终标签。P2.2 仍然把机器输出定位成 `proposal`（标签建议），最终进入 `enriched corpus`（带标签增强题库）的标签必须是 `accepted`（已接受）或人工审核后的结果。这样可以避免模型或规则把错误标签静默写进正式题源。
 
-当前 smoke 仍只推荐 2 道题，所以我不会把 P2.2 描述成“推荐质量已经完全解决”。更准确的结论是：metadata enrichment 让缺口更可诊断，下一步可以聚焦补充 approved tagged items 或补一个轻量 tag review UI，而不是盲目升级检索技术。
+当前 `smoke`（冒烟验证）仍只推荐 2 道题，所以我不会把 P2.2 描述成“推荐质量已经完全解决”。更准确的结论是：`metadata enrichment`（题源元数据增强）让缺口更可诊断，下一步可以聚焦补充 `approved tagged items`（已通过标签审核的可推荐题目）或补一个轻量 `tag review UI`（标签审核界面），而不是盲目升级检索技术。
 
 ### 性能收益（如适用）
 
-本阶段没有宣称线上性能提升；收益主要是本地 deterministic pipeline 可重复、无外部模型成本、无网络依赖，适合作为黑客松 demo 的稳定题源加工链路。
+本阶段没有宣称线上性能提升；收益主要是本地 `deterministic pipeline`（确定性处理流水线）可重复、无外部模型成本、无网络依赖，适合作为黑客松 `demo`（演示）的稳定题源加工链路。
 
-另一个实际收益是验证效率：tag proposal、enriched corpus 和 Agent evaluation 都能用 Node CLI 在本地跑完，stdout 只输出 summary counts，不打印完整教辅题干、完整 corpus、PDF/MinerU JSON 或 recommendation artifact。
+另一个实际收益是验证效率：`tag proposal`（标签建议）、`enriched corpus`（带标签增强题库）和 `Agent evaluation`（Agent 推荐评估）都能用 `Node CLI`（Node.js 命令行脚本）在本地跑完，`stdout`（命令行标准输出）只输出 `summary counts`（汇总数量），不打印完整教辅题干、完整 `corpus`（题库语料）、`PDF`（原始教辅文件）/ `MinerU JSON`（PDF 解析结果）或 `recommendation artifact`（推荐结果中间产物）。
 
 ### 面试官可能怎么问
 
 1. 为什么 P2.2 还不接向量库？
-2. 为什么不用 LLM 直接给所有题打标签？
+2. 为什么不用 `LLM`（大语言模型）直接给所有题打标签？
 3. 如何避免机器标签污染推荐结果？
-4. 为什么标签用英文 key 而不是中文？
+4. 为什么标签用英文 `key`（内部稳定标识）而不是中文？
 5. 图像题为什么跳过？
-6. 这和传统 RAG 的 embedding 检索有什么关系？
-7. 本地 smoke 仍然只有 2 道推荐，说明什么？
-8. 什么情况下需要做 tag review UI？
+6. 这和传统 `RAG`（检索增强生成）的 `embedding`（文本向量）检索有什么关系？
+7. 本地 `smoke`（冒烟验证）仍然只有 2 道推荐，说明什么？
+8. 什么情况下需要做 `tag review UI`（标签审核界面）？
+9. `candidate_tag_proposals.json`（机器生成的候选标签建议文件）和 `enriched_practice_corpus.json`（Agent 使用的带标签题库文件）为什么要拆成两个文件？
+10. `target_skills`（目标能力标签）、`method_tags`（解题方法标签）和 `feature_flags`（题目特征标记）分别解决什么问题？
 
 ### 推荐回答
 
 我会这样回答：
 
-P2.1 已经能从题库召回候选题，但推荐只能稳定给出 2 道，说明瓶颈不在“有没有向量库”，而在“题目结构信息不够”。所以 P2.2 先做 metadata enrichment，把每道题的目标技能、解法方法、题型特征结构化出来。机器只做 proposal，最终进入 corpus 的标签必须是明确 accepted 或人工审核过的结果，这样不会让模型或规则直接污染正式题库。
+P2.1 已经能从题库召回候选题，但推荐只能稳定给出 2 道，说明瓶颈不在“有没有向量库”，而在“题目结构信息不够”。所以 P2.2 先做 `metadata enrichment`（题源元数据增强），把每道题的目标技能、解法方法、题型特征结构化出来。这里我刻意拆成两个 `artifact`（本地中间产物）：`candidate_tag_proposals.json`（机器生成的候选标签建议文件）是机器建议稿，`enriched_practice_corpus.json`（Agent 使用的带标签题库文件）才是 `Agent`（推荐逻辑）消费的题库。这样中间可以插入人工审核，也可以保留每个标签的证据、置信度和来源。
 
-我没有立刻接 pgvector，是因为 embedding 更擅长语义召回，但它不会凭空知道一道题到底训练切线斜率、导数定义、单调性还是参数分类。如果 metadata 层太薄，向量检索可能只是更快地召回一批“看起来像导数题”的候选。P2.2 先把标签层补出来，后续 embedding_text 也能拼得更干净。
+标签本身分三类：`target_skills`（目标能力标签）回答“这题练什么”，比如切线斜率、单调性、极值最值；`method_tags`（解题方法标签）回答“这题怎么解”，比如导数定义式、导数判断单调、参数分类讨论；`feature_flags`（题目特征标记）回答“这题长什么样或有什么限制”，比如选择题、填空题、含对数、含根号、依赖图像。`Agent`（推荐逻辑）推荐时，`target_skills`（目标能力标签）更适合找近迁移题，`method_tags`（解题方法标签）更适合找综合应用题，`feature_flags`（题目特征标记）则帮助过滤或解释题目。
 
-这次 enriched evaluation 仍然推荐 2 道，并返回两个具体 warning。我的理解不是“失败”，而是规则现在能说清楚缺口在哪里：approved tagged items 还不够，且没有找到带相关 method tags 的综合应用题。下一步应该补轻量标签审核或扩充审核后的标签质量，再考虑 pgvector。
+我没有让规则或 `LLM`（大语言模型）直接写最终标签，是因为错标签会直接影响后续推荐。P2.2 的规则只负责 `proposal`（标签建议），每个 `proposal`（标签建议）都记录 `evidence_terms`（命中证据词）和 `source: "rule"`（标签来源为规则）。进入 `enriched corpus`（带标签增强题库）时，要么有人工 `review record`（标签审核记录），要么在本地 `MVP`（最小可验证版本）评估里显式使用 `--accept-rule-proposals`（接受纯规则建议的本地评估开关）接受纯规则 `proposal`（标签建议）。这样就算规则不完美，也不会把“机器猜测”伪装成人工确认。
+
+我没有立刻接 `pgvector`（Postgres 向量检索扩展），是因为 `embedding`（文本向量表示）更擅长语义召回，但它不会凭空知道一道题到底训练切线斜率、导数定义、单调性还是参数分类。如果 `metadata`（题目元数据）层太薄，向量检索可能只是更快地召回一批“看起来像导数题”的候选。P2.2 先把标签层补出来，后续 `embedding_text`（用于生成向量的文本字段）也能拼得更干净。
+
+这次 `enriched evaluation`（基于带标签题库的推荐评估）仍然推荐 2 道，并返回两个具体 `warning`（可诊断提醒）。我的理解不是“失败”，而是规则现在能说清楚缺口在哪里：`approved tagged items`（已通过标签审核的可推荐题目）还不够，且没有找到带相关 `method_tags`（解题方法标签）的综合应用题。下一步应该补轻量标签审核或扩充审核后的标签质量，再考虑 `pgvector`（Postgres 向量检索扩展）。
 
 ### 可能被继续追问
 
-- rule-based proposal 会不会过拟合导数专题？
-- 标签体系扩到多个专题时如何治理 key？
-- 人工审核的最小 UI 应该长什么样？
-- 如果 LLM 未来参与 proposal，怎么记录 source 和 confidence？
-- enriched corpus 进入正式产品前如何处理版权和图像题？
-- 如何用 evaluation 指标判断 metadata 是否足够好？
+- `rule-based proposal`（基于规则的标签建议）会不会过拟合导数专题？
+- 标签体系扩到多个专题时如何治理 `key`（内部稳定标识）？
+- 人工审核的最小 `UI`（用户界面）应该长什么样？
+- 如果 `LLM`（大语言模型）未来参与 `proposal`（标签建议），怎么记录 `source`（标签来源）和 `confidence`（置信度）？
+- `enriched corpus`（带标签增强题库）进入正式产品前如何处理版权和图像题？
+- 如何用 `evaluation`（评估结果）指标判断 `metadata`（题目元数据）是否足够好？
 
 ### 反思与后续优化
 
-下一步可以根据 proposal summary 决定是否做轻量标签审核页；如果标签层稳定但召回仍不足，再做 embedding_text 和 pgvector prototype。
+下一步可以根据 `proposal summary`（标签建议汇总）决定是否做轻量标签审核页；如果标签层稳定但召回仍不足，再做 `embedding_text`（用于生成向量的文本字段）和 `pgvector prototype`（向量检索原型）。
 
-P2.2 也暴露了一个边界：deterministic rules 能快速生成第一版标签，但不能替代人工确认。当前 1 道 needs-fix item 和仍不足的 mixed application 推荐，都说明后续要么补审核流程，要么扩充 method tags 规则和真实题源，而不是让 Agent 硬凑第三道题。
+P2.2 也暴露了一个边界：`deterministic rules`（确定性规则）能快速生成第一版标签，但不能替代人工确认。当前 1 道 `needs-fix item`（需要修正的题目）和仍不足的 `mixed application`（综合应用题）推荐，都说明后续要么补审核流程，要么扩充 `method_tags`（解题方法标签）规则和真实题源，而不是让 `Agent`（推荐逻辑）硬凑第三道题。
 
 ### 项目中的真实证据
 
 - 代码：
-  - `scripts/rag/practice-tag-proposal-core.mjs`
-  - `scripts/rag/build-practice-tag-proposals.mjs`
-  - `scripts/rag/enriched-practice-corpus-core.mjs`
-  - `scripts/rag/build-enriched-practice-corpus.mjs`
-  - `scripts/rag/variant-practice-agent-core.mjs`
+  - `scripts/rag/practice-tag-taxonomy.mjs`（标签字典和中文展示名映射）
+  - `scripts/rag/practice-tag-proposal-core.mjs`（根据题干和章节生成标签建议的核心逻辑）
+  - `scripts/rag/build-practice-tag-proposals.mjs`（生成 `candidate_tag_proposals.json` 的 CLI 脚本）
+  - `scripts/rag/enriched-practice-corpus-core.mjs`（把原始题库和标签建议合并成带标签题库的核心逻辑）
+  - `scripts/rag/build-enriched-practice-corpus.mjs`（生成 `enriched_practice_corpus.json` 的 CLI 脚本）
+  - `scripts/rag/practice-corpus-search-core.mjs`（按知识点、章节、目标能力和方法标签检索候选题）
+  - `scripts/rag/variant-practice-agent-core.mjs`（把候选题选择成巩固题、近迁移题和综合应用题的 Agent 逻辑）
 - 测试：
-  - `scripts/tests/rag/practice-tag-proposal-core.test.mjs`
-  - `scripts/tests/rag/practice-tag-proposal-cli.test.mjs`
-  - `scripts/tests/rag/enriched-practice-corpus-core.test.mjs`
-  - `scripts/tests/rag/enriched-practice-corpus-cli.test.mjs`
-  - `scripts/tests/rag/variant-practice-agent-cli.test.mjs`
+  - `scripts/tests/rag/practice-tag-taxonomy.test.mjs`（验证标签字典、中文别名归一化和方法标签派生）
+  - `scripts/tests/rag/practice-tag-proposal-core.test.mjs`（验证规则标签建议、证据词、置信度和汇总统计）
+  - `scripts/tests/rag/practice-tag-proposal-cli.test.mjs`（验证标签建议 CLI 的输入输出、错误处理和 stdout 安全边界）
+  - `scripts/tests/rag/enriched-practice-corpus-core.test.mjs`（验证带标签题库生成、审核状态和非法标签拒绝）
+  - `scripts/tests/rag/enriched-practice-corpus-cli.test.mjs`（验证带标签题库 CLI 的默认输出和错误处理）
+  - `scripts/tests/rag/practice-corpus-search-core.test.mjs`（验证 enriched corpus 检索时只消费 approved 标签并跳过 needs_visual）
+  - `scripts/tests/rag/variant-practice-agent-cli.test.mjs`（验证变式练习 Agent CLI 可以读取 corpus 并生成推荐 artifact）
 - 文档：
-  - `docs/superpowers/specs/2026-06-23-p22-metadata-tag-proposal-design.md`
-- 本地 artifact（不提交）：
-  - `artifacts/rag/tag-proposals/candidate_tag_proposals.json`
-  - `artifacts/rag/tag-proposals/tag_proposal_summary.json`
-  - `artifacts/rag/enriched-practice-corpus/enriched_practice_corpus.json`
-  - `artifacts/rag/enriched-practice-corpus/enrichment_summary.json`
-  - `artifacts/rag/variant-practice-agent/recommendations.json`
+  - `docs/superpowers/specs/2026-06-23-p22-metadata-tag-proposal-design.md`（P2.2 metadata / tag proposal，即题源元数据增强与标签建议的设计说明）
+- 本地 `artifact`（本地生成的中间产物，不提交）：
+  - `artifacts/rag/tag-proposals/candidate_tag_proposals.json`（机器生成的候选标签建议文件）
+  - `artifacts/rag/tag-proposals/tag_proposal_summary.json`（标签建议汇总文件）
+  - `artifacts/rag/enriched-practice-corpus/enriched_practice_corpus.json`（Agent 使用的带标签题库文件）
+  - `artifacts/rag/enriched-practice-corpus/enrichment_summary.json`（带标签题库生成汇总文件）
+  - `artifacts/rag/variant-practice-agent/recommendations.json`（变式练习推荐结果文件）
 - 验证：
   - `node scripts/tests/rag/variant-practice-agent-cli.test.mjs`
   - `node scripts/run-tests.mjs default`
