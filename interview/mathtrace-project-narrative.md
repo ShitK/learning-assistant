@@ -2361,13 +2361,192 @@ P2.2 也暴露了一个边界：`deterministic rules`（确定性规则）能快
 
 ---
 
+## 20. P2.3 Taxonomy-aware AI-assisted Tag Review MVP（基于标签体系的 AI 辅助标签审核）
+
+### 当前状态
+
+已完成本地 P2.3 `taxonomy-aware AI-assisted tag review`（基于标签体系的 AI 辅助标签审核）工具链实现，并通过分任务本地测试与子智能体审查。这个阶段没有把 AI 标签能力接入产品前端、数据库、`memory_events`（画像事件表）或 `student_profiles`（学生当前画像快照表），仍然只在本地 RAG 题源工具链里工作。
+
+这一步的目标不是让 AI 直接决定题库标签，而是让 AI 承担 50% 以上的候选判断工作：AI 读取题干和规则建议，输出结构化 `proposal`（建议稿）；代码再用 `taxonomy`（标签体系）和 `auto-approval gate`（自动通过门控）检查它；风险题进入 `review queue`（人工审核队列）；最终进入 `enriched_practice_corpus.json`（Agent 使用的带标签题库文件）的只能是自动门控通过或人工审核后的 `review record`（标签审核记录）。
+
+本次真实本地 `smoke`（冒烟验证）的状态是：规则标签链路可完整执行，`build-practice-tag-proposals`（规则标签建议生成脚本）基于 69 道题生成标签建议，其中 57 道为 `high confidence`（高置信度）、1 道有 warning；`build-enriched-practice-corpus`（带标签题库生成脚本）生成 69 道 enriched item（带标签题库条目），其中 68 道 `approved`（已接受）、1 道 `needs_fix`（需要修正）；`recommend-variant-practice`（变式练习推荐脚本）从 12 道候选中推荐 2 道，并返回 `insufficient_approved_tagged_items`（已通过标签审核的题目不足）和 `no_mixed_application_with_related_method_tags`（没有找到带相关方法标签的综合应用题）。当前 shell 未配置 AI tag provider（AI 标签模型服务），所以真实 AI proposal 调用、rule + AI merge（规则与 AI 建议合并）和 tag review UI（标签审核界面）的真实数据 smoke 没有伪造执行，只通过 synthetic fixture（合成测试数据）覆盖。
+
+### 功能价值
+
+P2.2 的规则标签建议解决了“题库缺 metadata（结构化元数据）”的问题，但它仍然偏确定性关键词规则。规则便宜、可重复，但对题目语义的理解有限。例如一道题同时涉及参数、零点和单调性时，单靠关键词很容易多打或漏打标签；如果未来扩展到数列、解析几何、概率统计，继续手写每个专题的复杂规则会越来越重。
+
+P2.3 的价值是把 AI 放到更像智能体的位置：它不是替代整个系统，而是在受控工具链里完成“理解题意、提出标签建议、给出依据”的工作。系统仍然保留 `taxonomy`（标签体系）、parser（解析器）、validator（校验器）、gate（门控）和 review UI（人工审核界面），所以 AI 的能力被用在最适合它的环节，最终数据质量仍由工程边界控制。
+
+这也让 MathTrace 的 RAG 方向更像一个可解释的学习 Agent，而不是传统“文档切 chunk -> embedding -> top-k -> 拼 prompt”的黑盒检索。题库不是只被切成向量片段，而是被加工成带 `target_skills`（目标能力标签）、`method_tags`（解题方法标签）、`feature_flags`（题目特征标记）和审核证据的练习素材。后续推荐给学生的不是 top-k 原始搜索结果，而是经过 Agent 筛选的巩固题、近迁移题和综合应用题。
+
+### 关键设计
+
+P2.3 的完整数据流可以这样理解：
+
+```text
+practice_corpus.json
+-> candidate_tag_proposals.json
+-> candidate_ai_tag_proposals.json
+-> merged_tag_proposals.json
+-> auto_tag_review_records.json + tag_review_queue.json
+-> tag_review_records.json
+-> final_tag_review_records.json
+-> enriched_practice_corpus.json
+-> Variant Practice Agent
+```
+
+`practice_corpus.json`（人工审核后的原始练习题库文件）仍然是题目内容来源。它来自 P2.0 的 OCR/MinerU 抽题和人工题干审核，包含题干、章节、来源页码和检索文本，但不携带足够细的目标能力和方法标签。
+
+`candidate_tag_proposals.json`（规则生成的候选标签建议文件）来自 P2.2。它用确定性规则给题目打第一版标签，并保留 `evidence_terms`（命中证据词）和 `source: "rule"`（标签来源为规则）。它的意义是给 AI 一个可参考的 baseline（基线建议），也给后续 gate 提供“规则和 AI 是否一致”的比较对象。
+
+`candidate_ai_tag_proposals.json`（AI 生成的候选标签建议文件）是 P2.3 新增的 AI 建议稿。生成它的脚本是 `scripts/rag/build-ai-tag-proposals.mjs`（AI 标签建议生成 CLI 脚本），核心逻辑在 `scripts/rag/ai-tag-proposal-core.mjs`（AI 标签建议 prompt、解析和校验核心逻辑）。AI 输入里会包含题干摘要、规则标签建议和 taxonomy 允许的标签范围；AI 输出必须收敛到项目允许的 `target_skills`（目标能力标签）、`method_tags`（解题方法标签）和 `feature_flags`（题目特征标记），不能自由创造中文标签或新 key。
+
+这里的 `taxonomy`（标签体系）是 P2.3 的核心治理层。当前版本是 `math_derivative_v0`（数学导数专题第一版标签体系），定义在 `scripts/rag/practice-tag-taxonomy.mjs`（练习题标签体系和展示名映射文件）里。它包含：
+
+- `subject`（学科）：当前是 `math`（数学）。
+- `unit`（单元/专题）：当前是 `derivative`（导数）。
+- `target_skills`（目标能力标签集合）：例如 `tangent_slope`（切线斜率）、`monotonicity`（单调性）、`extrema`（极值最值）、`zero_point`（零点）、`parameter_range`（参数范围）。
+- `method_tags`（解题方法标签集合）：例如 `derivative_definition`（导数定义式）、`monotonicity_by_derivative`（用导数判断单调性）、`parameter_classification`（参数分类讨论）。
+- `feature_flags`（题目特征标记集合）：例如 `has_choice_options`（选择题）、`has_fill_blank`（填空题）、`has_ln_exp`（含对数或指数）、`has_square_root`（含根号）、`needs_visual`（必须看原图）。
+- `target_skill_to_method_tags`（目标能力到方法标签的映射）：用于从目标能力派生合理的方法标签，避免 AI 给出和目标能力不匹配的方法。
+
+这个设计解决了“以后扩展到更多考点会不会每次重写系统”的问题。未来新增数列、解析几何或概率统计时，理想路径不是重写所有脚本，而是新增或扩展 taxonomy 配置，例如 `math_sequence_v0`（数学数列专题第一版标签体系）或 `math_analytic_geometry_v0`（数学解析几何专题第一版标签体系）。脚本继续读取 taxonomy，AI prompt 继续按 taxonomy 限定输出，merge gate 继续按 taxonomy 校验标签。也就是说，可变的是标签字典和少量规则，稳定的是 proposal、gate、review 和 enriched corpus 这条流程。
+
+`merged_tag_proposals.json`（规则与 AI 合并后的标签建议文件）由 `scripts/rag/merge-tag-proposals.mjs`（规则与 AI 标签建议合并 CLI 脚本）生成，核心逻辑在 `scripts/rag/tag-proposal-merge-core.mjs`（标签建议合并和自动门控核心逻辑）。它会同时看规则建议和 AI 建议，然后决定每道题能否自动通过。
+
+自动通过门控是保守的。只有满足这些条件的题才进入 `auto_tag_review_records.json`（自动通过的标签审核记录文件）：
+
+- AI 的 `item_confidence`（整题标签置信度）必须是 `high`（高）。
+- AI 输出不能带 `invalid_ai_json`（AI JSON 非法）、`invalid_ai_schema`（AI schema 非法）、`unknown_tag_removed`（未知标签被移除）等 invalid warning（非法输出警告）。
+- AI 必须至少给出一个 `target_skill`（目标能力标签），且目标能力数量不能过多。
+- 如果规则和 AI 都有目标能力标签，二者至少要有交集，否则进入 `target_skill_conflict`（目标能力冲突）。
+- 规则或 AI 只要标出 `needs_visual`（必须看原图），就不能自动通过，因为当前 Variant Practice Agent 是文本推荐逻辑。
+- `method_tags`（解题方法标签）不能和最终目标能力明显不匹配。
+- 非图像类 `feature_flags`（题目特征标记）不能冲突。
+
+未通过的题进入 `tag_review_queue.json`（人工标签审核队列文件）。它包含 `question_text`（题干文本）、`section_title`（章节标题）、`rule_tags`（规则建议标签）、`ai_tags`（AI 建议标签）、`gate_reasons`（门控未通过原因）和 `recommended_review_status`（建议审核状态）。这个队列的意义是把人工精力集中到真正有风险的题，而不是让人从 69 道题重新逐题标注。
+
+`scripts/rag/build-tag-review-ui.mjs`（标签审核界面生成 CLI 脚本）会把 review queue 生成一个本地静态 HTML 页面，核心渲染逻辑在 `scripts/rag/tag-review-ui-core.mjs`（标签审核 UI 数据与 HTML 生成核心逻辑）。这个页面不接数据库、不上云，只用于本地人工复核。人工可以看到规则和 AI 的差异，修正 `target_skills`（目标能力标签）、`method_tags`（解题方法标签）和 `feature_flags`（题目特征标记），再导出 `tag_review_records.json`（人工标签审核记录文件）。
+
+`scripts/rag/merge-tag-review-records.mjs`（自动与人工审核记录合并 CLI 脚本）会把 `auto_tag_review_records.json`（自动通过记录）和 `tag_review_records.json`（人工审核记录）合并成 `final_tag_review_records.json`（最终标签审核记录文件）。如果同一道题同时存在自动记录和人工记录，人工记录覆盖自动记录；自动记录顺序保持，人工新增记录追加。这样可以明确表达：AI 可以参与生成和自动门控，但人工修正永远优先。
+
+最后，`scripts/rag/build-enriched-practice-corpus.mjs`（带标签题库生成 CLI 脚本）读取 `final_tag_review_records.json`（最终标签审核记录文件），把审核后的标签写入 `enriched_practice_corpus.json`（Agent 使用的带标签题库文件）。P2.3 还把 `taxonomy_id`（标签体系版本）、`review_origin`（审核来源，例如 auto_gate）、`ai_confidence`（AI 置信度）和 `rule_ai_agreement`（规则与 AI 一致性摘要）保留到 `tag_review_meta`（标签审核元信息）里。这些字段只用于审计、评估和面试解释，不参与检索排序，也不写入学生画像。
+
+### 技术决策与取舍
+
+第一个取舍是：AI 只做 proposal（建议稿），不做 final truth（最终事实）。这是和 `memory_events`（画像事件表）/ `student_profiles`（学生当前画像快照表）相同的安全思路。模型擅长理解题干，但不应该静默修改系统事实。P2.3 让 AI 的输出先经过 parser（解析器）、taxonomy validator（标签体系校验器）和 gate（门控），再进入 review records（审核记录），最终才被 enriched corpus（带标签题库）消费。
+
+第二个取舍是：先做 OpenAI-compatible provider boundary（兼容 OpenAI 协议的模型服务边界），不绑定某一家模型。`build-ai-tag-proposals.mjs`（AI 标签建议生成 CLI 脚本）只在本地 provider 配置存在时调用模型；测试全部使用 fake provider response（伪模型响应），不联网、不需要真实密钥。这样项目可以后续换 GLM、DeepSeek 或其他兼容接口，而不把 provider 细节散落到 merge、review UI 和 Agent 推荐逻辑里。
+
+第三个取舍是：自动通过门控宁可保守。高置信度且规则与 AI 一致的题可以自动通过，降低人工审核量；冲突、不完整、需要图像或 AI 输出不合法的题必须进 review queue（人工审核队列）。这比“AI 打完直接全量写入”慢一点，但它能避免错误标签污染后续推荐。
+
+第四个取舍是：不在 P2.3 上 pgvector（Postgres 向量检索扩展）和 embedding（文本向量表示）。P2.3 解决的是标签质量和审核效率，不是大规模语义召回。等 taxonomy、review records 和 enriched corpus 稳定之后，再做 embedding_text（用于生成向量的文本字段）和 pgvector prototype（向量检索原型）会更稳。
+
+### 性能收益（如适用）
+
+P2.3 的主要收益不是线上响应速度，而是人工标注效率和验证效率。原来如果人工想修正题库标签，理论上要从所有题目逐题判断；现在机器先生成 rule proposal（规则建议）和 AI proposal（AI 建议），自动门控只把冲突、低置信度、缺标签或图像依赖题放进 review queue（人工审核队列），人工只处理高风险子集。
+
+另一个收益是测试反馈更稳定。P2.3 新增的核心模块都用 synthetic fixture（合成测试数据）覆盖，不依赖真实教辅题、真实 provider、网络或密钥。`scripts/run-tests.mjs`（本地测试聚合脚本）也把 P2.3 的 AI proposal、merge gate、review UI、review record merge 测试纳入 default suite（默认测试套件），后续改动能快速发现是否破坏 RAG 工具链。
+
+本次真实 smoke 里，provider 未配置时没有伪造 AI 调用，这是有意保守：能跑的规则/enriched/Variant Agent 链路真实跑通，AI proposal 真实链路等 provider 配置后再跑。这样文档和演示不会把 fake response（伪响应）包装成真实模型效果。
+
+### 面试官可能怎么问
+
+1. P2.3 为什么说更像智能体，而不只是传统 RAG？
+2. 为什么 AI 不直接写最终标签？
+3. `taxonomy_id`（标签体系版本）解决什么问题？
+4. 如果扩展到数列、解析几何或其他科目，是不是要重写系统？
+5. 自动通过门控具体怎么判断一题能不能通过？
+6. `tag_review_queue.json`（人工标签审核队列文件）和 `tag_review_records.json`（人工标签审核记录文件）有什么区别？
+7. 为什么当前真实 smoke 没有跑 AI provider？
+8. 这些标签以后和 embedding / pgvector 怎么结合？
+9. AI 标签错误会不会污染学生画像？
+10. P2.3 和 P2.2 最大区别是什么？
+
+### 推荐回答
+
+我会这样回答：
+
+P2.3 的核心是让 AI 参与题源理解，但不让 AI 越权。P2.2 只有 deterministic rules（确定性规则），它能快速给出第一版标签，但对复杂题意理解有限。P2.3 增加 AI tag proposal（AI 标签建议）：AI 可以读题干和规则建议，判断这题更像切线斜率、单调性、零点还是参数范围，并给出 evidence terms（证据词）和 rationale（理由）。但 AI 输出不会直接进入正式题库，而是必须经过 taxonomy（标签体系）校验和 auto-approval gate（自动通过门控）。
+
+这里的 taxonomy 很关键。当前是 `math_derivative_v0`（数学导数专题第一版标签体系），它规定 AI 只能从允许的 `target_skills`（目标能力标签）、`method_tags`（解题方法标签）和 `feature_flags`（题目特征标记）里选择，不能自由发明标签。未来扩展到数列或解析几何，不是重写整条链路，而是新增对应 taxonomy，让相同的 proposal、merge、review 和 enriched corpus 流程继续复用。
+
+自动通过门控是保守设计。只有 AI 高置信度、输出合法、规则和 AI 目标能力不冲突、方法标签合理、题目不依赖图像时，系统才会生成 `auto_tag_review_records.json`（自动通过的标签审核记录文件）。有冲突或不确定的题进入 `tag_review_queue.json`（人工标签审核队列文件），再由本地 review UI（审核界面）导出 `tag_review_records.json`（人工标签审核记录文件）。最终 `final_tag_review_records.json`（最终标签审核记录文件）里，人工记录可以覆盖自动记录。
+
+这和传统 RAG 不太一样。传统链路常见是文档切 chunk、做 embedding、进向量库、top-k 检索、拼进 prompt。MathTrace 这一步先做的是题源理解和练习推荐 Agent 的可解释 metadata：一道题练什么、怎么解、有什么题型限制。后续当然可以把 `enriched_practice_corpus.json`（带标签题库文件）再做 embedding 和 pgvector 检索，但向量召回不会替代 taxonomy、review records 和 Agent 推荐规则。
+
+AI 标签也不会污染学生画像。P2.3 全部在本地 RAG 题源工具链里，产物是 corpus artifact（题库中间产物），不写 `memory_events`（画像事件表），不写 `student_profiles`（学生当前画像快照表），也不影响 evidence API（画像证据接口）。学生画像仍然只由确认后的诊断证据驱动。
+
+### 可能被继续追问
+
+- 如果 AI 和规则都错了，人工审核怎么发现？
+- `taxonomy`（标签体系）扩到多个专题后，如何管理版本和废弃标签？
+- 自动通过阈值如何评估，能不能用历史人工审核结果校准？
+- AI provider 返回格式变了怎么办？
+- 为什么 review UI 仍然是本地静态页面，而不是直接接入主应用？
+- 如果题目包含图像，文本标签体系如何和图像 crop（题图切片）结合？
+- 后续怎么把 `final_tag_review_records.json`（最终标签审核记录文件）迁移到数据库？
+
+### 反思与后续优化
+
+P2.3 已经在本地工具链层面把“AI 做多数标签建议，人类只审核风险题”的闭环搭起来，但当前还缺一次真实 provider 配置后的全量 AI proposal smoke。下一步需要在本地配置 provider 后跑完整链路：AI proposals -> rule + AI merge -> tag review UI -> final review records -> enriched corpus -> Variant Practice Agent evaluation。
+
+另一个后续方向是把 taxonomy 从导数专题扩成可组合配置。当前 `math_derivative_v0` 证明了结构，但多专题以后需要治理标签命名、版本升级、同义词、跨专题方法标签和废弃标签迁移。这个问题应该用 taxonomy registry（标签体系注册表）解决，而不是让每个脚本里硬编码不同专题。
+
+最后，P2.3 仍然是本地工具链，不是产品页面。等 AI proposal 和人工审核质量稳定后，可以再决定是做一个主应用里的内部审核页，还是继续保持本地 artifact 工作流。当前阶段选择本地静态 UI，是为了不把题源治理和学生端 demo 混在一起。
+
+### 项目中的真实证据
+
+- 代码：
+  - `scripts/rag/practice-tag-taxonomy.mjs`（练习题标签体系、标签展示名和 taxonomy registry）
+  - `scripts/rag/ai-tag-proposal-core.mjs`（AI 标签建议 prompt、解析、归一化和校验核心逻辑）
+  - `scripts/rag/build-ai-tag-proposals.mjs`（生成 AI 标签建议 artifact 的 CLI 脚本）
+  - `scripts/rag/tag-proposal-merge-core.mjs`（规则建议与 AI 建议合并、自动通过门控的核心逻辑）
+  - `scripts/rag/merge-tag-proposals.mjs`（生成 merged proposals、auto review records 和 review queue 的 CLI 脚本）
+  - `scripts/rag/tag-review-ui-core.mjs`（本地标签审核 UI 数据和 HTML 生成核心逻辑）
+  - `scripts/rag/build-tag-review-ui.mjs`（生成本地标签审核静态页面的 CLI 脚本）
+  - `scripts/rag/merge-tag-review-records.mjs`（合并自动审核记录与人工审核记录的 CLI 脚本）
+  - `scripts/rag/enriched-practice-corpus-core.mjs`（把最终审核标签写入带标签题库，并保留 P2.3 审计字段）
+  - `scripts/run-tests.mjs`（把 P2.3 测试纳入 default 测试套件）
+- 测试：
+  - `scripts/tests/rag/practice-tag-taxonomy.test.mjs`（验证 taxonomy registry、允许标签集合和兼容导出）
+  - `scripts/tests/rag/ai-tag-proposal-core.test.mjs`（验证 AI 标签建议 prompt、解析和非法标签过滤）
+  - `scripts/tests/rag/ai-tag-proposal-cli.test.mjs`（验证 AI 标签建议 CLI、fake provider 和 stdout 安全边界）
+  - `scripts/tests/rag/tag-proposal-merge-core.test.mjs`（验证规则与 AI 建议合并、自动通过和 review queue 原因）
+  - `scripts/tests/rag/tag-proposal-merge-cli.test.mjs`（验证 merge CLI 输入输出和默认路径）
+  - `scripts/tests/rag/tag-review-ui-core.test.mjs`（验证审核 UI 数据构造和导出记录兼容性）
+  - `scripts/tests/rag/tag-review-ui-cli.test.mjs`（验证审核 UI CLI 生成静态页面和敏感输出边界）
+  - `scripts/tests/rag/tag-review-record-merge-cli.test.mjs`（验证自动/人工审核记录合并、覆盖顺序和 stdout 安全边界）
+  - `scripts/tests/rag/enriched-practice-corpus-core.test.mjs`（验证 P2.3 审计字段进入 `tag_review_meta`，旧记录缺字段保持兼容）
+- 文档：
+  - `docs/superpowers/specs/2026-06-24-p23-ai-assisted-tag-review-design.md`（P2.3 AI 辅助标签审核设计说明）
+  - `docs/superpowers/plans/2026-06-24-p23-ai-assisted-tag-review.md`（P2.3 实施计划）
+- 本地 `artifact`（本地生成的中间产物，不提交）：
+  - `artifacts/rag/ai-tag-proposals/candidate_ai_tag_proposals.json`（AI 生成的候选标签建议文件，provider 配置后生成）
+  - `artifacts/rag/tag-review/merged_tag_proposals.json`（规则与 AI 合并后的标签建议文件，provider 配置后生成）
+  - `artifacts/rag/tag-review/auto_tag_review_records.json`（自动通过的标签审核记录文件，provider 配置后生成）
+  - `artifacts/rag/tag-review/tag_review_queue.json`（需要人工复核的标签审核队列文件，provider 配置后生成）
+  - `artifacts/rag/tag-review/tag_review_records.json`（人工从审核 UI 导出的标签审核记录文件）
+  - `artifacts/rag/tag-review/final_tag_review_records.json`（自动和人工合并后的最终标签审核记录文件）
+- 验证：
+  - `node scripts/run-tests.mjs default`
+  - `node scripts/tests/rag/enriched-practice-corpus-core.test.mjs`
+  - `node scripts/tests/rag/tag-review-record-merge-cli.test.mjs`
+  - `node scripts/rag/build-practice-tag-proposals.mjs --corpus artifacts/rag/practice-corpus/practice_corpus.json --out artifacts/rag/tag-proposals`
+  - `node scripts/rag/build-enriched-practice-corpus.mjs --corpus artifacts/rag/practice-corpus/practice_corpus.json --proposals artifacts/rag/tag-proposals/candidate_tag_proposals.json --accept-rule-proposals --out artifacts/rag/enriched-practice-corpus`
+  - `node scripts/rag/recommend-variant-practice.mjs --corpus artifacts/rag/enriched-practice-corpus/enriched_practice_corpus.json --query artifacts/rag/variant-practice-agent/demo-query.json --out artifacts/rag/variant-practice-agent --limit 12`
+  - AI proposal 真实 provider smoke：当前 shell 未配置 provider，因此未伪造执行。
+
+---
+
 ## 后续可追加的阶段
 
 这些阶段还没有完全完成，后续实现后可以继续按同一模板追加：
 
 - 真实云端 migration apply、Auth/RLS 用户策略和多用户画像。
 - 数据库支持的图片确认草稿版本审计。
-- P2.2 轻量标签审核页和多专题 tag key 治理。
+- P2.3 provider 配置后的真实 AI proposal 全量 smoke。
+- 多专题 taxonomy registry（标签体系注册表）和 tag key（内部标签 key）治理。
 - 变式题推荐模块的前端 demo 接入。
 - 图像题 corpus 处理和图文混合题召回。
 - 动态生成变式练习题。
@@ -2380,19 +2559,19 @@ P2.2 也暴露了一个边界：`deterministic rules`（确定性规则）能快
 
 ### LLM 安全边界
 
-重点阶段：5、7、9、10、11、12、13、14、15、16、17。核心表达：模型只做抽取或确认后文本增强，不直接写画像；所有模型输出先过 JSON parser 和业务边界校验；只有学生步骤或用户确认构成足够证据时才写具体错因；数据库写入也必须经过服务端确认和证据策略，云端当前画像也只能从受控 `memory_events` 投影。P1.9 进一步强调展示层只能派生“薄弱指数”和推荐依据，P1.10 只暴露服务端摘要后的 evidence，不把模型、UI 文案或完整事件历史升级成画像写入事实；P2.0 题源 corpus 也只能作为检索来源，不能决定画像写入。
+重点阶段：5、7、9、10、11、12、13、14、15、16、17、20。核心表达：模型只做抽取、确认后文本增强或受控 proposal，不直接写画像；所有模型输出先过 JSON parser、业务边界校验或 taxonomy validator；只有学生步骤或用户确认构成足够证据时才写具体错因；数据库写入也必须经过服务端确认和证据策略，云端当前画像也只能从受控 `memory_events` 投影。P1.9 进一步强调展示层只能派生“薄弱指数”和推荐依据，P1.10 只暴露服务端摘要后的 evidence，不把模型、UI 文案或完整事件历史升级成画像写入事实；P2.0 题源 corpus 也只能作为检索来源，不能决定画像写入。P2.3 让 AI 做标签建议，但最终标签必须经过 taxonomy、auto gate 或人工 review records。
 
 ### Demo 稳定性
 
-重点阶段：1、2、6、9、10、11、12、13、14、15、16、17、19。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像；P1.6a 用 `npm run test:smoke` 和浏览器 checklist 锁住合并前主路径；P1.7/P1.8 未配置数据库时仍保持 demo 可运行；P1.10 读取 evidence 失败、数据库未配置或无事件时继续使用 P1.9 fallback；P2.0/P2.2 题源工具只生成本地 ignored artifact，不影响 `sample_diagnosis`。
+重点阶段：1、2、6、9、10、11、12、13、14、15、16、17、19、20。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像；P1.6a 用 `npm run test:smoke` 和浏览器 checklist 锁住合并前主路径；P1.7/P1.8 未配置数据库时仍保持 demo 可运行；P1.10 读取 evidence 失败、数据库未配置或无事件时继续使用 P1.9 fallback；P2.0/P2.2/P2.3 题源工具只生成本地 ignored artifact，不影响 `sample_diagnosis`。
 
 ### Agent 工程化
 
-重点阶段：4、5、13、14、15、16、17、18、19。核心表达：先用确定性 pipeline 表达 Agent 流程，再逐步把适合的环节替换为模型或工具调用；长期记忆不是模型自由记忆，而是确认后的学习证据先进入 `diagnosis_runs` / `memory_events`，再投影成 `student_profiles` 当前画像。P1.9 把展示派生收口到前端 view model，P1.10 再用只读 evidence API 解释推荐依据，说明 Agent 产生的结构化事实、当前画像和 UI 解释层要分开。P2.0 开始把 RAG 拆成题源工程、人工审核、corpus fixture 和后续检索模块，P2.1/P2.2 再用本地 Agent 和 metadata enrichment 证明题源如何服务“下一步练什么”，而不是把“向量库”直接塞进 Agent 主链路。可以类比 Hermes persistent memory / session search 的分层、mem0 的按用户范围检索思路和 OpenClaw 的可检查上下文边界，但 MathTrace 没集成这些库，只借鉴分层、门控和安全边界原则。
+重点阶段：4、5、13、14、15、16、17、18、19、20。核心表达：先用确定性 pipeline 表达 Agent 流程，再逐步把适合的环节替换为模型或工具调用；长期记忆不是模型自由记忆，而是确认后的学习证据先进入 `diagnosis_runs` / `memory_events`，再投影成 `student_profiles` 当前画像。P1.9 把展示派生收口到前端 view model，P1.10 再用只读 evidence API 解释推荐依据，说明 Agent 产生的结构化事实、当前画像和 UI 解释层要分开。P2.0 开始把 RAG 拆成题源工程、人工审核、corpus fixture 和后续检索模块，P2.1/P2.2 再用本地 Agent 和 metadata enrichment 证明题源如何服务“下一步练什么”，P2.3 进一步让 AI 做 taxonomy-bound proposal，再由 auto gate 和人工 review 收口，而不是把“向量库”直接塞进 Agent 主链路。可以类比 Hermes persistent memory / session search 的分层、mem0 的按用户范围检索思路和 OpenClaw 的可检查上下文边界，但 MathTrace 没集成这些库，只借鉴分层、门控和安全边界原则。
 
 ### 长期记忆与数据持久化
 
-重点阶段：6、13、14、15、16、17、19。核心表达：localStorage 只是 demo fallback，Postgres 才是服务端事实层；P1.7 存诊断运行、错题本条目和画像变化事件，P1.8 再用 `student_profiles` 保存从 gated `memory_events` 投影出的当前画像快照；P1.9 的“薄弱指数”只是从 `mastery_scores` 派生的展示值，不写回 DB；P1.10 读取最近 `memory_events` 摘要增强推荐依据，但不暴露完整事件、完整诊断或题目正文。P2.0/P2.2 的 RAG 题源 corpus 和 enriched corpus 仍是检索层，不是画像事实层；它不会替代 `memory_events`、`student_profiles` 或 evidence API。面试时要说清楚当前仍固定 `demo_student_001`，无登录、真实多用户、面向用户的 RLS 策略或老师端，前端不直连数据库，service role only server side。
+重点阶段：6、13、14、15、16、17、19、20。核心表达：localStorage 只是 demo fallback，Postgres 才是服务端事实层；P1.7 存诊断运行、错题本条目和画像变化事件，P1.8 再用 `student_profiles` 保存从 gated `memory_events` 投影出的当前画像快照；P1.9 的“薄弱指数”只是从 `mastery_scores` 派生的展示值，不写回 DB；P1.10 读取最近 `memory_events` 摘要增强推荐依据，但不暴露完整事件、完整诊断或题目正文。P2.0/P2.2/P2.3 的 RAG 题源 corpus、enriched corpus 和 tag review records 仍是检索层，不是画像事实层；它不会替代 `memory_events`、`student_profiles` 或 evidence API。面试时要说清楚当前仍固定 `demo_student_001`，无登录、真实多用户、面向用户的 RLS 策略或老师端，前端不直连数据库，service role only server side。
 
 ### 前端状态管理
 
@@ -2400,12 +2579,12 @@ P2.2 也暴露了一个边界：`deterministic rules`（确定性规则）能快
 
 ### 测试策略
 
-重点阶段：3、4、5、6、7、9、10、11、12、13、14、15、16、17、18、19。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界；P1.6a 用 smoke 测试验证 Demo 主路径和 API contract 是否仍能跑通；P1.7/P1.8 需要覆盖数据库未配置、fake repo 写入、只读错题本 API 和云端画像投影/读取；P1.9 用 view model/UI 测试锁住薄弱指数、错因筛选和“不声称读取完整 `memory_events`”的展示边界；P1.10 增加 evidence service/client/UI/architecture 边界测试；P2.0-P2.2 题源工具用 Node 脚本测试覆盖 OCR 候选映射、审核页导出、corpus schema、tag proposal、enriched corpus、Agent evaluation、CLI 默认输出和敏感输出边界。
+重点阶段：3、4、5、6、7、9、10、11、12、13、14、15、16、17、18、19、20。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界；P1.6a 用 smoke 测试验证 Demo 主路径和 API contract 是否仍能跑通；P1.7/P1.8 需要覆盖数据库未配置、fake repo 写入、只读错题本 API 和云端画像投影/读取；P1.9 用 view model/UI 测试锁住薄弱指数、错因筛选和“不声称读取完整 `memory_events`”的展示边界；P1.10 增加 evidence service/client/UI/architecture 边界测试；P2.0-P2.3 题源工具用 Node 脚本测试覆盖 OCR 候选映射、审核页导出、corpus schema、tag proposal、AI proposal fake provider、merge gate、tag review UI、review record merge、enriched corpus、Agent evaluation、CLI 默认输出和敏感输出边界。
 
 ### 性能收益
 
-重点阶段：1、2、3、4、5、6、7、8、9、10、11、12、13、14、15、16、17、19。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退、`npm run test:eval`、`npm run test:smoke`、数据库未配置 no-op 降级、`student_profiles` 当前画像快照读取，P1.9 只在前端纯函数中派生画像展示，P1.10 读取最近 N 条 `memory_events` 摘要而不是前端拉全量历史，P2.0 用 9MB 导数切片、本地静态审核页和 Node CLI 快速验证 69 道可用 corpus item，以及 P2.2 用本地 deterministic pipeline 生成 proposal、enriched corpus 和 Agent evaluation。
+重点阶段：1、2、3、4、5、6、7、8、9、10、11、12、13、14、15、16、17、19、20。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退、`npm run test:eval`、`npm run test:smoke`、数据库未配置 no-op 降级、`student_profiles` 当前画像快照读取，P1.9 只在前端纯函数中派生画像展示，P1.10 读取最近 N 条 `memory_events` 摘要而不是前端拉全量历史，P2.0 用 9MB 导数切片、本地静态审核页和 Node CLI 快速验证 69 道可用 corpus item，P2.2 用本地 deterministic pipeline 生成 proposal、enriched corpus 和 Agent evaluation，P2.3 用 AI proposal + auto gate + review queue 降低人工逐题标注成本。
 
 ### 范围控制
 
-重点阶段：1、8、11、13、14、15、16、17、19。核心表达：不提前做登录、老师端、完整 RAG 和复杂 Agent 框架；先验证错因诊断闭环和可信写入边界，再用 P1.7/P1.8 引入最小数据库底座和当前画像快照。P1.9 只改展示语义；P1.10 只新增 profile evidence 摘要 API，不新增 DB schema、正向练习证据表或完整历史事件浏览。P2.0/P2.2 只完成教辅题源到本地 corpus、proposal 和 enriched corpus 的前置闭环，仍不上 pgvector、embedding、检索 API 或产品前端推荐；多用户画像和 RLS 用户策略也仍属于后续演进。
+重点阶段：1、8、11、13、14、15、16、17、19、20。核心表达：不提前做登录、老师端、完整 RAG 和复杂 Agent 框架；先验证错因诊断闭环和可信写入边界，再用 P1.7/P1.8 引入最小数据库底座和当前画像快照。P1.9 只改展示语义；P1.10 只新增 profile evidence 摘要 API，不新增 DB schema、正向练习证据表或完整历史事件浏览。P2.0-P2.3 只完成教辅题源到本地 corpus、proposal、AI-assisted review 和 enriched corpus 的前置闭环，仍不上 pgvector、embedding、检索 API 或产品前端推荐；多用户画像和 RLS 用户策略也仍属于后续演进。
