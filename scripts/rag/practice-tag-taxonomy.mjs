@@ -48,6 +48,86 @@ export const TARGET_SKILL_TO_METHOD_TAGS = Object.freeze({
   parameter_range: ["parameter_classification"],
 });
 
+export const DEFAULT_TAXONOMY_ID = "math_derivative_v0";
+
+const MATH_DERIVATIVE_TAXONOMY = Object.freeze({
+  taxonomy_id: DEFAULT_TAXONOMY_ID,
+  subject: "math",
+  unit: "derivative",
+  display_name: "数学 / 导数",
+  target_skills: Object.freeze(
+    Object.entries(TARGET_SKILL_DISPLAY_NAMES).map(([key, display_name]) => ({ key, display_name })),
+  ),
+  method_tags: Object.freeze(
+    Object.entries(METHOD_TAG_DISPLAY_NAMES).map(([key, display_name]) => ({ key, display_name })),
+  ),
+  feature_flags: Object.freeze(
+    Object.entries(FEATURE_FLAG_DISPLAY_NAMES).map(([key, display_name]) => ({ key, display_name })),
+  ),
+  target_skill_to_method_tags: TARGET_SKILL_TO_METHOD_TAGS,
+});
+
+const TAXONOMY_REGISTRY = Object.freeze({
+  [DEFAULT_TAXONOMY_ID]: MATH_DERIVATIVE_TAXONOMY,
+});
+
+export function getPracticeTagTaxonomy(taxonomyId = DEFAULT_TAXONOMY_ID) {
+  return TAXONOMY_REGISTRY[taxonomyId] ?? null;
+}
+
+export function getAllowedTagSets(taxonomy) {
+  return {
+    targetSkills: new Set((taxonomy?.target_skills ?? []).map((tag) => tag.key)),
+    methodTags: new Set((taxonomy?.method_tags ?? []).map((tag) => tag.key)),
+    featureFlags: new Set((taxonomy?.feature_flags ?? []).map((tag) => tag.key)),
+  };
+}
+
+export function validatePracticeTagTaxonomy(value) {
+  const errors = [];
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, errors: ["taxonomy must be an object"] };
+  }
+
+  for (const key of ["taxonomy_id", "subject", "unit", "display_name"]) {
+    if (typeof value[key] !== "string" || !value[key].trim()) {
+      errors.push(`${key} must be a non-empty string`);
+    }
+  }
+
+  validateTagDefinitions(value.target_skills, "target_skills", errors);
+  validateTagDefinitions(value.method_tags, "method_tags", errors);
+  validateTagDefinitions(value.feature_flags, "feature_flags", errors);
+
+  const targetSkillKeys = getValidTagDefinitionKeys(value.target_skills);
+  const methodKeys = getValidTagDefinitionKeys(value.method_tags);
+
+  if (
+    !value.target_skill_to_method_tags ||
+    typeof value.target_skill_to_method_tags !== "object" ||
+    Array.isArray(value.target_skill_to_method_tags)
+  ) {
+    errors.push("target_skill_to_method_tags must be an object");
+  } else {
+    for (const [skill, methodTagsForSkill] of Object.entries(value.target_skill_to_method_tags)) {
+      if (!targetSkillKeys.has(skill)) {
+        errors.push(`target_skill_to_method_tags contains unknown target skill: ${skill}`);
+      }
+      if (!Array.isArray(methodTagsForSkill)) {
+        errors.push(`target_skill_to_method_tags.${skill} must be an array`);
+        continue;
+      }
+      for (const methodTag of methodTagsForSkill) {
+        if (!methodKeys.has(methodTag)) {
+          errors.push(`target_skill_to_method_tags.${skill} contains unknown method tag: ${methodTag}`);
+        }
+      }
+    }
+  }
+
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, taxonomy: value };
+}
+
 export function normalizeTargetSkillKeys(skills) {
   if (!Array.isArray(skills)) {
     return [];
@@ -77,4 +157,38 @@ export function deriveMethodTagsFromTargetSkills(targetSkills) {
     }
   }
   return methodTags;
+}
+
+function validateTagDefinitions(tags, path, errors) {
+  if (!Array.isArray(tags)) {
+    errors.push(`${path} must be an array`);
+    return;
+  }
+  const seen = new Set();
+  for (const tag of tags) {
+    if (typeof tag?.key !== "string" || !tag.key.trim()) {
+      errors.push(`${path} tag key must be a non-empty string`);
+      continue;
+    }
+    if (seen.has(tag.key)) {
+      errors.push(`duplicate tag key in ${path}: ${tag.key}`);
+    }
+    seen.add(tag.key);
+    if (typeof tag.display_name !== "string" || !tag.display_name.trim()) {
+      errors.push(`${path}.${tag.key}.display_name must be a non-empty string`);
+    }
+  }
+}
+
+function getValidTagDefinitionKeys(tags) {
+  const keys = new Set();
+  if (!Array.isArray(tags)) {
+    return keys;
+  }
+  for (const tag of tags) {
+    if (typeof tag?.key === "string" && tag.key.trim()) {
+      keys.add(tag.key);
+    }
+  }
+  return keys;
 }
