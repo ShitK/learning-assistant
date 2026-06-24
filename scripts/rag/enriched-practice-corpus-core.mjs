@@ -137,6 +137,10 @@ function buildItemTagData({ proposal, reviewRecord, acceptRuleProposals }) {
         proposal_confidence: summarizeProposalConfidence(proposal),
         has_manual_tag_correction: Boolean(reviewRecord.has_manual_tag_correction),
         tag_source: reviewRecord.tag_source ?? "human",
+        taxonomy_id: reviewRecord.taxonomy_id ?? null,
+        review_origin: reviewRecord.review_origin ?? null,
+        ai_confidence: reviewRecord.ai_confidence ?? null,
+        rule_ai_agreement: reviewRecord.rule_ai_agreement ?? null,
       },
     };
   }

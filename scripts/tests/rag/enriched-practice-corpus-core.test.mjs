@@ -165,7 +165,46 @@ const proposalArtifact = {
   assert.equal(enriched.items[0].tag_review_meta.review_status, "approved");
   assert.equal(enriched.items[0].tag_review_meta.has_manual_tag_correction, true);
   assert.equal(enriched.items[0].tag_review_meta.tag_source, "human");
+  assert.equal(enriched.items[0].tag_review_meta.taxonomy_id, null);
+  assert.equal(enriched.items[0].tag_review_meta.review_origin, null);
+  assert.equal(enriched.items[0].tag_review_meta.ai_confidence, null);
+  assert.equal(enriched.items[0].tag_review_meta.rule_ai_agreement, null);
   assert.equal(enriched.items[1].tag_review_meta.review_status, "skipped");
+}
+
+{
+  const p23ReviewRecords = [
+    {
+      item_id: "practice-candidate-1",
+      review_status: "approved",
+      reviewed_tags: {
+        target_skills: ["tangent_slope"],
+        method_tags: ["derivative_definition"],
+        feature_flags: ["has_choice_options"],
+      },
+      review_notes: "auto gate accepted",
+      has_manual_tag_correction: false,
+      tag_source: "llm",
+      taxonomy_id: "math_derivative_v0",
+      review_origin: "auto_gate",
+      ai_confidence: "high",
+      rule_ai_agreement: "high_confidence_rule_ai_agreement",
+    },
+  ];
+  const enriched = buildEnrichedPracticeCorpus({
+    corpus,
+    proposalArtifact,
+    reviewRecords: p23ReviewRecords,
+    sourceCorpusFile: "practice_corpus.json",
+    sourceTagProposalFile: "candidate_tag_proposals.json",
+    generatedAt: "2026-06-23T00:00:00.000Z",
+  });
+  assert.equal(enriched.items[0].tag_review_meta.tag_source, "llm");
+  assert.equal(enriched.items[0].tag_review_meta.review_status, "approved");
+  assert.equal(enriched.items[0].tag_review_meta.taxonomy_id, "math_derivative_v0");
+  assert.equal(enriched.items[0].tag_review_meta.review_origin, "auto_gate");
+  assert.equal(enriched.items[0].tag_review_meta.ai_confidence, "high");
+  assert.equal(enriched.items[0].tag_review_meta.rule_ai_agreement, "high_confidence_rule_ai_agreement");
 }
 
 {
