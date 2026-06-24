@@ -5,6 +5,10 @@ import { resolve } from "node:path";
 
 class CliUsageError extends Error {}
 
+const REVIEW_STATUS_VALUES = new Set(["approved", "needs_fix", "skipped"]);
+const TAG_SOURCE_VALUES = new Set(["rule", "human", "llm"]);
+const REVIEWED_TAG_KEYS = ["target_skills", "method_tags", "feature_flags"];
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -98,12 +102,33 @@ async function readRecordArray({ filePath, missingMessage, parseMessage, invalid
   if (!Array.isArray(parsed)) {
     throw new Error(`${invalidMessage}: expected an array`);
   }
-  for (const record of parsed) {
-    if (!record || typeof record.item_id !== "string" || !record.item_id.trim()) {
-      throw new Error(`${invalidMessage}: every record requires item_id`);
+  parsed.forEach((record, index) => validateReviewRecord(record, index, invalidMessage));
+  return parsed;
+}
+
+function validateReviewRecord(record, index, invalidMessage) {
+  const path = `records[${index}]`;
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throw new Error(`${invalidMessage}: ${path} must be an object`);
+  }
+  if (typeof record.item_id !== "string" || !record.item_id.trim()) {
+    throw new Error(`${invalidMessage}: every record requires item_id`);
+  }
+  if (!REVIEW_STATUS_VALUES.has(record.review_status)) {
+    throw new Error(`${invalidMessage}: ${path}.review_status is invalid`);
+  }
+  if (!TAG_SOURCE_VALUES.has(record.tag_source)) {
+    throw new Error(`${invalidMessage}: ${path}.tag_source is invalid`);
+  }
+  if (!record.reviewed_tags || typeof record.reviewed_tags !== "object" || Array.isArray(record.reviewed_tags)) {
+    throw new Error(`${invalidMessage}: ${path}.reviewed_tags must be an object`);
+  }
+  for (const key of REVIEWED_TAG_KEYS) {
+    const value = record.reviewed_tags[key];
+    if (!Array.isArray(value) || !value.every((tag) => typeof tag === "string")) {
+      throw new Error(`${invalidMessage}: ${path}.reviewed_tags.${key} must be an array of strings`);
     }
   }
-  return parsed;
 }
 
 function assertNoDuplicateItemIds(records, label) {

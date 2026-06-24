@@ -134,6 +134,47 @@ writeJson(humanPath, [
 }
 
 {
+  const invalidStatusPath = join(tmpRoot, "invalid_status_tag_review_records.json");
+  writeJson(invalidStatusPath, [reviewRecord({ item_id: "practice-candidate-6", review_status: "needs_review" })]);
+  const result = spawnSync(
+    process.execPath,
+    [scriptPath, "--auto", autoPath, "--human", invalidStatusPath, "--out", join(tmpRoot, "invalid-status-out")],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr.includes("review_status is invalid"), true);
+}
+
+{
+  const invalidSourcePath = join(tmpRoot, "invalid_source_tag_review_records.json");
+  writeJson(invalidSourcePath, [reviewRecord({ item_id: "practice-candidate-7", tag_source: "robot" })]);
+  const result = spawnSync(
+    process.execPath,
+    [scriptPath, "--auto", autoPath, "--human", invalidSourcePath, "--out", join(tmpRoot, "invalid-source-out")],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr.includes("tag_source is invalid"), true);
+}
+
+{
+  const invalidTagsPath = join(tmpRoot, "invalid_tags_tag_review_records.json");
+  const invalidRecord = reviewRecord({ item_id: "practice-candidate-8" });
+  invalidRecord.reviewed_tags.target_skills = "tangent_slope";
+  writeJson(invalidTagsPath, [invalidRecord]);
+  const result = spawnSync(
+    process.execPath,
+    [scriptPath, "--auto", autoPath, "--human", invalidTagsPath, "--out", join(tmpRoot, "invalid-tags-out")],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr.includes("reviewed_tags.target_skills must be an array of strings"), true);
+}
+
+{
   const result = spawnSync(process.execPath, [scriptPath, "--help"], { encoding: "utf8" });
 
   assert.equal(result.status, 0, result.stderr);
@@ -154,6 +195,7 @@ function readJson(path) {
 
 function reviewRecord({
   item_id,
+  review_status = "approved",
   target_skills = ["tangent_slope"],
   method_tags = ["derivative_definition"],
   feature_flags = [],
@@ -163,7 +205,7 @@ function reviewRecord({
 }) {
   return {
     item_id,
-    review_status: "approved",
+    review_status,
     reviewed_tags: {
       target_skills,
       method_tags,
