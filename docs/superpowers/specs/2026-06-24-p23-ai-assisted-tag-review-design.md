@@ -249,6 +249,15 @@ AI proposal artifact 建议结构：
 - `evidence_terms` 必须来自题干、章节或 rule proposal；不能是 AI 编造的新证据词。
 - `rationale` 用于审核展示，不参与检索排序。
 - `provider_meta` 不得包含 API Key、完整 prompt、完整原始响应或请求 headers。
+- `warnings` 使用稳定枚举，第一版包括：
+  - `unknown_tag_removed`
+  - `empty_tag_removed`
+  - `invalid_confidence_removed`
+  - `invalid_ai_json`
+  - `invalid_ai_schema`
+  - `invalid_evidence_terms_removed`
+
+`parseAiTagProposalResponse` 负责严格白名单过滤：未知 tag、空 tag、非法 confidence、非法 schema 一律拒绝或降级为 warning。后续 merge/gate 只消费过滤后的 AI proposal artifact，不允许直接消费原始 AI response。
 
 ### 6.3 Provider 边界
 
@@ -273,6 +282,8 @@ Merge/gate 阶段读取：
 - AI proposal artifact：`candidate_ai_tag_proposals.json`
 - taxonomy：`math_derivative_v0`
 
+这里的 AI proposal artifact 必须已经经过 parser 白名单过滤。gate 只能读取结构化 proposal 和 parser warnings，不能绕过 parser 读取原始模型响应。
+
 ### 7.2 自动通过条件
 
 第一版自动 `approved` 的条件必须保守：
@@ -281,8 +292,10 @@ Merge/gate 阶段读取：
 - AI proposal 没有 unknown tag、invalid confidence 或 parser warning。
 - AI `item_confidence === "high"`。
 - 至少一个 `target_skills` 与 rule proposal 一致，或者 rule proposal 原本没有 target skill 但 AI 高置信补出了合法 target skill。
-- `feature_flags` 不包含 `needs_visual`。
-- 规则和 AI 不在 `needs_visual` / `has_graph` 上发生冲突。
+- `method_tags` 至少有一个重叠，或者 AI 的 method tag 能由最终 target skill 合法派生。
+- 非视觉 `feature_flags` 必须一致；自动通过时最终 feature flag 等于 rule 与 AI 的共同集合。
+- rule 或 AI 的 `feature_flags` 都不能包含 `needs_visual`；`needs_visual` 永远不能进入自动通过记录。
+- 规则和 AI 不在 `needs_visual` / `has_graph` / 题型 flag 上发生冲突或缺失。
 - AI rationale 非空，但不作为 correctness 证明，只作为审核解释。
 
 ### 7.3 进入 review queue 的条件
@@ -290,9 +303,11 @@ Merge/gate 阶段读取：
 以下题目必须进入人工审核队列：
 
 - AI 与 rule 的 `target_skills` 完全冲突。
+- AI 与 rule 的 `method_tags` 冲突，且不能由最终 target skill 合法派生。
+- AI 与 rule 的 `feature_flags` 冲突。
 - AI confidence 是 `medium` 或 `low`。
 - AI 或 rule 标记 `needs_visual`。
-- AI 输出未知标签、空标签或 schema invalid。
+- AI proposal 带有 parser warning，例如 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json`、`invalid_ai_schema`。
 - AI 没有给出 target skill。
 - 规则没有 target skill 且 AI 也没有 target skill。
 - 多标签复杂题命中 3 个以上 target skills。
@@ -306,6 +321,7 @@ Merge/gate 输出三个本地 artifact：
 artifacts/rag/tag-review/merged_tag_proposals.json
 artifacts/rag/tag-review/tag_review_queue.json
 artifacts/rag/tag-review/auto_tag_review_records.json
+artifacts/rag/tag-review/tag_review_summary.json
 ```
 
 `auto_tag_review_records.json` 可以直接作为 `build-enriched-practice-corpus.mjs --review` 的输入之一，或者在 UI 导出时与人工审核记录合并。
@@ -335,6 +351,7 @@ UI 可复用 P2.0 candidate review UI 的本地静态页模式：
 
 - 用 KaTeX 渲染数学公式。
 - 用 localStorage 保存临时审核状态。
+- 因为 localStorage key 绑定 queue 文件 hash，页面需要提示“导出前请勿重新生成 queue；重新生成后本页本地草稿可能不会自动恢复”。
 - 下载 JSON，不调用后端。
 - 不读取 `.env.local`，不接数据库。
 
@@ -357,6 +374,8 @@ P2.3 导出的 review record 保持兼容 P2.2 `build-enriched-practice-corpus.m
 }
 ```
 
+`tag_source: "llm"` 表示最终标签经过 AI proposal 介入，并不表示完全由 AI 单独决定；自动通过记录仍然必须经过 rule/AI gate。纯规则来源继续使用 `"rule"`，人工修正使用 `"human"`。
+
 新增字段只能作为可选 metadata，不应破坏现有 CLI：
 
 ```js
@@ -368,12 +387,9 @@ P2.3 导出的 review record 保持兼容 P2.2 `build-enriched-practice-corpus.m
 }
 ```
 
-如果 P2.2 `validateReviewRecords` 暂不允许这些可选字段，P2.3 plan 应选择一种明确做法：
+P2.3 采用扩展 `tag_review_meta` 的方式承接这些审计字段：`build-enriched-practice-corpus.mjs --review` 继续兼容旧 review records，同时在存在可选字段时把 `review_origin`、`ai_confidence`、`rule_ai_agreement` 写入 enriched item 的 `tag_review_meta`。这样 `enriched_practice_corpus.json` 本身就能区分 auto gate 与 human review，不需要额外拼 manifest 才能复盘。
 
-- 要么扩展 validator 允许这些审计字段。
-- 要么 UI 导出两个文件：一个完整审计版，一个兼容 `build-enriched-practice-corpus.mjs` 的 review records 版。
-
-推荐第一版采用“兼容版 review records + 单独 manifest”的方式，减少对 P2.2 builder 的改动。
+`tag_review_meta` 的新增字段只用于审计、评估和面试叙事，不参与检索排序。
 
 ## 10. Data Flow
 

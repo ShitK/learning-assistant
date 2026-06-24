@@ -69,6 +69,9 @@
   - CLI tests for review record merging.
 - Modify `scripts/run-tests.mjs`
   - Add new P2.3 tests near P2.2 RAG tests.
+- Modify `scripts/rag/enriched-practice-corpus-core.mjs`
+  - Preserve existing review record compatibility.
+  - Copy optional P2.3 audit fields into `tag_review_meta`.
 - Modify `docs/superpowers/specs/2026-06-24-p23-ai-assisted-tag-review-design.md`
   - Only if implementation decisions change the design.
 - Modify `interview/mathtrace-project-narrative.md`
@@ -146,6 +149,15 @@ Optional generated artifacts, not committed:
 }
 ```
 
+`warnings` uses stable values because merge/gate consumes parser warnings:
+
+- `unknown_tag_removed`
+- `empty_tag_removed`
+- `invalid_confidence_removed`
+- `invalid_ai_json`
+- `invalid_ai_schema`
+- `invalid_evidence_terms_removed`
+
 ### Review Queue Item
 
 ```js
@@ -172,6 +184,17 @@ Optional generated artifacts, not committed:
 }
 ```
 
+`gate_reasons` uses stable values:
+
+- `ai_not_high_confidence`
+- `needs_visual`
+- `invalid_ai_proposal`
+- `target_skill_conflict`
+- `missing_ai_target_skill`
+- `too_many_target_skills`
+- `method_tag_conflict`
+- `feature_flag_conflict`
+
 ### Review Record
 
 ```js
@@ -185,9 +208,15 @@ Optional generated artifacts, not committed:
   },
   review_notes: "人工选择规则标签。",
   has_manual_tag_correction: true,
-  tag_source: "human"
+  tag_source: "human",
+  taxonomy_id: "math_derivative_v0",
+  review_origin: "human_review",
+  ai_confidence: "high",
+  rule_ai_agreement: "target_skill_overlap"
 }
 ```
+
+`tag_source: "llm"` means AI proposal participated in the accepted tags; it does not mean AI alone decided final truth. Auto-approved `"llm"` records still come from the conservative gate. The optional audit fields must flow into enriched corpus `tag_review_meta` when present.
 
 ---
 
@@ -461,6 +490,31 @@ const unknownTag = parseAiTagProposalResponse({
 assert.equal(unknownTag.warnings.includes("unknown_tag_removed"), true);
 assert.equal(unknownTag.proposed_tags.target_skills.length, 0);
 
+const invalidConfidence = parseAiTagProposalResponse({
+  item,
+  text: JSON.stringify({
+    target_skills: [{ tag: "tangent_slope", confidence: "High", evidence_terms: ["切线"], rationale: "bad" }],
+    method_tags: [],
+    feature_flags: [],
+    item_confidence: "high",
+  }),
+  taxonomy,
+});
+assert.equal(invalidConfidence.warnings.includes("invalid_confidence_removed"), true);
+assert.equal(invalidConfidence.proposed_tags.target_skills.length, 0);
+
+const emptyTag = parseAiTagProposalResponse({
+  item,
+  text: JSON.stringify({
+    target_skills: [{ tag: " ", confidence: "high", evidence_terms: ["切线"], rationale: "bad" }],
+    method_tags: [],
+    feature_flags: [],
+    item_confidence: "high",
+  }),
+  taxonomy,
+});
+assert.equal(emptyTag.warnings.includes("empty_tag_removed"), true);
+
 const malformed = parseAiTagProposalResponse({ item, text: "{bad", taxonomy });
 assert.equal(malformed.warnings.includes("invalid_ai_json"), true);
 
@@ -535,11 +589,15 @@ Implement parser rules:
 
 - Parse JSON safely.
 - Normalize missing arrays to empty arrays.
+- Strip markdown code fences before JSON parse when the whole response is fenced.
 - Drop unknown tags and add `unknown_tag_removed`.
+- Drop empty tags and add `empty_tag_removed`.
 - Drop invalid confidence tags and add `invalid_confidence_removed`.
-- Keep `evidence_terms` as strings only.
+- Keep `evidence_terms` as strings only; drop invalid entries and add `invalid_evidence_terms_removed`.
 - Set `source: "llm"` on every retained tag.
+- Set missing or invalid `item_confidence` to `"low"` and add `invalid_confidence_removed`.
 - Set empty output with `invalid_ai_json` when parsing fails.
+- Preserve parser warnings on each proposal item because Task 4 gate treats any parser warning as a sufficient reason for review queue.
 
 - [ ] **Step 4: Verify core test**
 
@@ -773,7 +831,11 @@ Use synthetic items:
 - same rule/AI `tangent_slope` high confidence -> auto approved.
 - rule `monotonicity`, AI `parameter_range` -> review queue.
 - AI `needs_visual` -> review queue.
+- rule `needs_visual` but AI missing it -> review queue.
+- rule/AI target skill overlaps but method tag conflicts -> review queue.
+- rule/AI target skill overlaps but feature flag conflicts -> review queue.
 - rule no target, AI high `zero_point` with evidence -> auto approved with note.
+- rule has `has_choice_options`, AI has `has_fill_blank` -> review queue with `feature_flag_conflict`.
 
 - [ ] **Step 2: Implement gate rules**
 
@@ -795,11 +857,52 @@ function getGateDecision({ ruleTags, aiTags, aiProposal }) {
   }
   if (aiTags.target_skills.length === 0) reasons.push("missing_ai_target_skill");
   if (aiTags.target_skills.length > 3) reasons.push("too_many_target_skills");
+  const finalTargetSkills = mergeUnique(ruleTags.target_skills, aiTags.target_skills);
+  if (hasMethodTagConflict({ ruleTags, aiTags, finalTargetSkills })) {
+    reasons.push("method_tag_conflict");
+  }
+  if (hasFeatureFlagConflict(ruleTags.feature_flags, aiTags.feature_flags)) {
+    reasons.push("feature_flag_conflict");
+  }
   return reasons.length === 0
     ? { status: "auto_approved", reasons: ["high_confidence_rule_ai_agreement"] }
     : { status: "needs_review", reasons };
 }
 ```
+
+`hasUnknownOrInvalidWarnings` must treat these AI parser warnings as `invalid_ai_proposal`:
+
+- `unknown_tag_removed`
+- `empty_tag_removed`
+- `invalid_confidence_removed`
+- `invalid_ai_json`
+- `invalid_ai_schema`
+- `invalid_evidence_terms_removed`
+
+Define final tag selection conservatively:
+
+```js
+function chooseFinalTags({ ruleTags, aiTags, taxonomy }) {
+  const target_skills = mergeUnique(ruleTags.target_skills, aiTags.target_skills);
+  const derivedMethodTags = deriveMethodTagsFromTargetSkills(target_skills, taxonomy);
+  const method_tags = mergeUnique(
+    derivedMethodTags,
+    intersect(ruleTags.method_tags, aiTags.method_tags),
+    aiTags.method_tags.filter((tag) => isMethodTagValidForTargets(tag, target_skills, taxonomy)),
+  );
+  const feature_flags = intersect(ruleTags.feature_flags, aiTags.feature_flags)
+    .filter((tag) => tag !== "needs_visual");
+  return { target_skills, method_tags, feature_flags };
+}
+```
+
+Rules:
+
+- `target_skills`: union of rule and AI only after gate has confirmed no target conflict.
+- `method_tags`: include derived method tags for final targets, plus overlapping tags, plus AI-only tags that are valid for final targets.
+- `feature_flags`: rule and AI non-visual feature flags must match exactly for auto approval; final output uses the intersection, which equals both sides after this gate.
+- `hasFeatureFlagConflict` compares feature flag sets after removing `needs_visual`; any difference is a conflict because it may change filtering or recommendation explanation.
+- `tag_source: "llm"` means AI proposal participated in the accepted result, not that AI alone decided the final tags.
 
 Auto record shape:
 
@@ -808,13 +911,17 @@ Auto record shape:
   item_id,
   review_status: "approved",
   reviewed_tags: {
-    target_skills: chooseFinalTags(ruleTags.target_skills, aiTags.target_skills),
-    method_tags: chooseFinalTags(ruleTags.method_tags, aiTags.method_tags),
-    feature_flags: chooseFinalTags(ruleTags.feature_flags, aiTags.feature_flags),
+    target_skills: finalTags.target_skills,
+    method_tags: finalTags.method_tags,
+    feature_flags: finalTags.feature_flags,
   },
   review_notes: gateDecision.reasons.join(", "),
   has_manual_tag_correction: false,
-  tag_source: "llm"
+  tag_source: "llm",
+  taxonomy_id: taxonomy.taxonomy_id,
+  review_origin: "auto_gate",
+  ai_confidence: aiProposal.item_confidence,
+  rule_ai_agreement: gateDecision.reasons.join(", ")
 }
 ```
 
@@ -899,6 +1006,7 @@ Test requirements:
 const appData = buildTagReviewAppData({ queue, taxonomy, queueSourceFile: "tag_review_queue.json", queueSourceSha256: "abc123456789", generatedAt });
 assert.equal(appData.app_version, "tag-review-ui-v1");
 assert.equal(appData.storage_key, "mathtrace.tagReview.abc123456789");
+assert.equal(appData.storage_notice.includes("导出前请勿重新生成"), true);
 assert.equal(appData.taxonomy.taxonomy_id, "math_derivative_v0");
 assert.equal(appData.items[0].rendered_html.includes("katex"), true);
 
@@ -932,6 +1040,7 @@ Follow `candidate-review-ui-core.mjs` patterns:
 - `escapeScriptJson`.
 - static HTML with embedded app data.
 - `localStorage` state per queue hash.
+- visible but concise notice: "导出前请勿重新生成 queue；重新生成后本页本地草稿可能不会自动恢复。"
 - left list with gate reasons.
 - right detail with:
   - rendered question
@@ -1092,6 +1201,34 @@ assert.deepEqual(
   ["parameter_range"],
 );
 
+const duplicateHumanPath = join(tmpRoot, "duplicate_tag_review_records.json");
+writeFileSync(duplicateHumanPath, JSON.stringify([
+  {
+    item_id: "practice-candidate-3",
+    review_status: "approved",
+    reviewed_tags: { target_skills: ["zero_point"], method_tags: ["zero_count"], feature_flags: [] },
+    review_notes: "duplicate a",
+    has_manual_tag_correction: true,
+    tag_source: "human",
+  },
+  {
+    item_id: "practice-candidate-3",
+    review_status: "needs_fix",
+    reviewed_tags: { target_skills: [], method_tags: [], feature_flags: [] },
+    review_notes: "duplicate b",
+    has_manual_tag_correction: true,
+    tag_source: "human",
+  },
+]));
+const duplicateResult = spawnSync(process.execPath, [
+  "scripts/rag/merge-tag-review-records.mjs",
+  "--auto", autoPath,
+  "--human", duplicateHumanPath,
+  "--out", join(tmpRoot, "duplicate-out"),
+], { encoding: "utf8" });
+assert.equal(duplicateResult.status, 1);
+assert.equal(duplicateResult.stderr.includes("duplicate item_id"), true);
+
 console.log("tag review record merge cli tests passed");
 ```
 
@@ -1101,6 +1238,8 @@ Create `scripts/rag/merge-tag-review-records.mjs` with:
 
 - args: `--auto`, `--human`, `--out`, `--help`.
 - default output dir: `artifacts/rag/tag-review`.
+- reject duplicate `item_id` within auto records.
+- reject duplicate `item_id` within human records.
 - human records override auto records by `item_id`.
 - stable ordering: auto order first, overridden items keep their original position, human-only records append at the end.
 - output files:
@@ -1155,6 +1294,7 @@ git commit -m "feat: merge tag review records"
 
 **Files:**
 - Modify: `scripts/run-tests.mjs`
+- Modify: `scripts/rag/enriched-practice-corpus-core.mjs`
 - Modify: `scripts/tests/rag/enriched-practice-corpus-core.test.mjs`
 - Modify: `scripts/tests/rag/enriched-practice-corpus-cli.test.mjs`
 - Optional modify: `docs/superpowers/specs/2026-06-24-p23-ai-assisted-tag-review-design.md`
@@ -1193,11 +1333,34 @@ const p23ReviewRecords = [{
   review_notes: "auto gate accepted",
   has_manual_tag_correction: false,
   tag_source: "llm",
+  taxonomy_id: "math_derivative_v0",
+  review_origin: "auto_gate",
+  ai_confidence: "high",
+  rule_ai_agreement: "high_confidence_rule_ai_agreement",
 }];
 const enriched = buildEnrichedPracticeCorpus({ corpus, proposalArtifact, reviewRecords: p23ReviewRecords, generatedAt, sourceCorpusFile, sourceTagProposalFile });
 assert.equal(enriched.items[0].tag_review_meta.tag_source, "llm");
 assert.equal(enriched.items[0].tag_review_meta.review_status, "approved");
+assert.equal(enriched.items[0].tag_review_meta.review_origin, "auto_gate");
+assert.equal(enriched.items[0].tag_review_meta.ai_confidence, "high");
+assert.equal(enriched.items[0].tag_review_meta.rule_ai_agreement, "high_confidence_rule_ai_agreement");
 ```
+
+Update `enriched-practice-corpus-core.mjs` so optional review fields are copied into `tag_review_meta` only when present:
+
+```js
+tag_review_meta: {
+  review_status: record.review_status,
+  proposal_confidence,
+  has_manual_tag_correction: record.has_manual_tag_correction,
+  tag_source: record.tag_source,
+  review_origin: record.review_origin ?? null,
+  ai_confidence: record.ai_confidence ?? null,
+  rule_ai_agreement: record.rule_ai_agreement ?? null,
+}
+```
+
+These audit fields are not used for retrieval scoring.
 
 - [ ] **Step 3: Run focused tests**
 
@@ -1380,10 +1543,10 @@ Add a P2.3 section to `interview/mathtrace-project-narrative.md` only after impl
 Run:
 
 ```bash
+git diff --check
 node scripts/run-tests.mjs default
 npm run lint
 npm run build
-git diff --check
 git status --short
 git ls-files artifacts docs/reviews .superpowers/sdd
 git ls-files .env.local
