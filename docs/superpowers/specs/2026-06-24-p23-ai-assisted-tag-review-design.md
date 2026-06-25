@@ -319,11 +319,11 @@ Merge/gate 阶段读取：
 
 - rule proposal 和 AI proposal 使用同一个 `taxonomy_id`。
 - AI proposal 没有 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json` 或 `invalid_ai_schema` 这类硬错误 warning。
-- `invalid_evidence_terms_removed` 不是自动通过的一票否决；只要清洗后每个 AI tag 仍保留至少一个有效 `evidence_terms`，gate 可以自动通过并在 `review_notes` 中记录 `ai_evidence_terms_partially_removed`。
+- `invalid_evidence_terms_removed` 不是自动通过的一票否决；P2.3d 起 evidence 只作为审计信息，gate 可以自动通过并在 `review_notes` 中记录 `ai_evidence_terms_partially_removed`。
 - AI `item_confidence === "high"`。
 - 至少一个 `target_skills` 与 rule proposal 一致，或者 rule proposal 原本没有 target skill 但 AI 高置信补出了合法 target skill。
-- `method_tags` 不要求完全一致；AI 可以在高置信、有有效 `evidence_terms` 且标签存在于 taxonomy 的情况下补充 rule 漏掉的解题方法，自动通过时最终 `method_tags` 取 rule、AI 和 target skill 派生标签的并集。
-- 非视觉 `feature_flags` 不要求完全一致；AI 可以在高置信、有有效 `evidence_terms` 且标签存在于 taxonomy 的情况下补充客观题型/公式特征，自动通过时最终 feature flag 取 rule 与 AI 的非视觉并集。
+- `method_tags` 不要求完全一致；AI 可以补充 rule 漏掉的解题方法，自动通过时最终 `method_tags` 取 rule、AI 和 target skill 派生标签的并集。
+- 非视觉 `feature_flags` 不要求完全一致；AI 可以补充客观题型/公式特征，自动通过时最终 feature flag 取 rule 与 AI 的非视觉并集。
 - rule 或 AI 的 `feature_flags` 都不能包含 `needs_visual`；`needs_visual` 永远不能进入自动通过记录。
 - 规则和 AI 不在 `needs_visual` / `has_graph` 这类图像依赖信号上发生冲突或缺失。
 - AI rationale 非空，但不作为 correctness 证明，只作为审核解释。
@@ -336,7 +336,6 @@ Merge/gate 阶段读取：
 - AI confidence 是 `medium` 或 `low`。
 - AI 或 rule 标记 `needs_visual`。
 - AI proposal 带有硬错误 parser warning，例如 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json`、`invalid_ai_schema`。
-- AI proposal 中任意 AI tag 清洗后没有任何有效 `evidence_terms`，此时 gate reason 使用 `missing_ai_evidence`；如果只是部分 evidence term 被删，但每个 tag 仍有有效证据，可以自动通过并记录 `ai_evidence_terms_partially_removed`。
 - AI 没有给出 target skill。
 - 规则没有 target skill 且 AI 也没有 target skill。
 - 多标签复杂题命中 3 个以上 target skills。
@@ -463,14 +462,14 @@ P2.3 必须使用 synthetic fixture，不使用真实教辅题文。
   - 构造 prompt 时只包含必要字段。
   - AI 输出 unknown tag 被拒绝。
   - malformed JSON 被拒绝。
-  - evidence_terms 不在题干/章节/rule evidence 中时被清洗到 `removed_evidence_terms`，并按证据是否仍存在决定是否进入 gate。
+  - evidence_terms 不在题干/章节/rule evidence 中时被清洗到 `removed_evidence_terms`，但只作为审计信息，不决定是否进入 gate。
   - stdout 不泄漏题干全文和 API Key。
 - merge/gate：
   - rule + AI 一致且 high confidence 自动 approved。
   - target skill 冲突进入 queue。
   - needs_visual 进入 queue。
   - AI 补全 rule 缺失 target skill 时可自动 approved，但必须记录 reason。
-  - `invalid_evidence_terms_removed` 只有在清洗后缺少有效证据时才触发 `missing_ai_evidence`。
+  - `invalid_evidence_terms_removed` 只写入 review notes，不触发 review queue。
   - unknown tag 不进入 auto records。
 - review UI core：
   - 渲染题干数学公式。

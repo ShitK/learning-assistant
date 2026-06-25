@@ -191,9 +191,12 @@ for (const warning of [
     warnings: ["invalid_evidence_terms_removed"],
   });
 
-  assert.equal(missingEvidenceAfterCleanup.auto_review_records.length, 0);
-  assert.equal(missingEvidenceAfterCleanup.review_queue.length, 1);
-  assert.equal(missingEvidenceAfterCleanup.review_queue[0].gate_reasons.includes("missing_ai_evidence"), true);
+  assert.equal(missingEvidenceAfterCleanup.auto_review_records.length, 1);
+  assert.equal(missingEvidenceAfterCleanup.review_queue.length, 0);
+  assert.equal(
+    missingEvidenceAfterCleanup.auto_review_records[0].review_notes.includes("ai_evidence_terms_partially_removed"),
+    true,
+  );
 }
 
 {
@@ -245,9 +248,12 @@ for (const warning of [
     },
   });
 
-  assert.equal(aiMethodWithoutEvidence.auto_review_records.length, 0);
-  assert.equal(aiMethodWithoutEvidence.review_queue.length, 1);
-  assert.equal(aiMethodWithoutEvidence.review_queue[0].gate_reasons.includes("missing_ai_evidence"), true);
+  assert.equal(aiMethodWithoutEvidence.auto_review_records.length, 1);
+  assert.equal(aiMethodWithoutEvidence.review_queue.length, 0);
+  assert.equal(
+    aiMethodWithoutEvidence.auto_review_records[0].review_notes.includes("ai_added_method_tags"),
+    true,
+  );
 }
 
 {

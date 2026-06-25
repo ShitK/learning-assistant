@@ -173,9 +173,7 @@ export function getGateDecision({ ruleTags, aiTags, aiProposal }) {
   if (hasUnknownOrInvalidWarnings(aiProposal)) {
     blockingReasons.push("invalid_ai_proposal");
   }
-  if (hasAnyAiTagWithoutEvidence(aiTags)) {
-    blockingReasons.push("missing_ai_evidence");
-  } else if (hasWarning(aiProposal, "invalid_evidence_terms_removed")) {
+  if (hasWarning(aiProposal, "invalid_evidence_terms_removed")) {
     successReasons.push("ai_evidence_terms_partially_removed");
   }
 
@@ -253,22 +251,6 @@ function hasUnknownOrInvalidWarnings(aiProposal) {
 
 function hasWarning(aiProposal, warning) {
   return (aiProposal?.warnings ?? []).includes(warning);
-}
-
-function hasAnyAiTagWithoutEvidence(aiTags) {
-  for (const tagList of Object.values(aiTags ?? {})) {
-    if (!Array.isArray(tagList)) continue;
-    for (const tag of tagList) {
-      if (typeof tag === "string") {
-        continue;
-      }
-      const evidenceTerms = tag?.evidence_terms;
-      if (!Array.isArray(evidenceTerms) || evidenceTerms.length === 0) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 function hasAiAddedValues(ruleValues, aiValues) {
