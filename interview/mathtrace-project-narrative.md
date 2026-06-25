@@ -2495,6 +2495,8 @@ P2.3b 里我处理过一个具体例子：基础求导题没有合适的 `target
 
 当前本地真实链路的结果是：69 道导数题中 64 道生成 `auto_tag_review_records.json`（自动通过的标签审核记录文件），5 道仍留在 `tag_review_queue.json`（人工标签审核队列文件）。`enriched_practice_corpus.json`（带标签题库文件）会保留 `proposed`（有建议但未通过审核）和 `needs_fix`（需要修正）条目用于审计，但 Variant Practice Agent（变式练习推荐 Agent）必须通过 `searchPracticeCorpus`（题库检索函数）只消费 `approved`（已通过审核）的题目。
 
+为了让当前 demo 能稳定展示 3 道练习，Variant Practice Agent（变式练习推荐 Agent）增加了一个很薄的 `additional_practice`（补充练习题）兜底：如果严格的 `foundation`（巩固题）、`near_transfer`（近迁移题）、`mixed_application`（综合应用题）凑不满 3 道，就从 approved 候选里选 1 道标签相近题补位，并保留 `demo_fill_used`（演示补位已启用）warning。这个设计不改变推荐算法的质量判断，也不会把补位题伪装成综合应用题，只是让演示链路更完整。
+
 证据词校验这块我做过一次校准。AI 输出的 `evidence_terms`（证据词）仍然会尝试在题干、检索文本或规则证据里匹配；找不到的会进入 `removed_evidence_terms`（被清洗移除的证据词列表）。但 P2.3d 不再把 evidence 缺失作为一票否决，因为真实教辅 OCR、LaTeX 表达和隐含数学推理都会让“证据词逐字匹配”产生误伤。现在的策略是：evidence 用来审计和后续 prompt 优化，自动通过主要看规则与 AI 的目标能力是否有交集。这个设计让 gate（门控）更贴近 MVP：先把明显可用的题进入题库，把人工审核留给目标能力冲突、低置信度、非法输出和图像依赖。
 
 这和传统 RAG 不太一样。传统链路常见是文档切 chunk、做 embedding、进向量库、top-k 检索、拼进 prompt。MathTrace 这一步先做的是题源理解和练习推荐 Agent 的可解释 metadata：一道题练什么、怎么解、有什么题型限制。后续当然可以把 `enriched_practice_corpus.json`（带标签题库文件）再做 embedding 和 pgvector 检索，但向量召回不会替代 taxonomy、review records 和 Agent 推荐规则。

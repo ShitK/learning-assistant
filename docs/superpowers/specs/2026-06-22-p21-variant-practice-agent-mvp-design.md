@@ -170,6 +170,7 @@ P2.1 先使用本地 demo query，不接真实诊断 API。建议输入结构：
 - `rationale` 是整体推荐解释，不能包含超出 query/corpus 的事实。
 - `review_meta` 不进入最终推荐输出，除非未来做调试模式；P2.1 默认不展示审核元数据。
 - 如果候选不足，返回 `warnings: ["insufficient_candidates"]`。
+- 如果严格的 `foundation` / `near_transfer` / `mixed_application` 三类候选不足 3 道，demo 阶段允许从已通过审核的相近标签候选中补 1 道 `additional_practice`（补充练习题），同时返回 `demo_fill_used` warning，避免把补位题伪装成综合应用题。
 - 如果 corpus 缺失或非法，CLI 失败并输出稳定错误，不打印完整 corpus 内容。
 
 ## 7. Agent 流程
@@ -213,6 +214,7 @@ Agent 对 top-k 做二次排序和类型选择：
 - `foundation` 优先选择同 `section_title` 且命中 `knowledge_point` / `section_title` 的题。
 - `near_transfer` 优先选择同 `knowledge_points`、不同 `section_title`，且命中 `target_skill` 的题。
 - `mixed_application` 优先选择仍然命中 `knowledge_points`、不同 `section_title`，但没有命中 `target_skill` 的题；如果无法满足则少返回并给 warning。
+- `additional_practice` 只作为演示兜底：前三类不足 3 道时，从剩余 approved 候选里优先选择命中 `target_skill` 或 `method_tag` 的相近题补位。
 - 优先匹配 `target_skills`。
 - 避免重复推荐几乎相同的题号/题干。
 - 保留 score 和 matched dimensions，方便解释。

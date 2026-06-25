@@ -2,6 +2,7 @@ import { normalizePracticeQuery, searchPracticeCorpus } from "./practice-corpus-
 
 const AGENT_VERSION = "variant-practice-agent-v0";
 const RECOMMENDATION_TYPES = ["foundation", "near_transfer", "mixed_application"];
+const DEMO_FILL_RECOMMENDATION_TYPE = "additional_practice";
 
 export function analyzePracticeNeed(query) {
   const need = normalizePracticeQuery(query);
@@ -67,7 +68,30 @@ function selectRecommendationCandidates(candidates, need) {
     }
   }
 
+  if (selected.length < 3) {
+    const fallbackCandidate = selectDemoFillCandidate(candidates, usedIds);
+    if (fallbackCandidate) {
+      selected.push({
+        recommendationType: DEMO_FILL_RECOMMENDATION_TYPE,
+        candidate: fallbackCandidate,
+      });
+    }
+  }
+
   return selected;
+}
+
+function selectDemoFillCandidate(candidates, usedIds) {
+  const unusedCandidates = candidates.filter((candidate) => !usedIds.has(candidate.item.id));
+  return (
+    unusedCandidates.find((candidate) =>
+      candidate.matched_dimensions.some((dimension) =>
+        ["target_skill", "method_tag"].includes(dimension),
+      ),
+    ) ??
+    unusedCandidates.find((candidate) => candidate.matched_dimensions.includes("knowledge_point")) ??
+    null
+  );
 }
 
 function isCandidateForType(candidate, need, recommendationType) {
@@ -133,6 +157,7 @@ function buildRecommendationReason(candidate, recommendationType, index) {
     foundation: "巩固题",
     near_transfer: "轻微变式题",
     mixed_application: "迁移应用题",
+    additional_practice: "补充练习题",
   }[recommendationType];
   const reasonText =
     candidate.match_reasons.length > 0
@@ -185,9 +210,13 @@ function buildOverallRationale({ need, recommendations }) {
   const hasFoundation = recommendationTypes.includes("foundation");
   const hasNearTransfer = recommendationTypes.includes("near_transfer");
   const hasMixedApplication = recommendationTypes.includes("mixed_application");
+  const hasDemoFill = recommendationTypes.includes(DEMO_FILL_RECOMMENDATION_TYPE);
 
   if (hasFoundation && hasNearTransfer && hasMixedApplication) {
     return `基于当前错因，先围绕同章节巩固${skillText}，再用跨章节题训练迁移，最后做综合应用。`;
+  }
+  if (hasDemoFill) {
+    return `基于当前错因，先围绕同章节巩固${skillText}，再用跨章节题训练迁移；当前 corpus 暂时缺少稳定的综合应用题，因此补充同标签相近题用于演示练习链路。`;
   }
   if (hasFoundation && hasNearTransfer) {
     return `基于当前错因，先围绕同章节巩固${skillText}，再用跨章节题训练迁移；综合应用题当前 corpus 还不足以稳定推荐。`;
@@ -200,6 +229,9 @@ function buildOverallRationale({ need, recommendations }) {
 
 function buildWarnings({ corpus, candidates, recommendations }) {
   const warnings = [];
+  if (recommendations.some((recommendation) => recommendation.recommendation_type === DEMO_FILL_RECOMMENDATION_TYPE)) {
+    warnings.push("demo_fill_used");
+  }
   if (candidates.length === 0) {
     warnings.push("no_candidates_found");
   } else if (isEnrichedCorpus(corpus) && recommendations.length < 3) {

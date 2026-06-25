@@ -302,6 +302,59 @@ const query = {
 }
 
 {
+  const demoFillCorpus = {
+    corpus_version: "enriched-practice-corpus-v0",
+    generated_at: "2026-06-26T00:00:00.000Z",
+    source_corpus_file: "practice_corpus.json",
+    source_tag_proposal_file: "candidate_tag_proposals.json",
+    item_count: 3,
+    items: [
+      buildEnrichedTestItem({
+        id: "demo-fill-foundation",
+        section_title: "考点 1 导数的概念",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+      }),
+      buildEnrichedTestItem({
+        id: "demo-fill-near",
+        section_title: "考点 2 导数与函数的单调性",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+      }),
+      buildEnrichedTestItem({
+        id: "demo-fill-extra",
+        section_title: "考点 1 导数的概念",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+      }),
+    ],
+  };
+
+  const result = recommendVariantPractice({
+    corpus: demoFillCorpus,
+    query: {
+      id: "query-demo-fill",
+      question_text: "求切线斜率",
+      knowledge_points: ["derivative"],
+      section_title: "考点 1 导数的概念",
+      target_skills: ["切线斜率"],
+    },
+    searchLimit: 10,
+  });
+
+  assert.deepEqual(
+    result.recommendations.map((recommendation) => recommendation.recommendation_type),
+    ["foundation", "near_transfer", "additional_practice"],
+  );
+  assert.deepEqual(
+    result.recommendations.map((recommendation) => recommendation.item_id),
+    ["demo-fill-extra", "demo-fill-near", "demo-fill-foundation"],
+  );
+  assert.equal(result.warnings.includes("demo_fill_used"), true);
+  assert.equal(result.rationale.includes("补充同标签相近题"), true);
+}
+
+{
   const mixedReviewStatusCorpus = {
     corpus_version: "enriched-practice-corpus-v0",
     generated_at: "2026-06-26T00:00:00.000Z",
