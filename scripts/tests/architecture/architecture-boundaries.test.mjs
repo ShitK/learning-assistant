@@ -92,6 +92,8 @@ const allowedLibImportPrefixes = [
   "@/lib/mistake-book/",
   "@/lib/student-profile/",
   "@/lib/demo/",
+  "@/lib/rag/",
+  "@/lib/server/",
 ];
 
 const sourceFiles = await listFiles("src", (filePath) =>
