@@ -4,7 +4,7 @@
 
 **Goal:** Show the current local Variant Practice Agent recommendations inside the MathTrace product workbench, using a student-facing display that hides internal RAG/debug tags.
 
-**Architecture:** Add a small server-side loader that reads the ignored local `recommendations.json` artifact and maps it into a browser-safe product view model. Pass that view model from `src/app/page.tsx` into the existing client workbench, and let `PracticeLab` render it only for the default derivative sample; otherwise it keeps the existing `diagnosis.practice_questions` fallback.
+**Architecture:** Add a small server-side loader that reads the ignored local `recommendations.json` artifact and maps it into a browser-safe product view model. The view model rewrites raw RAG reasons into fixed student-facing copy by recommendation type, so internal tag keys and search diagnostics never reach the product UI. Pass that view model from `src/app/page.tsx` into the existing client workbench, and let `PracticeLab` render it only for the default derivative sample; otherwise it keeps the existing `diagnosis.practice_questions` fallback.
 
 **Tech Stack:** Next.js App Router, React Client Components, TypeScript, KaTeX through existing `MathText`, Node.js `fs/promises` only in a server-side loader, existing Node/Jiti tests. No new npm dependencies.
 
@@ -13,10 +13,11 @@
 - Do not commit `.env*`, `artifacts/**`, `docs/reviews/*.md`, `.superpowers/sdd/**`, PDF files, MinerU JSON, real corpus artifacts, or generated recommendation artifacts.
 - Do not create a new API route for P2.5.
 - Do not let frontend/client components read `fs`, `artifacts/`, service role keys, Supabase, or provider env vars.
-- Do not show internal fields in the product UI: `score`, `knowledge_point`, `section_title`, `target_skill`, `method_tag`, `query_term`, `matched_dimensions`, `item_id`, `source_candidate_id`, raw `warnings`, or raw `demo_fill_used`.
+- Do not show internal fields or raw diagnostic wording in the product UI: `score`, `knowledge_point`, `section_title`, `target_skill`, `method_tag`, `query_term`, `matched_dimensions`, `item_id`, `source_candidate_id`, raw `warnings`, raw `demo_fill_used`, raw RAG `reason`, taxonomy keys such as `derivative_geometric_meaning` / `tangent_slope`, or debug phrases such as `命中目标技能标签`.
 - Convert `demo_fill_used` into student-facing Chinese copy: `当前题库里暂时没有足够合适的综合练习，已为你补充一题相近练习。`
 - Preserve `sample_diagnosis` stability: if the local artifact is missing, malformed, or for a different sample, the existing prewritten `diagnosis.practice_questions` must still render.
 - RAG remains a variant-practice source layer only; it must not write `memory_events`, `student_profiles`, mistake book, or evidence API data.
+- Do not modify the Variant Practice Agent selection algorithm in P2.5. The current artifact may already contain `additional_practice` from the demo-fill step; the product view model only displays accepted artifact items and does not create extra recommendations.
 - This task only integrates an ignored local recommendation artifact into the demo UI. It does not add pgvector, embeddings, live retrieval, a database table, AI generation, answer submission, real grading, or teacher/admin flows.
 
 ---
@@ -26,7 +27,7 @@
 - Create `src/lib/rag/variant-practice-product-view-model.ts`
   - Browser-safe types and pure mapping from `variant-practice-agent-v0` artifact shape to product display shape.
   - Exports `createVariantPracticeProductViewModel()` and TypeScript interfaces.
-- Create `src/lib/rag/variant-practice-product-loader.ts`
+- Create `src/lib/server/rag/variant-practice-product-loader.ts`
   - Server-only file-reading boundary.
   - Reads `artifacts/rag/variant-practice-agent/recommendations.json`.
   - Returns `ProductVariantPractice | null`.
@@ -59,7 +60,6 @@ The product UI consumes only this shape:
 ```ts
 export interface ProductVariantPractice {
   source: "rag_variant_practice";
-  query_id: string | null;
   items: ProductVariantPracticeItem[];
   notice: string | null;
 }
@@ -73,7 +73,7 @@ export interface ProductVariantPracticeItem {
 }
 ```
 
-It must not include `score`, `matched_dimensions`, `item_id`, `source_candidate_id`, `source_ref`, raw `warnings`, or any tag key.
+It must not include `score`, `matched_dimensions`, `item_id`, `source_candidate_id`, `source_ref`, raw `warnings`, `query_id`, raw RAG `reason`, or any tag key.
 
 ---
 
@@ -88,7 +88,7 @@ It must not include `score`, `matched_dimensions`, `item_id`, `source_candidate_
 - Consumes: raw local artifact object shaped like `variant-practice-agent-v0`.
 - Produces:
   - `ProductVariantPractice`
-  - `createVariantPracticeProductViewModel(value: unknown): ProductVariantPractice | null`
+  - `createVariantPracticeProductViewModel(value: unknown, options?: { expectedQueryId?: string }): ProductVariantPractice | null`
 
 - [ ] **Step 1: Write the failing mapper test**
 
@@ -113,7 +113,7 @@ const artifact = {
       item_id: "practice-internal-1",
       source_candidate_id: "candidate-internal-1",
       question_text: "1. 已知 $f'(1)=2$，求切线斜率。",
-      reason: "同章节同标签，适合作为第一道巩固题。",
+      reason: "同知识点 derivative；同章节：考点 1 导数的概念、几何意义与运算，适合作为第一道巩固题。",
       matched_dimensions: ["knowledge_point", "target_skill", "method_tag"],
       score: 42,
       source_ref: { pdf_page_index: 1, section_title: "考点 1 导数的概念" },
@@ -124,7 +124,7 @@ const artifact = {
       item_id: "practice-internal-2",
       source_candidate_id: "candidate-internal-2",
       question_text: "2. 跨章节切线斜率题。",
-      reason: "跨章节但同目标技能，适合作为第二道近迁移题。",
+      reason: "同知识点 derivative；命中目标技能标签：derivative_geometric_meaning, tangent_slope，适合作为第二道轻微变式题。",
       matched_dimensions: ["knowledge_point", "target_skill"],
       score: 34,
       source_ref: null,
@@ -135,7 +135,7 @@ const artifact = {
       item_id: "practice-internal-3",
       source_candidate_id: "candidate-internal-3",
       question_text: "3. 同标签补充练习。",
-      reason: "当前题库暂缺稳定综合应用题，补充一题同标签相近题。",
+      reason: "同知识点 derivative；同章节：考点 1 导数的概念、几何意义与运算，适合作为第三道补充练习题。",
       matched_dimensions: ["knowledge_point", "target_skill"],
       score: 40,
       source_ref: null,
@@ -147,11 +147,18 @@ const artifact = {
 const viewModel = createVariantPracticeProductViewModel(artifact);
 
 assert.equal(viewModel.source, "rag_variant_practice");
-assert.equal(viewModel.query_id, "demo-derivative-tangent-slope");
 assert.equal(viewModel.items.length, 3);
 assert.deepEqual(
   viewModel.items.map((item) => item.title),
   ["巩固题", "近迁移题", "补充练习题"],
+);
+assert.deepEqual(
+  viewModel.items.map((item) => item.reason),
+  [
+    "先练一道同类型基础题，巩固当前错因对应的解题路径。",
+    "再练一道变式题，训练把同一思路迁移到新场景。",
+    "当前题库暂缺稳定综合应用题，已为你补充一题相近练习。",
+  ],
 );
 assert.equal(
   viewModel.notice,
@@ -164,6 +171,11 @@ for (const forbidden of [
   "candidate-internal",
   "matched_dimensions",
   "knowledge_point",
+  "derivative",
+  "derivative_geometric_meaning",
+  "tangent_slope",
+  "考点",
+  "命中目标技能标签",
   "target_skill",
   "method_tag",
   "score",
@@ -175,6 +187,10 @@ for (const forbidden of [
 
 assert.equal(createVariantPracticeProductViewModel({ agent_version: "bad" }), null);
 assert.equal(createVariantPracticeProductViewModel({ agent_version: "variant-practice-agent-v0", recommendations: [] }), null);
+assert.equal(
+  createVariantPracticeProductViewModel(artifact, { expectedQueryId: "other-sample" }),
+  null,
+);
 
 console.log("variant practice product view model tests passed");
 ```
@@ -202,7 +218,6 @@ export type ProductVariantPracticeType =
 
 export interface ProductVariantPractice {
   source: "rag_variant_practice";
-  query_id: string | null;
   items: ProductVariantPracticeItem[];
   notice: string | null;
 }
@@ -225,8 +240,16 @@ const recommendationTypeLabels: Record<ProductVariantPracticeType, string> = {
 const demoFillNotice =
   "当前题库里暂时没有足够合适的综合练习，已为你补充一题相近练习。";
 
+const productReasons: Record<ProductVariantPracticeType, string> = {
+  foundation: "先练一道同类型基础题，巩固当前错因对应的解题路径。",
+  near_transfer: "再练一道变式题，训练把同一思路迁移到新场景。",
+  mixed_application: "最后做一道综合应用题，检验能否组合多个知识点。",
+  additional_practice: "当前题库暂缺稳定综合应用题，已为你补充一题相近练习。",
+};
+
 export function createVariantPracticeProductViewModel(
   value: unknown,
+  { expectedQueryId }: { expectedQueryId?: string } = {},
 ): ProductVariantPractice | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -240,6 +263,10 @@ export function createVariantPracticeProductViewModel(
   };
 
   if (artifact.agent_version !== "variant-practice-agent-v0") {
+    return null;
+  }
+
+  if (expectedQueryId && artifact.query_id !== expectedQueryId) {
     return null;
   }
 
@@ -261,7 +288,6 @@ export function createVariantPracticeProductViewModel(
 
   return {
     source: "rag_variant_practice",
-    query_id: typeof artifact.query_id === "string" ? artifact.query_id : null,
     items,
     notice: warnings.includes("demo_fill_used") ? demoFillNotice : null,
   };
@@ -296,7 +322,7 @@ function toProductItem(value: unknown): ProductVariantPracticeItem | null {
     type,
     title: recommendationTypeLabels[type],
     question_text: item.question_text.trim(),
-    reason: item.reason.trim(),
+    reason: productReasons[type],
   };
 }
 
@@ -366,15 +392,15 @@ git commit -m "feat: add variant practice product view model"
 ## Task 2: Server-Side Artifact Loader
 
 **Files:**
-- Create: `src/lib/rag/variant-practice-product-loader.ts`
+- Create: `src/lib/server/rag/variant-practice-product-loader.ts`
 - Create: `scripts/tests/rag/variant-practice-product-loader.test.mjs`
 - Modify: `scripts/run-tests.mjs`
 
 **Interfaces:**
 - Consumes:
-  - `createVariantPracticeProductViewModel(value: unknown): ProductVariantPractice | null`
+  - `createVariantPracticeProductViewModel(value: unknown, options?: { expectedQueryId?: string }): ProductVariantPractice | null`
 - Produces:
-  - `readVariantPracticeProductRecommendations(options?: { filePath?: string }): Promise<ProductVariantPractice | null>`
+  - `readVariantPracticeProductRecommendations(options?: { filePath?: string; expectedQueryId?: string }): Promise<ProductVariantPractice | null>`
 
 - [ ] **Step 1: Write the failing loader test**
 
@@ -389,7 +415,7 @@ import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 
 const jiti = createProjectJiti();
 const { readVariantPracticeProductRecommendations } = jiti(
-  "./src/lib/rag/variant-practice-product-loader.ts",
+  "./src/lib/server/rag/variant-practice-product-loader.ts",
 );
 
 const tmpRoot = mkdtempSync(join(tmpdir(), "variant-practice-product-loader-"));
@@ -436,6 +462,12 @@ const malformed = await readVariantPracticeProductRecommendations({
 });
 assert.equal(malformed, null);
 
+const mismatched = await readVariantPracticeProductRecommendations({
+  filePath: artifactPath,
+  expectedQueryId: "other-sample",
+});
+assert.equal(mismatched, null);
+
 console.log("variant practice product loader tests passed");
 ```
 
@@ -447,13 +479,15 @@ Run:
 node scripts/tests/rag/variant-practice-product-loader.test.mjs
 ```
 
-Expected: FAIL with module not found for `src/lib/rag/variant-practice-product-loader.ts`.
+Expected: FAIL with module not found for `src/lib/server/rag/variant-practice-product-loader.ts`.
 
 - [ ] **Step 3: Implement the loader**
 
-Create `src/lib/rag/variant-practice-product-loader.ts`:
+Create `src/lib/server/rag/variant-practice-product-loader.ts`:
 
 ```ts
+// server-only: this file reads ignored local artifacts with node:fs/promises.
+// Do not import it from Client Components.
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -465,13 +499,15 @@ const defaultRecommendationsPath = "artifacts/rag/variant-practice-agent/recomme
 
 export async function readVariantPracticeProductRecommendations({
   filePath = defaultRecommendationsPath,
+  expectedQueryId = "demo-derivative-tangent-slope",
 }: {
   filePath?: string;
+  expectedQueryId?: string;
 } = {}): Promise<ProductVariantPractice | null> {
   try {
     const rawText = await readFile(resolve(filePath), "utf8");
     const parsed: unknown = JSON.parse(rawText);
-    return createVariantPracticeProductViewModel(parsed);
+    return createVariantPracticeProductViewModel(parsed, { expectedQueryId });
   } catch {
     return null;
   }
@@ -506,7 +542,7 @@ demo state regression test passed
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/lib/rag/variant-practice-product-loader.ts \
+git add src/lib/server/rag/variant-practice-product-loader.ts \
   scripts/tests/rag/variant-practice-product-loader.test.mjs \
   scripts/run-tests.mjs
 git commit -m "feat: load variant practice recommendations server side"
@@ -570,6 +606,10 @@ assert.match(
 for (const forbidden of [
   "matched_dimensions",
   "knowledge_point",
+  "derivative_geometric_meaning",
+  "tangent_slope",
+  "命中目标技能标签",
+  "score",
   "target_skill",
   "method_tag",
   "query_term",
@@ -598,7 +638,7 @@ Modify `src/app/page.tsx`:
 ```tsx
 import type { ReactElement } from "react";
 import { MathTraceWorkbench } from "@/components/mathtrace-workbench";
-import { readVariantPracticeProductRecommendations } from "@/lib/rag/variant-practice-product-loader";
+import { readVariantPracticeProductRecommendations } from "@/lib/server/rag/variant-practice-product-loader";
 
 export default async function Home(): Promise<ReactElement> {
   const initialVariantPractice = await readVariantPracticeProductRecommendations();
@@ -747,7 +787,7 @@ function createRagPracticeDisplayItem(
   tone: "green" | "rust";
 } {
   return {
-    key: `${item.type}-${item.rank}-${item.question_text}`,
+    key: `${item.type}-${item.rank}`,
     index,
     title: variantPracticeTypeLabels[item.type],
     question: item.question_text,
@@ -827,7 +867,38 @@ Wrote /Users/kk/learning-assistant/artifacts/rag/variant-practice-agent/index.ht
 Run:
 
 ```bash
-node --input-type=module -e "import { createJiti } from 'jiti'; const jiti = createJiti(process.cwd() + '/'); const { readVariantPracticeProductRecommendations } = jiti('./src/lib/rag/variant-practice-product-loader.ts'); const vm = await readVariantPracticeProductRecommendations(); console.log(JSON.stringify({count: vm?.items.length ?? 0, titles: vm?.items.map((item) => item.title) ?? [], hasNotice: Boolean(vm?.notice), leakedDebugKeys: JSON.stringify(vm ?? {}).includes('matched_dimensions') || JSON.stringify(vm ?? {}).includes('score') || JSON.stringify(vm ?? {}).includes('knowledge_point')}, null, 2));"
+node --input-type=module - <<'NODE'
+import { createProjectJiti } from "./scripts/test-support/project-jiti.mjs";
+
+const jiti = createProjectJiti();
+const { readVariantPracticeProductRecommendations } = jiti(
+  "./src/lib/server/rag/variant-practice-product-loader.ts",
+);
+const viewModel = await readVariantPracticeProductRecommendations();
+const serialized = JSON.stringify(viewModel ?? {});
+const forbidden = [
+  "matched_dimensions",
+  "score",
+  "knowledge_point",
+  "target_skill",
+  "method_tag",
+  "query_term",
+  "derivative_geometric_meaning",
+  "tangent_slope",
+  "source_candidate_id",
+  "item_id",
+  "demo_fill_used",
+  "命中目标技能标签",
+  "考点",
+];
+
+console.log(JSON.stringify({
+  count: viewModel?.items.length ?? 0,
+  titles: viewModel?.items.map((item) => item.title) ?? [],
+  hasNotice: Boolean(viewModel?.notice),
+  leakedDebugKeys: forbidden.some((key) => serialized.includes(key)),
+}, null, 2));
+NODE
 ```
 
 Expected:
@@ -846,7 +917,7 @@ Expected:
 Add a short paragraph near the P2.3/P2.4 RAG section in `interview/mathtrace-project-narrative.md`:
 
 ```md
-P2.5 把本地 Variant Practice Agent（变式练习推荐 Agent）的结果接入产品工作台，但只接入经过裁剪的 product view model（产品展示模型）。服务端读取 ignored 的 `recommendations.json`（本地推荐结果文件），再把它转换成只包含题型、题干、推荐理由和自然语言提示的前端数据。正式页面不展示 `score`（检索分数）、`matched_dimensions`（命中维度）、`target_skill`（目标能力标签）、`method_tag`（方法标签）、`item_id`（内部题目 ID）或 raw warning（原始调试提示），避免把开发调试信息暴露给学生。
+P2.5 把本地 Variant Practice Agent（变式练习推荐 Agent）的结果接入产品工作台，但只接入经过裁剪的 product view model（产品展示模型）。服务端读取 ignored 的 `recommendations.json`（本地推荐结果文件），再把它转换成只包含题型、题干、产品侧推荐文案和自然语言提示的前端数据。正式页面不展示 `score`（检索分数）、`matched_dimensions`（命中维度）、`target_skill`（目标能力标签）、`method_tag`（方法标签）、`item_id`（内部题目 ID）、raw reason（原始推荐理由）或 raw warning（原始调试提示），避免把开发调试信息暴露给学生。
 ```
 
 - [ ] **Step 4: Full verification**
