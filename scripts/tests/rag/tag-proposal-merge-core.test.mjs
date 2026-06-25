@@ -118,6 +118,41 @@ for (const warning of [
     ruleOnlyFallback.auto_review_records[0].review_notes.includes("rule_only_fallback"),
     true,
   );
+  assert.equal(
+    ruleOnlyFallback.auto_review_records[0].review_notes.includes("high_confidence_rule_ai_agreement"),
+    false,
+  );
+}
+
+{
+  const ruleOnlyFallbackIgnoresAiAdditiveTags = buildOne({
+    itemId: "rule-only-fallback-ignores-ai-additive-tags",
+    ruleTags: tags({
+      target_skills: ["monotonicity"],
+      method_tags: ["monotonicity_by_derivative"],
+      feature_flags: ["has_fill_blank"],
+    }),
+    aiTags: tags(
+      {
+        method_tags: ["parameter_classification"],
+        feature_flags: ["has_parameter", "has_ln_exp"],
+      },
+      "llm",
+    ),
+    itemConfidence: "low",
+    warnings: ["invalid_ai_json"],
+  });
+
+  assert.equal(ruleOnlyFallbackIgnoresAiAdditiveTags.auto_review_records.length, 1);
+  assert.equal(ruleOnlyFallbackIgnoresAiAdditiveTags.review_queue.length, 0);
+  assert.deepEqual(
+    ruleOnlyFallbackIgnoresAiAdditiveTags.auto_review_records[0].reviewed_tags,
+    {
+      target_skills: ["monotonicity"],
+      method_tags: ["monotonicity_by_derivative"],
+      feature_flags: ["has_fill_blank"],
+    },
+  );
 }
 
 {
@@ -343,6 +378,19 @@ for (const warning of [
 }
 
 {
+  const lowConfidenceWithTargetOverlap = buildOne({
+    itemId: "low-confidence-with-target-overlap",
+    ruleTags: tags({ target_skills: ["tangent_slope"], method_tags: ["tangent_slope"] }),
+    aiTags: tags({ target_skills: ["tangent_slope"], method_tags: ["tangent_slope"] }, "llm"),
+    itemConfidence: "low",
+  });
+
+  assert.equal(lowConfidenceWithTargetOverlap.auto_review_records.length, 0);
+  assert.equal(lowConfidenceWithTargetOverlap.review_queue.length, 1);
+  assert.equal(lowConfidenceWithTargetOverlap.review_queue[0].gate_reasons.includes("ai_not_high_confidence"), true);
+}
+
+{
   const finalTags = chooseFinalTags({
     ruleTags: tags({
       target_skills: ["tangent_slope"],
@@ -391,11 +439,11 @@ for (const warning of [
 
 console.log("tag proposal merge core tests passed");
 
-function buildOne({ itemId, ruleTags, aiTags, warnings = [] }) {
+function buildOne({ itemId, ruleTags, aiTags, warnings = [], itemConfidence = "high" }) {
   return buildMergedTagProposals({
     corpus: corpus([itemId]),
     ruleProposalArtifact: artifact("practice-tag-proposal-v0", [ruleProposal(itemId, ruleTags)]),
-    aiProposalArtifact: artifact("practice-ai-tag-proposal-v0", [aiProposal(itemId, aiTags, warnings)]),
+    aiProposalArtifact: artifact("practice-ai-tag-proposal-v0", [aiProposal(itemId, aiTags, warnings, itemConfidence)]),
     taxonomy,
     generatedAt,
   });
@@ -439,14 +487,14 @@ function ruleProposal(itemId, proposedTags) {
   };
 }
 
-function aiProposal(itemId, proposedTags, warnings = []) {
+function aiProposal(itemId, proposedTags, warnings = [], itemConfidence = "high") {
   return {
     item_id: itemId,
     taxonomy_id: taxonomy.taxonomy_id,
     source_candidate_id: `candidate-${itemId}`,
     source_ref: null,
     proposed_tags: proposedTags,
-    item_confidence: "high",
+    item_confidence: itemConfidence,
     warnings,
   };
 }

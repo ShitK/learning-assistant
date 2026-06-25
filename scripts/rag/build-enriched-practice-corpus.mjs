@@ -141,6 +141,7 @@ function printHelp() {
   node scripts/rag/build-enriched-practice-corpus.mjs --corpus <practice_corpus.json> --proposals <candidate_tag_proposals.json> [--review <review.json>] [--accept-rule-proposals] [--out <dir>]
 
 Builds enriched local practice corpus artifacts from a practice corpus and tag proposals.
+The output may include proposed or needs_fix items; recommendation code must consume approved items through searchPracticeCorpus.
 enriched_practice_corpus.json is a local sensitive artifact; do not commit or share it externally.`);
 }
 

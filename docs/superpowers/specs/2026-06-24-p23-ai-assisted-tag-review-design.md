@@ -19,8 +19,8 @@ practice_corpus.json
 
 - `practice_corpus.json`：69 道导数题。
 - `candidate_tag_proposals.json`：规则生成的标签建议。
-- `enriched_practice_corpus.json`：68 道 `approved`（已接受，可被 Agent 使用），1 道 `needs_fix`（需要修正）。
-- 但仍有 12 道没有 `target_skills`（目标能力标签），12 道没有 `method_tags`（解题方法标签），10 道没有 `feature_flags`（题目特征标记）。
+- `enriched_practice_corpus.json`：64 道 `approved`（已接受，可被 Agent 使用），4 道 `proposed`（有建议但未通过审核），1 道 `needs_fix`（需要修正）。
+- 剩余 5 道未自动进入题库的题主要是图像依赖、AI/规则不足以稳定确认或人工决定暂不纳入题库的样本。
 
 这说明 P2.2 已经完成了第一版自动打标闭环，但标签仍主要来自 deterministic rules（确定性规则）。如果后续直接接 `pgvector`（Postgres 向量检索扩展）或 `embedding`（文本向量表示），底层标签错漏仍会传导到推荐结果。
 
@@ -106,6 +106,7 @@ P2.3 的设计原则是：
   unit: "derivative",
   display_name: "数学 / 导数",
   target_skills: [
+    { key: "derivative_geometric_meaning", display_name: "导数几何意义" },
     { key: "tangent_slope", display_name: "切线斜率" },
     { key: "derivative_definition_limit", display_name: "极限式识别导数" },
     { key: "derivative_calculation", display_name: "求导运算" },
@@ -136,6 +137,7 @@ P2.3 的设计原则是：
     { key: "needs_visual", display_name: "依赖原图" }
   ],
   target_skill_to_method_tags: {
+    derivative_geometric_meaning: ["derivative_definition", "tangent_slope"],
     tangent_slope: ["tangent_slope", "derivative_definition"],
     derivative_definition_limit: ["derivative_definition"],
     derivative_calculation: [
@@ -321,6 +323,7 @@ Merge/gate 阶段读取：
 - AI proposal 正常时，不能带 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json` 或 `invalid_ai_schema` 这类硬错误 warning；如果 AI proposal 为空或非法，但 rule proposal 已经给出明确 `target_skills`，P2.3e 起允许走 rule-only fallback。
 - `invalid_evidence_terms_removed` 不是自动通过的一票否决；P2.3d 起 evidence 只作为审计信息，gate 可以自动通过并在 `review_notes` 中记录 `ai_evidence_terms_partially_removed`。
 - AI proposal 正常参与 gate 时要求 `item_confidence === "high"`；rule-only fallback 不依赖 AI confidence。
+- rule-only fallback 只采用 rule tags，不合并 AI 的 `method_tags` 或 `feature_flags`；这样 audit 语义和最终标签来源保持一致。
 - 至少一个 `target_skills` 与 rule proposal 一致，或者 rule proposal 原本没有 target skill 但 AI 高置信补出了合法 target skill。
 - `method_tags` 不要求完全一致；AI 可以补充 rule 漏掉的解题方法，自动通过时最终 `method_tags` 取 rule、AI 和 target skill 派生标签的并集。
 - 非视觉 `feature_flags` 不要求完全一致；AI 可以补充客观题型/公式特征，自动通过时最终 feature flag 取 rule 与 AI 的非视觉并集。
@@ -354,6 +357,8 @@ artifacts/rag/tag-review/tag_review_summary.json
 `auto_tag_review_records.json` 可以直接作为 `build-enriched-practice-corpus.mjs --review` 的输入之一，或者在 UI 导出时与人工审核记录合并。
 
 `tag_review_queue.json` 只包含需要人工处理的题，用于本地 tag review UI。
+
+`enriched_practice_corpus.json` 允许保留 `proposed` / `needs_fix` 条目作为审计和后续人工修正依据；正式推荐代码必须通过 `searchPracticeCorpus` 消费，并只使用 `tag_review_meta.review_status === "approved"` 的题目。
 
 ## 8. Tag Review UI
 

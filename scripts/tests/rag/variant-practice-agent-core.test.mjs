@@ -302,6 +302,65 @@ const query = {
 }
 
 {
+  const mixedReviewStatusCorpus = {
+    corpus_version: "enriched-practice-corpus-v0",
+    generated_at: "2026-06-26T00:00:00.000Z",
+    source_corpus_file: "practice_corpus.json",
+    source_tag_proposal_file: "candidate_tag_proposals.json",
+    item_count: 4,
+    items: [
+      buildEnrichedTestItem({
+        id: "approved-foundation",
+        section_title: "考点 1 导数的概念",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+      }),
+      buildEnrichedTestItem({
+        id: "approved-near",
+        section_title: "考点 2 导数与函数的单调性",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+      }),
+      buildEnrichedTestItem({
+        id: "proposed-tempting",
+        section_title: "考点 1 导数的概念",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+        review_status: "proposed",
+      }),
+      buildEnrichedTestItem({
+        id: "needs-fix-tempting",
+        section_title: "考点 1 导数的概念",
+        target_skills: ["tangent_slope"],
+        method_tags: ["tangent_slope"],
+        review_status: "needs_fix",
+      }),
+    ],
+  };
+
+  const result = recommendVariantPractice({
+    corpus: mixedReviewStatusCorpus,
+    query: {
+      id: "query-approved-only",
+      question_text: "求切线斜率",
+      knowledge_points: ["derivative"],
+      section_title: "考点 1 导数的概念",
+      target_skills: ["切线斜率"],
+    },
+    searchLimit: 10,
+  });
+
+  assert.deepEqual(
+    result.recommendations.map((recommendation) => recommendation.item_id),
+    ["approved-foundation", "approved-near"],
+  );
+  assert.equal(
+    result.recommendations.some((recommendation) => recommendation.item_id.includes("tempting")),
+    false,
+  );
+}
+
+{
   const noCandidateCorpus = {
     corpus_version: "enriched-practice-corpus-v0",
     generated_at: "2026-06-23T00:00:00.000Z",
@@ -423,6 +482,7 @@ function buildEnrichedTestItem({
   target_skills,
   method_tags,
   feature_flags = [],
+  review_status = "approved",
 }) {
   return {
     id,
@@ -437,7 +497,7 @@ function buildEnrichedTestItem({
     difficulty: null,
     source_ref: { pdf_page_index: 1, section_title },
     tag_review_meta: {
-      review_status: "approved",
+      review_status,
       proposal_confidence: "high",
       has_manual_tag_correction: false,
       tag_source: "rule",

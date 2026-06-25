@@ -35,7 +35,12 @@ export function buildMergedTagProposals({
     const ruleTags = normalizeProposalTags(ruleProposal?.proposed_tags);
     const aiTags = normalizeProposalTags(aiProposal?.proposed_tags);
     const gateDecision = getGateDecision({ ruleTags: rawRuleTags, aiTags: rawAiTags, aiProposal });
-    const finalTags = chooseFinalTags({ ruleTags, aiTags, taxonomy });
+    const finalTags = chooseFinalTags({
+      ruleTags,
+      aiTags,
+      taxonomy,
+      useRuleOnlyTags: gateDecision.reasons.includes("rule_only_fallback"),
+    });
     const mergedProposal = {
       item_id: itemId,
       source_candidate_id: item?.source_candidate_id ?? ruleProposal?.source_candidate_id ?? aiProposal?.source_candidate_id ?? null,
@@ -162,7 +167,7 @@ export function getGateDecision({ ruleTags, aiTags, aiProposal }) {
   const normalizedRuleTags = normalizeTagGroups(ruleTags);
   const normalizedAiTags = normalizeTagGroups(aiTags);
   const blockingReasons = [];
-  const successReasons = ["high_confidence_rule_ai_agreement"];
+  const successReasons = [];
   const canUseRuleOnlyFallback =
     normalizedRuleTags.target_skills.length > 0 && normalizedAiTags.target_skills.length === 0;
 
@@ -180,6 +185,9 @@ export function getGateDecision({ ruleTags, aiTags, aiProposal }) {
   }
 
   const targetOverlap = intersect(normalizedRuleTags.target_skills, normalizedAiTags.target_skills);
+  if (targetOverlap.length > 0 && aiProposal?.item_confidence === "high") {
+    successReasons.push("high_confidence_rule_ai_agreement");
+  }
   if (normalizedRuleTags.target_skills.length > 0 && normalizedAiTags.target_skills.length > 0 && targetOverlap.length === 0) {
     blockingReasons.push("target_skill_conflict");
   }
@@ -210,19 +218,21 @@ export function getGateDecision({ ruleTags, aiTags, aiProposal }) {
     : { status: "needs_review", reasons: blockingReasons };
 }
 
-export function chooseFinalTags({ ruleTags, aiTags, taxonomy }) {
+export function chooseFinalTags({ ruleTags, aiTags, taxonomy, useRuleOnlyTags = false }) {
   const normalizedRuleTags = normalizeTagGroups(ruleTags);
   const normalizedAiTags = normalizeTagGroups(aiTags);
-  const target_skills = mergeUnique(normalizedRuleTags.target_skills, normalizedAiTags.target_skills);
+  const target_skills = useRuleOnlyTags
+    ? mergeUnique(normalizedRuleTags.target_skills)
+    : mergeUnique(normalizedRuleTags.target_skills, normalizedAiTags.target_skills);
   const derivedMethodTags = deriveMethodTagsFromTargetSkills(target_skills, taxonomy);
   const method_tags = mergeUnique(
     derivedMethodTags,
     normalizedRuleTags.method_tags,
-    normalizedAiTags.method_tags,
+    useRuleOnlyTags ? [] : normalizedAiTags.method_tags,
   );
   const feature_flags = mergeUnique(
     normalizedRuleTags.feature_flags,
-    normalizedAiTags.feature_flags,
+    useRuleOnlyTags ? [] : normalizedAiTags.feature_flags,
   ).filter((tag) => tag !== "needs_visual");
   return { target_skills, method_tags, feature_flags };
 }
