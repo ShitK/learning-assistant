@@ -2503,6 +2503,8 @@ P2.3b 里我处理过一个具体例子：基础求导题没有合适的 `target
 
 AI 标签也不会污染学生画像。P2.3 全部在本地 RAG 题源工具链里，产物是 corpus artifact（题库中间产物），不写 `memory_events`（画像事件表），不写 `student_profiles`（学生当前画像快照表），也不影响 evidence API（画像证据接口）。学生画像仍然只由确认后的诊断证据驱动。
 
+P2.5 把本地 Variant Practice Agent（变式练习推荐 Agent）的结果接入产品工作台，但只接入经过裁剪的 `ProductVariantPractice`（产品展示模型）。服务端通过 `src/lib/server/rag/variant-practice-product-loader.ts`（服务端本地推荐结果读取器）读取 ignored 的 `recommendations.json`（本地推荐结果文件），再调用 `src/lib/rag/variant-practice-product-view-model.ts`（产品展示模型转换器）把原始 artifact 转成只包含题型、题干、产品侧推荐文案和自然语言提示的前端数据。正式页面由 `src/app/page.tsx`（Next.js 首页服务端组件）把数据传给 `src/components/mathtrace-workbench.tsx`（MathTrace 工作台组件），再交给 `src/components/workbench/practice-lab.tsx`（变式练习展示组件）渲染 3 张练习卡。页面不展示 `score`（检索分数）、`matched_dimensions`（命中维度）、`target_skill`（目标能力标签）、`method_tag`（方法标签）、`item_id`（内部题目 ID）、raw reason（原始推荐理由）或 raw warning（原始调试提示），而是按 `foundation`（巩固题）、`near_transfer`（近迁移题）和 `additional_practice`（补充练习题）生成学生能看懂的文案。这样 P2.5 解决的是“把本地 RAG/Agent 推荐变成可演示产品能力”，不是引入线上检索 API、数据库写入或新的画像事实层。
+
 ### 可能被继续追问
 
 - 如果 AI 和规则都错了，人工审核怎么发现？
