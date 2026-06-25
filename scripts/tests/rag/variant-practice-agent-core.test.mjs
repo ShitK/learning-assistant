@@ -352,6 +352,69 @@ const query = {
   assert.equal(result.warnings.includes("no_mixed_application_with_related_method_tags"), false);
 }
 
+{
+  const derivativeCalculationCorpus = {
+    corpus_version: "enriched-practice-corpus-v0",
+    generated_at: "2026-06-25T00:00:00.000Z",
+    source_corpus_file: "practice_corpus.json",
+    source_tag_proposal_file: "candidate_tag_proposals.json",
+    item_count: 3,
+    items: [
+      buildEnrichedTestItem({
+        id: "derivative-calculation-foundation",
+        section_title: "考点 1 导数的概念、几何意义与运算",
+        target_skills: ["derivative_calculation"],
+        method_tags: [
+          "quotient_rule",
+          "logarithmic_derivative_formula",
+          "power_function_derivative",
+        ],
+      }),
+      buildEnrichedTestItem({
+        id: "derivative-calculation-near",
+        section_title: "考点 2 导数与函数的单调性",
+        target_skills: ["derivative_calculation"],
+        method_tags: ["quotient_rule", "logarithmic_derivative_formula"],
+      }),
+      buildEnrichedTestItem({
+        id: "derivative-calculation-mixed",
+        section_title: "考点 3 导数综合应用",
+        target_skills: ["monotonicity"],
+        method_tags: ["quotient_rule"],
+      }),
+    ],
+  };
+
+  const result = recommendVariantPractice({
+    corpus: derivativeCalculationCorpus,
+    query: {
+      id: "query-derivative-calculation",
+      question_text: "已知函数 $f(x)=\\frac{\\ln x}{x^{2}}$，求导函数 $f'(x)$。",
+      knowledge_points: ["derivative"],
+      section_title: "考点 1 导数的概念、几何意义与运算",
+      target_skills: ["求导运算"],
+      mistake_causes: ["derivative_calculation_error"],
+    },
+    searchLimit: 10,
+  });
+
+  assert.deepEqual(
+    result.recommendations.map((recommendation) => recommendation.recommendation_type),
+    ["foundation", "near_transfer", "mixed_application"],
+  );
+  assert.deepEqual(
+    result.recommendations.map((recommendation) => recommendation.item_id),
+    [
+      "derivative-calculation-foundation",
+      "derivative-calculation-near",
+      "derivative-calculation-mixed",
+    ],
+  );
+  assert.equal(result.recommendations[0].matched_dimensions.includes("target_skill"), true);
+  assert.equal(result.recommendations[0].matched_dimensions.includes("method_tag"), true);
+  assert.equal(result.recommendations[2].matched_dimensions.includes("method_tag"), true);
+}
+
 console.log("variant practice agent core tests passed");
 
 function buildEnrichedTestItem({

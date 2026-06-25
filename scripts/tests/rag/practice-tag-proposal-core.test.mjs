@@ -70,6 +70,43 @@ const corpus = {
       section_title: null,
       source_ref: null,
     },
+    {
+      ...baseItem,
+      id: "practice-candidate-7",
+      source_candidate_id: "candidate-7",
+      question_text:
+        "7. 已知函数 $f(x)=\\frac{\\ln x}{x^{2}}$, $f'(x)$ 为 $f(x)$ 的导函数, 则 $f'(x)=$ ( ) A. $\\frac{\\ln x}{x^3}$ B. $\\frac{1}{x^{3}}$ C. $\\frac{1 - \\ln x}{x^3}$ D. $\\frac{1-2\\ln x}{x^{3}}$",
+      search_text:
+        "7. 已知函数 $f(x)=\\frac{\\ln x}{x^{2}}$, $f'(x)$ 为 $f(x)$ 的导函数, 则 $f'(x)=$ ( )\n导数\n考点 1 导数的概念、几何意义与运算",
+      section_title: "考点 1 导数的概念、几何意义与运算",
+    },
+    {
+      ...baseItem,
+      id: "practice-candidate-8",
+      source_candidate_id: "candidate-8",
+      question_text:
+        "8. 已知集合 $A = \\{x \\mid \\log_3(2x + 1) = 2\\}$, 集合 $B = \\{2, a\\}$, 若 $A \\cup B = B$, 则 $a =$ （） A. 1 B. 2 C. 3 D. 4",
+      search_text: "8. 已知集合 $A = \\{x \\mid \\log_3(2x + 1) = 2\\}$, 集合 $B = \\{2, a\\}$",
+      section_title: "非导数混入题",
+    },
+    {
+      ...baseItem,
+      id: "practice-candidate-9",
+      source_candidate_id: "candidate-9",
+      question_text:
+        "9. 已知集合 $A = \\{x \\mid \\log_3(2x + 1) = 2\\}$, 集合 $B = \\{2, a\\}$, 若 $A \\cup B = B$, 则 $a =$ （） A. 1 B. 2 C. 3 D. 4",
+      search_text:
+        "9. 已知集合 $A = \\{x \\mid \\log_3(2x + 1) = 2\\}$, 集合 $B = \\{2, a\\}$\n导数\n考点 1 导数的概念、几何意义与运算",
+      section_title: "考点 1 导数的概念、几何意义与运算",
+    },
+    {
+      ...baseItem,
+      id: "practice-candidate-10",
+      source_candidate_id: "candidate-10",
+      question_text: "10. 已知函数 $f(x)=x+1$, 求导函数 $f'(x)$.",
+      search_text: "10. 已知函数 $f(x)=x+1$, 求导函数 $f'(x)$.\n导数",
+      section_title: "考点 1 导数的概念、几何意义与运算",
+    },
   ],
 };
 
@@ -138,14 +175,63 @@ const corpus = {
 }
 
 {
+  const proposal = proposeTagsForItem(corpus.items[6]);
+  assert.deepEqual(
+    proposal.proposed_tags.target_skills.map((tag) => tag.tag),
+    ["derivative_calculation"],
+  );
+  assert.equal(
+    proposal.proposed_tags.method_tags.some((tag) => tag.tag === "quotient_rule"),
+    true,
+  );
+  assert.equal(
+    proposal.proposed_tags.method_tags.some((tag) => tag.tag === "logarithmic_derivative_formula"),
+    true,
+  );
+  assert.equal(
+    proposal.proposed_tags.method_tags.some((tag) => tag.tag === "power_function_derivative"),
+    true,
+  );
+  assert.equal(
+    proposal.proposed_tags.method_tags.every((tag) => tag.confidence === "high"),
+    true,
+  );
+  assert.equal(
+    proposal.proposed_tags.feature_flags.some((tag) => tag.tag === "has_ln_exp"),
+    true,
+  );
+}
+
+for (const item of [corpus.items[7], corpus.items[8]]) {
+  const proposal = proposeTagsForItem(item);
+  assert.equal(
+    proposal.proposed_tags.target_skills.some((tag) => tag.tag === "derivative_calculation"),
+    false,
+  );
+  assert.equal(
+    proposal.proposed_tags.method_tags.some((tag) => tag.tag === "logarithmic_derivative_formula"),
+    false,
+  );
+}
+
+{
+  const proposal = proposeTagsForItem(corpus.items[9]);
+  assert.deepEqual(
+    proposal.proposed_tags.target_skills.map((tag) => tag.tag),
+    ["derivative_calculation"],
+  );
+  assert.equal(proposal.proposed_tags.method_tags.length, 0);
+}
+
+{
   const artifact = buildTagProposals({
     corpus,
     sourceCorpusFile: "artifacts/rag/practice-corpus/practice_corpus.json",
     generatedAt: "2026-06-23T00:00:00.000Z",
   });
   assert.equal(artifact.proposal_version, "practice-tag-proposal-v0");
-  assert.equal(artifact.item_count, 6);
-  assert.equal(artifact.proposals.length, 6);
+  assert.equal(artifact.item_count, 10);
+  assert.equal(artifact.proposals.length, 10);
   assert.equal(artifact.proposals[0].item_id, "practice-candidate-1");
 
   const validation = validateTagProposalArtifact(artifact);
@@ -165,12 +251,13 @@ const corpus = {
   });
   const summary = summarizeTagProposals(artifact);
   assert.equal(summary.proposal_version, "practice-tag-proposal-v0");
-  assert.equal(summary.item_count, 6);
+  assert.equal(summary.item_count, 10);
   assert.equal(summary.high_confidence_items >= 3, true);
   assert.equal(summary.needs_visual_items, 1);
   assert.equal(summary.warning_distribution.no_tags_proposed, 1);
   assert.equal(summary.target_skill_distribution.tangent_slope, 1);
   assert.equal(summary.target_skill_distribution.extrema, 1);
+  assert.equal(summary.target_skill_distribution.derivative_calculation, 2);
   assert.equal(summary.multi_tag_items >= 1, true);
 }
 

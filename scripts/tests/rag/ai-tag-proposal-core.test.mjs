@@ -143,6 +143,54 @@ assert.deepEqual(unsupportedEvidenceTerms.removed_evidence_terms, [
   },
 ]);
 
+const derivativeCalculation = parseAiTagProposalResponse({
+  item: {
+    ...item,
+    id: "practice-candidate-derivative-calculation",
+    question_text:
+      "已知函数 $f(x)=\\frac{\\ln x}{x^{2}}$, $f'(x)$ 为 $f(x)$ 的导函数, 则 $f'(x)=$",
+  },
+  text: JSON.stringify({
+    target_skills: [
+      {
+        tag: "derivative_calculation",
+        confidence: "high",
+        evidence_terms: ["f'(x)", "导函数"],
+        rationale: "题目要求求导函数。",
+      },
+    ],
+    method_tags: [
+      {
+        tag: "quotient_rule",
+        confidence: "high",
+        evidence_terms: ["\\frac"],
+        rationale: "函数是商式。",
+      },
+      {
+        tag: "logarithmic_derivative_formula",
+        confidence: "high",
+        evidence_terms: ["\\ln x"],
+        rationale: "含对数函数。",
+      },
+      {
+        tag: "power_function_derivative",
+        confidence: "high",
+        evidence_terms: ["x^{2}"],
+        rationale: "分母含幂函数。",
+      },
+    ],
+    feature_flags: [],
+    item_confidence: "high",
+  }),
+  taxonomy,
+});
+assert.equal(derivativeCalculation.proposed_tags.target_skills[0].tag, "derivative_calculation");
+assert.deepEqual(
+  derivativeCalculation.proposed_tags.method_tags.map((tag) => tag.tag),
+  ["quotient_rule", "logarithmic_derivative_formula", "power_function_derivative"],
+);
+assert.equal(derivativeCalculation.warnings.length, 0);
+
 const fenced = parseAiTagProposalResponse({
   item,
   text: `\`\`\`json\n${responseText}\n\`\`\``,

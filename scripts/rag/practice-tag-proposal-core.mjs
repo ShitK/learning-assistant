@@ -23,6 +23,7 @@ export function buildTagProposals({ corpus, sourceCorpusFile, generatedAt }) {
 
 export function proposeTagsForItem(item) {
   const sourceText = buildSourceText(item);
+  const hasDerivativeCalculation = hasDerivativeCalculationShape(sourceText);
   const warnings = [];
   const targetSkills = [];
   const methodTags = [];
@@ -34,6 +35,14 @@ export function proposeTagsForItem(item) {
     terms: ["极限"],
     confidence: hasDerivativeLimitShape(sourceText) ? "high" : "medium",
   });
+  if (hasDerivativeCalculation) {
+    addTargetSkill(targetSkills, sourceText, {
+      tag: "derivative_calculation",
+      displayName: TARGET_SKILL_DISPLAY_NAMES.derivative_calculation,
+      terms: ["f'(x)", "导函数", "求导", "导数"],
+      confidence: "high",
+    });
+  }
   addTargetSkill(targetSkills, sourceText, {
     tag: "tangent_slope",
     displayName: TARGET_SKILL_DISPLAY_NAMES.tangent_slope,
@@ -74,6 +83,26 @@ export function proposeTagsForItem(item) {
     terms: ["不等式", "恒成立"],
     confidence: "medium",
   });
+  if (hasDerivativeCalculation) {
+    addMethodTag(methodTags, sourceText, {
+      tag: "quotient_rule",
+      displayName: METHOD_TAG_DISPLAY_NAMES.quotient_rule,
+      terms: ["\\frac"],
+      confidence: "high",
+    });
+    addMethodTag(methodTags, sourceText, {
+      tag: "logarithmic_derivative_formula",
+      displayName: METHOD_TAG_DISPLAY_NAMES.logarithmic_derivative_formula,
+      terms: ["\\ln", "ln"],
+      confidence: "high",
+    });
+    addMethodTag(methodTags, sourceText, {
+      tag: "power_function_derivative",
+      displayName: METHOD_TAG_DISPLAY_NAMES.power_function_derivative,
+      terms: ["x^{", "x^"],
+      confidence: "high",
+    });
+  }
 
   addFeatureFlag(featureFlags, sourceText, {
     tag: "has_choice_options",
@@ -203,6 +232,15 @@ function hasDerivativeLimitShape(sourceText) {
   return /\blim\b|Δx|→/.test(sourceText);
 }
 
+function hasDerivativeCalculationShape(sourceText) {
+  return (
+    /f'\(x\)\s*=/.test(sourceText) ||
+    sourceText.includes("导函数") ||
+    /求[^。；\n]*导数/.test(sourceText) ||
+    /求[^。；\n]*导函数/.test(sourceText)
+  );
+}
+
 function addTargetSkill(targetSkills, sourceText, rule) {
   const evidenceTerms = rule.terms.filter((term) => sourceText.includes(term));
   if (evidenceTerms.length === 0) return;
@@ -216,6 +254,9 @@ function addTargetSkill(targetSkills, sourceText, rule) {
 }
 
 function addMethodTagsForTarget(methodTags, targetTag) {
+  if (targetTag.tag === "derivative_calculation") {
+    return;
+  }
   for (const methodTag of TARGET_SKILL_TO_METHOD_TAGS[targetTag.tag] ?? []) {
     pushUniqueTag(methodTags, {
       tag: methodTag,

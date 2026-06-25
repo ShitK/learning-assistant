@@ -2416,6 +2416,10 @@ AI 还必须返回 `evidence_terms`（证据词），说明它为什么给出某
 - `feature_flags`（题目特征标记集合）：例如 `has_choice_options`（选择题）、`has_fill_blank`（填空题）、`has_ln_exp`（含对数或指数）、`has_square_root`（含根号）、`needs_visual`（必须看原图）。
 - `target_skill_to_method_tags`（目标能力到方法标签的映射）：用于从目标能力派生合理的方法标签，避免 AI 给出和目标能力不匹配的方法。
 
+P2.3b 又补了一个真实运行中暴露出来的 taxonomy gap（标签体系缺口）：基础求导题。真实 `tag_review_queue.json`（人工标签审核队列文件）里出现了少量 `missing_ai_target_skill`（AI 缺少目标能力标签），其中真正属于导数 taxonomy 缺口的，是“已知函数，求 `f'(x)`（导函数）”这一类题。于是我在 `scripts/rag/practice-tag-taxonomy.mjs`（练习题标签体系和展示名映射文件）里新增 `derivative_calculation`（求导运算）这个 `target_skill`（目标能力标签），并只新增三个当前题源能支撑的方法标签：`quotient_rule`（商法则）、`logarithmic_derivative_formula`（对数函数求导）和 `power_function_derivative`（幂函数求导）。
+
+这里没有直接让 AI 自由补标签，也没有一次性补全 `product_rule`（乘积法则）、`chain_rule`（链式法则）或全高中数学 taxonomy。原因是 taxonomy 是正式标签空间，必须能被测试和真实题例支撑。P2.3b 的规则识别也很窄：`scripts/rag/practice-tag-proposal-core.mjs`（规则标签建议核心文件）只有在题干或检索文本出现 `f'(x)=`、`导函数`、`求...导数` 或 `求...导函数` 这类明确求导信号时，才会建议 `derivative_calculation`（求导运算）。如果只是 `section_title`（章节标题）里有“导数”，但题干实际是集合、命题或组合题，就不会被误标为求导题。这把“taxonomy 扩展”和“corpus 污染”分开处理：前者补受控标签，后者留给题库清洗或人工审核。
+
 这个设计解决了“以后扩展到更多考点会不会每次重写系统”的问题。未来新增数列、解析几何或概率统计时，理想路径不是重写所有脚本，而是新增或扩展 taxonomy 配置，例如 `math_sequence_v0`（数学数列专题第一版标签体系）或 `math_analytic_geometry_v0`（数学解析几何专题第一版标签体系）。脚本继续读取 taxonomy，AI prompt 继续按 taxonomy 限定输出，merge gate 继续按 taxonomy 校验标签。也就是说，可变的是标签字典和少量规则，稳定的是 proposal、gate、review 和 enriched corpus 这条流程。
 
 `merged_tag_proposals.json`（规则与 AI 合并后的标签建议文件）由 `scripts/rag/merge-tag-proposals.mjs`（规则与 AI 标签建议合并 CLI 脚本）生成，核心逻辑在 `scripts/rag/tag-proposal-merge-core.mjs`（标签建议合并和自动门控核心逻辑）。它会同时看规则建议和 AI 建议，然后决定每道题能否自动通过。
@@ -2449,7 +2453,9 @@ AI 还必须返回 `evidence_terms`（证据词），说明它为什么给出某
 
 第四个取舍是：证据校验不删除，但从“硬拦截”校准为“质量信号”。真实 AI proposal smoke（真实 AI 标签建议冒烟验证）发现，`invalid_evidence_terms_removed`（有证据词被清洗移除）经常来自 OCR、LaTeX、空格或转义差异，不一定代表标签错。因此 `ai-tag-proposal-core.mjs`（AI 标签建议清洗核心文件）继续清洗并记录 `removed_evidence_terms`（被移除证据词列表），但 `tag-proposal-merge-core.mjs`（标签建议合并和门控核心文件）只有在 AI 标签清洗后完全没有证据时才用 `missing_ai_evidence`（AI 标签缺少有效证据）拦截。这样既保留可追溯性，又避免把格式误差变成人工审核噪音。
 
-第五个取舍是：不在 P2.3 上 pgvector（Postgres 向量检索扩展）和 embedding（文本向量表示）。P2.3 解决的是标签质量和审核效率，不是大规模语义召回。等 taxonomy、review records 和 enriched corpus 稳定之后，再做 embedding_text（用于生成向量的文本字段）和 pgvector prototype（向量检索原型）会更稳。
+第五个取舍是：taxonomy gap（标签体系缺口）由工程补丁收口，不交给 AI 在运行时自由扩展。P2.3b 里 AI 可以暴露出“这类题没有合适标签”的问题，但正式新增 `derivative_calculation`（求导运算）和相关 `method_tags`（解题方法标签）必须写进 `practice-tag-taxonomy.mjs`（练习题标签体系文件），并用 `practice-tag-taxonomy.test.mjs`（标签体系测试）、`practice-tag-proposal-core.test.mjs`（规则标签建议测试）、`enriched-practice-corpus-core.test.mjs`（带标签题库测试）和 `variant-practice-agent-core.test.mjs`（变式练习 Agent 测试）锁住行为。这样做牺牲了一点扩展速度，但避免 AI 造出系统没有定义、也不能稳定检索的标签。
+
+第六个取舍是：不在 P2.3 上 pgvector（Postgres 向量检索扩展）和 embedding（文本向量表示）。P2.3 解决的是标签质量和审核效率，不是大规模语义召回。等 taxonomy、review records 和 enriched corpus 稳定之后，再做 embedding_text（用于生成向量的文本字段）和 pgvector prototype（向量检索原型）会更稳。
 
 ### 性能收益（如适用）
 
@@ -2480,6 +2486,8 @@ P2.3 的主要收益不是线上响应速度，而是人工标注效率和验证
 P2.3 的核心是让 AI 参与题源理解，但不让 AI 越权。P2.2 只有 deterministic rules（确定性规则），它能快速给出第一版标签，但对复杂题意理解有限。P2.3 增加 AI tag proposal（AI 标签建议）：AI 可以读题干和规则建议，判断这题更像切线斜率、单调性、零点还是参数范围，并给出 evidence terms（证据词）和 rationale（理由）。但 AI 输出不会直接进入正式题库，而是必须经过 taxonomy（标签体系）校验和 auto-approval gate（自动通过门控）。
 
 这里的 taxonomy 很关键。当前是 `math_derivative_v0`（数学导数专题第一版标签体系），它规定 AI 只能从允许的 `target_skills`（目标能力标签）、`method_tags`（解题方法标签）和 `feature_flags`（题目特征标记）里选择，不能自由发明标签。未来扩展到数列或解析几何，不是重写整条链路，而是新增对应 taxonomy，让相同的 proposal、merge、review 和 enriched corpus 流程继续复用。
+
+P2.3b 里我处理过一个具体例子：基础求导题没有合适的 `target_skill`（目标能力标签）。AI 和 review queue 能暴露这个 gap，但我没有让 AI 在运行时自造“求导运算”标签，而是把 `derivative_calculation`（求导运算）正式加入 taxonomy，再补规则、parser、merge、enriched corpus 和 Variant Agent 的回归测试。这说明 AI 是辅助发现问题和提出建议的 agentic worker（智能协作者），但系统事实空间仍由受控 schema 和测试维护。
 
 自动通过门控是保守设计。只有 AI 高置信度、输出合法、规则和 AI 目标能力不冲突、方法标签合理、题目不依赖图像时，系统才会生成 `auto_tag_review_records.json`（自动通过的标签审核记录文件）。有冲突或不确定的题进入 `tag_review_queue.json`（人工标签审核队列文件），再由本地 review UI（审核界面）导出 `tag_review_records.json`（人工标签审核记录文件）。最终 `final_tag_review_records.json`（最终标签审核记录文件）里，人工记录可以覆盖自动记录。
 
@@ -2512,6 +2520,7 @@ P2.3 已经在本地工具链层面把“AI 做多数标签建议，人类只审
 
 - 代码：
   - `scripts/rag/practice-tag-taxonomy.mjs`（练习题标签体系、标签展示名和 taxonomy registry）
+  - `scripts/rag/practice-tag-proposal-core.mjs`（规则标签建议核心逻辑，包含 P2.3b 的求导运算窄触发规则）
   - `scripts/rag/ai-tag-proposal-core.mjs`（AI 标签建议 prompt、解析、归一化、证据词清洗和 `removed_evidence_terms`（被移除证据词列表）记录核心逻辑）
   - `scripts/rag/build-ai-tag-proposals.mjs`（生成 AI 标签建议 artifact 的 CLI 脚本）
   - `scripts/rag/tag-proposal-merge-core.mjs`（规则建议与 AI 建议合并、自动通过门控和 `missing_ai_evidence`（AI 标签缺少有效证据）判断的核心逻辑）
@@ -2523,6 +2532,7 @@ P2.3 已经在本地工具链层面把“AI 做多数标签建议，人类只审
   - `scripts/run-tests.mjs`（把 P2.3 测试纳入 default 测试套件）
 - 测试：
   - `scripts/tests/rag/practice-tag-taxonomy.test.mjs`（验证 taxonomy registry、允许标签集合和兼容导出）
+  - `scripts/tests/rag/practice-tag-proposal-core.test.mjs`（验证规则标签建议、求导运算识别和非导数污染题不误标）
   - `scripts/tests/rag/ai-tag-proposal-core.test.mjs`（验证 AI 标签建议 prompt、解析、非法标签过滤和 `removed_evidence_terms`（被移除证据词列表）记录）
   - `scripts/tests/rag/ai-tag-proposal-cli.test.mjs`（验证 AI 标签建议 CLI、fake provider 和 stdout 安全边界）
   - `scripts/tests/rag/tag-proposal-merge-core.test.mjs`（验证规则与 AI 建议合并、自动通过、review queue 原因和 evidence warning 门控校准）
@@ -2531,6 +2541,7 @@ P2.3 已经在本地工具链层面把“AI 做多数标签建议，人类只审
   - `scripts/tests/rag/tag-review-ui-cli.test.mjs`（验证审核 UI CLI 生成静态页面和敏感输出边界）
   - `scripts/tests/rag/tag-review-record-merge-cli.test.mjs`（验证自动/人工审核记录合并、覆盖顺序和 stdout 安全边界）
   - `scripts/tests/rag/enriched-practice-corpus-core.test.mjs`（验证 P2.3 审计字段进入 `tag_review_meta`，旧记录缺字段保持兼容）
+  - `scripts/tests/rag/variant-practice-agent-core.test.mjs`（验证新增 `derivative_calculation`（求导运算）标签能驱动变式练习推荐）
 - 文档：
   - `docs/superpowers/specs/2026-06-24-p23-ai-assisted-tag-review-design.md`（P2.3 AI 辅助标签审核设计说明）
   - `docs/superpowers/plans/2026-06-24-p23-ai-assisted-tag-review.md`（P2.3 实施计划）
@@ -2544,6 +2555,7 @@ P2.3 已经在本地工具链层面把“AI 做多数标签建议，人类只审
 - 验证：
   - `node scripts/run-tests.mjs default`
   - `node scripts/tests/rag/enriched-practice-corpus-core.test.mjs`
+  - `node scripts/tests/rag/variant-practice-agent-core.test.mjs`
   - `node scripts/tests/rag/tag-review-record-merge-cli.test.mjs`
   - `node scripts/rag/build-practice-tag-proposals.mjs --corpus artifacts/rag/practice-corpus/practice_corpus.json --out artifacts/rag/tag-proposals`
   - `node scripts/rag/build-enriched-practice-corpus.mjs --corpus artifacts/rag/practice-corpus/practice_corpus.json --proposals artifacts/rag/tag-proposals/candidate_tag_proposals.json --accept-rule-proposals --out artifacts/rag/enriched-practice-corpus`

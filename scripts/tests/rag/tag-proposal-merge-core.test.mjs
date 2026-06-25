@@ -88,6 +88,48 @@ for (const warning of [
 }
 
 {
+  const derivativeCalculation = buildOne({
+    itemId: "derivative-calculation",
+    ruleTags: tags({
+      target_skills: ["derivative_calculation"],
+      method_tags: [
+        "quotient_rule",
+        "logarithmic_derivative_formula",
+        "power_function_derivative",
+      ],
+      feature_flags: ["has_choice_options", "has_ln_exp"],
+    }),
+    aiTags: tags(
+      {
+        target_skills: ["derivative_calculation"],
+        method_tags: [
+          "quotient_rule",
+          "logarithmic_derivative_formula",
+          "power_function_derivative",
+        ],
+        feature_flags: ["has_choice_options", "has_ln_exp"],
+      },
+      "llm",
+    ),
+  });
+
+  assert.equal(derivativeCalculation.auto_review_records.length, 1);
+  assert.equal(derivativeCalculation.review_queue.length, 0);
+  assert.deepEqual(
+    derivativeCalculation.auto_review_records[0].reviewed_tags.target_skills,
+    ["derivative_calculation"],
+  );
+  assert.deepEqual(
+    derivativeCalculation.auto_review_records[0].reviewed_tags.method_tags,
+    [
+      "quotient_rule",
+      "logarithmic_derivative_formula",
+      "power_function_derivative",
+    ],
+  );
+}
+
+{
   const missingEvidenceAfterCleanup = buildOne({
     itemId: "missing-ai-evidence",
     ruleTags: tags({ target_skills: ["tangent_slope"], method_tags: ["tangent_slope"] }),

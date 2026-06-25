@@ -108,6 +108,7 @@ P2.3 的设计原则是：
   target_skills: [
     { key: "tangent_slope", display_name: "切线斜率" },
     { key: "derivative_definition_limit", display_name: "极限式识别导数" },
+    { key: "derivative_calculation", display_name: "求导运算" },
     { key: "monotonicity", display_name: "单调性" },
     { key: "extrema", display_name: "极值最值" },
     { key: "zero_point", display_name: "零点" },
@@ -116,6 +117,9 @@ P2.3 的设计原则是：
   method_tags: [
     { key: "derivative_definition", display_name: "导数定义式" },
     { key: "tangent_slope", display_name: "切线斜率" },
+    { key: "quotient_rule", display_name: "商法则" },
+    { key: "logarithmic_derivative_formula", display_name: "对数函数求导" },
+    { key: "power_function_derivative", display_name: "幂函数求导" },
     { key: "monotonicity_by_derivative", display_name: "导数判断单调性" },
     { key: "extremum_by_derivative", display_name: "导数判断极值最值" },
     { key: "zero_count", display_name: "零点个数" },
@@ -134,6 +138,11 @@ P2.3 的设计原则是：
   target_skill_to_method_tags: {
     tangent_slope: ["tangent_slope", "derivative_definition"],
     derivative_definition_limit: ["derivative_definition"],
+    derivative_calculation: [
+      "quotient_rule",
+      "logarithmic_derivative_formula",
+      "power_function_derivative"
+    ],
     monotonicity: ["monotonicity_by_derivative"],
     extrema: ["extremum_by_derivative"],
     zero_point: ["zero_count"],
@@ -161,6 +170,24 @@ P2.3 不能破坏 P2.2 已有导出：
 - `getAllowedTagSets(taxonomy)`
 
 旧代码继续用旧导出，新代码优先使用 taxonomy-aware API。
+
+### 5.4 P2.3b taxonomy gap patch（求导运算标签缺口修补）
+
+P2.3a 真实 AI proposal smoke（真实 AI 标签建议冒烟验证）后发现，`missing_ai_target_skill`（AI 缺少目标能力标签）里只有少量是真正的导数 taxonomy gap（标签体系缺口），其中最典型的是“已知函数，求 `f'(x)`（导函数）”这一类基础求导题。其余很多 case 是当前导数 corpus（题库语料）混入了集合、命题、组合、指数模型等非导数题，不应该为了通过 gate（门控）而把导数 taxonomy 扩成全数学 taxonomy。
+
+因此 P2.3b 只新增一个 `target_skill`（目标能力标签）：
+
+- `derivative_calculation`（求导运算）：题干明确要求求导数、导函数或 `f'(x)`。
+
+同时只新增三个 P2.3b 已有真实题例能支撑的 `method_tags`（解题方法标签）：
+
+- `quotient_rule`（商法则）：题干函数包含分式结构，例如 `\frac`（LaTeX 分式命令）。
+- `logarithmic_derivative_formula`（对数函数求导）：题干含 `ln` / `\ln`（自然对数）。
+- `power_function_derivative`（幂函数求导）：题干含 `x^` / `x^{}`（幂函数形式）。
+
+`basic_derivative_formula`（基础求导公式）、`product_rule`（乘积法则）和 `chain_rule`（链式法则）暂不加入。原因是当前 corpus 里还没有足够清楚的测试样例，过早加入会让 `method_tags`（解题方法标签）过宽，增加错误自动通过风险。
+
+P2.3b 的 rule proposal（规则标签建议）也保持窄触发：只有题干或检索文本出现 `f'(x)=`、`导函数`、`求...导数` 或 `求...导函数` 这类明确求导信号时，才会建议 `derivative_calculation`（求导运算）。单独靠 `section_title`（章节标题）里出现“导数”不能触发该标签，避免把混入的非导数题误标为求导题。
 
 ## 6. AI Tag Proposal
 
@@ -235,6 +262,7 @@ AI proposal artifact 建议结构：
         feature_flags: []
       },
       item_confidence: "high",
+      removed_evidence_terms: [],
       warnings: []
     }
   ]
@@ -246,9 +274,10 @@ AI proposal artifact 建议结构：
 - `source` 必须是 `"llm"`。
 - `tag` 必须属于当前 taxonomy；未知标签必须被 validator 拒绝。
 - `confidence` 只允许 `"high" | "medium" | "low"`。
-- `evidence_terms` 必须来自题干、章节或 rule proposal；不能是 AI 编造的新证据词。
+- `evidence_terms` 优先来自题干、章节或 rule proposal；parser 会移除不在 source text（题干、章节和规则证据拼接文本）中的证据词，并记录到 `removed_evidence_terms`（被移除证据词列表）。
 - `rationale` 用于审核展示，不参与检索排序。
 - `provider_meta` 不得包含 API Key、完整 prompt、完整原始响应或请求 headers。
+- `removed_evidence_terms` 只用于审计和审核解释，不参与检索排序，也不直接写入学生画像。
 - `warnings` 使用稳定枚举，第一版包括：
   - `unknown_tag_removed`
   - `empty_tag_removed`
@@ -257,7 +286,7 @@ AI proposal artifact 建议结构：
   - `invalid_ai_schema`
   - `invalid_evidence_terms_removed`
 
-`parseAiTagProposalResponse` 负责严格白名单过滤：未知 tag、空 tag、非法 confidence、非法 schema 一律拒绝或降级为 warning。后续 merge/gate 只消费过滤后的 AI proposal artifact，不允许直接消费原始 AI response。
+`parseAiTagProposalResponse`（AI 标签建议响应解析函数）负责白名单过滤：未知 tag、空 tag、非法 confidence、非法 schema 一律拒绝或降级为 warning；不匹配的 evidence term（证据词）会被删除并进入 `removed_evidence_terms`（被移除证据词列表）。后续 merge/gate 只消费过滤后的 AI proposal artifact，不允许直接消费原始 AI response。
 
 ### 6.3 Provider 边界
 
@@ -289,7 +318,8 @@ Merge/gate 阶段读取：
 第一版自动 `approved` 的条件必须保守：
 
 - rule proposal 和 AI proposal 使用同一个 `taxonomy_id`。
-- AI proposal 没有 unknown tag、invalid confidence 或 parser warning。
+- AI proposal 没有 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json` 或 `invalid_ai_schema` 这类硬错误 warning。
+- `invalid_evidence_terms_removed` 不是自动通过的一票否决；只要清洗后每个 AI tag 仍保留至少一个有效 `evidence_terms`，gate 可以自动通过并在 `review_notes` 中记录 `ai_evidence_terms_partially_removed`。
 - AI `item_confidence === "high"`。
 - 至少一个 `target_skills` 与 rule proposal 一致，或者 rule proposal 原本没有 target skill 但 AI 高置信补出了合法 target skill。
 - `method_tags` 至少有一个重叠，或者 AI 的 method tag 能由最终 target skill 合法派生。
@@ -307,7 +337,8 @@ Merge/gate 阶段读取：
 - AI 与 rule 的 `feature_flags` 冲突。
 - AI confidence 是 `medium` 或 `low`。
 - AI 或 rule 标记 `needs_visual`。
-- AI proposal 带有 parser warning，例如 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json`、`invalid_ai_schema`。
+- AI proposal 带有硬错误 parser warning，例如 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json`、`invalid_ai_schema`。
+- AI proposal 带有 `invalid_evidence_terms_removed`，且清洗后某个 AI tag 没有任何有效 `evidence_terms`，此时 gate reason 使用 `missing_ai_evidence`。
 - AI 没有给出 target skill。
 - 规则没有 target skill 且 AI 也没有 target skill。
 - 多标签复杂题命中 3 个以上 target skills。
@@ -425,17 +456,23 @@ P2.3 必须使用 synthetic fixture，不使用真实教辅题文。
   - unknown taxonomy id 被拒绝。
   - 所有 tag key 唯一。
   - 旧 P2.2 constants 仍兼容。
+  - `derivative_calculation`（求导运算）能归一化中文名并派生 P2.3b 三个方法标签。
+- rule proposal core：
+  - 明确求 `f'(x)` 或导函数的题能打上 `derivative_calculation`。
+  - 含分式、对数、幂函数的求导题能打上 `quotient_rule`、`logarithmic_derivative_formula`、`power_function_derivative`。
+  - 非导数污染题即使 `section_title` 含“导数”，也不能只靠章节标题打上 `derivative_calculation`。
 - AI proposal core：
   - 构造 prompt 时只包含必要字段。
   - AI 输出 unknown tag 被拒绝。
   - malformed JSON 被拒绝。
-  - evidence_terms 不在题干/章节/rule evidence 中时被拒绝或降级 warning。
+  - evidence_terms 不在题干/章节/rule evidence 中时被清洗到 `removed_evidence_terms`，并按证据是否仍存在决定是否进入 gate。
   - stdout 不泄漏题干全文和 API Key。
 - merge/gate：
   - rule + AI 一致且 high confidence 自动 approved。
   - target skill 冲突进入 queue。
   - needs_visual 进入 queue。
   - AI 补全 rule 缺失 target skill 时可自动 approved，但必须记录 reason。
+  - `invalid_evidence_terms_removed` 只有在清洗后缺少有效证据时才触发 `missing_ai_evidence`。
   - unknown tag 不进入 auto records。
 - review UI core：
   - 渲染题干数学公式。
@@ -449,7 +486,9 @@ P2.3 必须使用 synthetic fixture，不使用真实教辅题文。
 - integration：
   - final review records 可被 `build-enriched-practice-corpus.mjs --review` 消费。
   - enriched corpus 仍不含 `variant_level`。
+  - `derivative_calculation` 标签可以进入 `enriched_practice_corpus.json` 并被 schema validator 接受。
   - Variant Practice Agent 默认跳过 `needs_visual`。
+  - Variant Practice Agent 可以用 `求导运算` 查询生成 `foundation` / `near_transfer` / `mixed_application` 三类推荐。
 
 ## 12. 安全和隐私边界
 

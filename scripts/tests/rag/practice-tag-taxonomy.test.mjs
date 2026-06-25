@@ -67,8 +67,14 @@ for (const invalidTags of [
 
 assert.equal(TARGET_SKILL_DISPLAY_NAMES.tangent_slope, "切线斜率");
 assert.equal(TARGET_SKILL_DISPLAY_NAMES.derivative_definition_limit, "极限式识别导数");
+assert.equal(TARGET_SKILL_DISPLAY_NAMES.derivative_calculation, "求导运算");
 assert.equal(METHOD_TAG_DISPLAY_NAMES.derivative_definition, "导数定义式");
+assert.equal(METHOD_TAG_DISPLAY_NAMES.quotient_rule, "商法则");
+assert.equal(METHOD_TAG_DISPLAY_NAMES.logarithmic_derivative_formula, "对数函数求导");
+assert.equal(METHOD_TAG_DISPLAY_NAMES.power_function_derivative, "幂函数求导");
 assert.equal(FEATURE_FLAG_DISPLAY_NAMES.has_square_root, "根号");
+assert.equal(tagSets.targetSkills.has("derivative_calculation"), true);
+assert.equal(tagSets.methodTags.has("quotient_rule"), true);
 
 assert.deepEqual(
   normalizeTargetSkillKeys(["切线斜率", "tangent_slope", " 极限式识别导数 ", "未知技能", 123]),
@@ -76,8 +82,22 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  normalizeTargetSkillKeys(["求导运算", "derivative_calculation"]),
+  ["derivative_calculation"],
+);
+
+assert.deepEqual(
   deriveMethodTagsFromTargetSkills(["切线斜率", "极限式识别导数", "参数范围"]),
   ["tangent_slope", "derivative_definition", "parameter_classification"],
+);
+
+assert.deepEqual(
+  deriveMethodTagsFromTargetSkills(["求导运算"]),
+  [
+    "quotient_rule",
+    "logarithmic_derivative_formula",
+    "power_function_derivative",
+  ],
 );
 
 assert.deepEqual(normalizeTargetSkillKeys("切线斜率"), []);

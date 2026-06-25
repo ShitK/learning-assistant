@@ -46,6 +46,19 @@ const corpus = {
       source_ref: null,
       review_meta: {},
     },
+    {
+      id: "practice-candidate-4",
+      source_candidate_id: "candidate-4",
+      question_text:
+        "4. 已知函数 $f(x)=\\frac{\\ln x}{x^{2}}$, $f'(x)$ 为 $f(x)$ 的导函数, 则 $f'(x)=$",
+      search_text:
+        "4. 已知函数 $f(x)=\\frac{\\ln x}{x^{2}}$, $f'(x)$ 为 $f(x)$ 的导函数, 则 $f'(x)=$\n导数",
+      knowledge_points: ["derivative"],
+      section_title: "考点 1 导数的概念、几何意义与运算",
+      difficulty: null,
+      source_ref: { pdf_page_index: 1, section_title: "考点 1 导数的概念、几何意义与运算" },
+      review_meta: {},
+    },
   ],
 };
 
@@ -54,7 +67,7 @@ const proposalArtifact = {
   generated_at: "2026-06-23T00:00:00.000Z",
   source_corpus_file: "practice_corpus.json",
   source_corpus_version: "practice-corpus-v0",
-  item_count: 3,
+  item_count: 4,
   proposals: [
     {
       item_id: "practice-candidate-1",
@@ -89,6 +102,28 @@ const proposalArtifact = {
       },
       warnings: ["no_tags_proposed"],
     },
+    {
+      item_id: "practice-candidate-4",
+      source_candidate_id: "candidate-4",
+      source_ref: corpus.items[3].source_ref,
+      proposed_tags: {
+        target_skills: [
+          { tag: "derivative_calculation", confidence: "high", evidence_terms: ["f'(x)"], source: "rule" },
+        ],
+        method_tags: [
+          { tag: "quotient_rule", confidence: "high", evidence_terms: ["\\frac"], source: "rule" },
+          {
+            tag: "logarithmic_derivative_formula",
+            confidence: "high",
+            evidence_terms: ["\\ln x"],
+            source: "rule",
+          },
+          { tag: "power_function_derivative", confidence: "high", evidence_terms: ["x^{2}"], source: "rule" },
+        ],
+        feature_flags: [{ tag: "has_ln_exp", confidence: "medium", evidence_terms: ["ln"], source: "rule" }],
+      },
+      warnings: [],
+    },
   ],
 };
 
@@ -102,7 +137,7 @@ const proposalArtifact = {
   });
 
   assert.equal(enriched.corpus_version, "enriched-practice-corpus-v0");
-  assert.equal(enriched.item_count, 3);
+  assert.equal(enriched.item_count, 4);
   assert.equal(enriched.items[0].question_text, corpus.items[0].question_text);
   assert.deepEqual(enriched.items[0].target_skills, ["tangent_slope"]);
   assert.equal(enriched.items[0].tag_review_meta.review_status, "proposed");
@@ -110,6 +145,12 @@ const proposalArtifact = {
   assert.equal("variant_level" in enriched.items[0], false);
   assert.equal(enriched.items[1].feature_flags.includes("needs_visual"), true);
   assert.equal(enriched.items[2].tag_review_meta.review_status, "needs_fix");
+  assert.deepEqual(enriched.items[3].target_skills, ["derivative_calculation"]);
+  assert.deepEqual(enriched.items[3].method_tags, [
+    "quotient_rule",
+    "logarithmic_derivative_formula",
+    "power_function_derivative",
+  ]);
 }
 
 {
@@ -323,11 +364,12 @@ const proposalArtifact = {
   });
   const summary = summarizeEnrichedPracticeCorpus(enriched);
   assert.equal(summary.corpus_version, "enriched-practice-corpus-v0");
-  assert.equal(summary.item_count, 3);
-  assert.equal(summary.approved_items, 2);
+  assert.equal(summary.item_count, 4);
+  assert.equal(summary.approved_items, 3);
   assert.equal(summary.needs_fix_items, 1);
   assert.equal(summary.needs_visual_items, 1);
   assert.equal(summary.target_skill_distribution.tangent_slope, 1);
+  assert.equal(summary.target_skill_distribution.derivative_calculation, 1);
 }
 
 console.log("enriched practice corpus core tests passed");
