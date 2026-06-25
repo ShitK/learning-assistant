@@ -163,14 +163,16 @@ export function getGateDecision({ ruleTags, aiTags, aiProposal }) {
   const normalizedAiTags = normalizeTagGroups(aiTags);
   const blockingReasons = [];
   const successReasons = ["high_confidence_rule_ai_agreement"];
+  const canUseRuleOnlyFallback =
+    normalizedRuleTags.target_skills.length > 0 && normalizedAiTags.target_skills.length === 0;
 
-  if (aiProposal?.item_confidence !== "high") {
+  if (aiProposal?.item_confidence !== "high" && !canUseRuleOnlyFallback) {
     blockingReasons.push("ai_not_high_confidence");
   }
   if (hasTag(normalizedAiTags.feature_flags, "needs_visual") || hasTag(normalizedRuleTags.feature_flags, "needs_visual")) {
     blockingReasons.push("needs_visual");
   }
-  if (hasUnknownOrInvalidWarnings(aiProposal)) {
+  if (hasUnknownOrInvalidWarnings(aiProposal) && !canUseRuleOnlyFallback) {
     blockingReasons.push("invalid_ai_proposal");
   }
   if (hasWarning(aiProposal, "invalid_evidence_terms_removed")) {
@@ -181,11 +183,14 @@ export function getGateDecision({ ruleTags, aiTags, aiProposal }) {
   if (normalizedRuleTags.target_skills.length > 0 && normalizedAiTags.target_skills.length > 0 && targetOverlap.length === 0) {
     blockingReasons.push("target_skill_conflict");
   }
-  if (normalizedAiTags.target_skills.length === 0) {
+  if (normalizedAiTags.target_skills.length === 0 && !canUseRuleOnlyFallback) {
     blockingReasons.push("missing_ai_target_skill");
   }
   if (normalizedRuleTags.target_skills.length === 0 && normalizedAiTags.target_skills.length > 0) {
     successReasons.push("ai_completed_missing_target_skill");
+  }
+  if (canUseRuleOnlyFallback) {
+    successReasons.push("rule_only_fallback");
   }
 
   if (hasAiAddedValues(normalizedRuleTags.method_tags, normalizedAiTags.method_tags)) {

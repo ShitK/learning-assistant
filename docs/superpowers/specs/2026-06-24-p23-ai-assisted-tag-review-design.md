@@ -318,9 +318,9 @@ Merge/gate 阶段读取：
 第一版自动 `approved` 的条件必须保守：
 
 - rule proposal 和 AI proposal 使用同一个 `taxonomy_id`。
-- AI proposal 没有 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json` 或 `invalid_ai_schema` 这类硬错误 warning。
+- AI proposal 正常时，不能带 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json` 或 `invalid_ai_schema` 这类硬错误 warning；如果 AI proposal 为空或非法，但 rule proposal 已经给出明确 `target_skills`，P2.3e 起允许走 rule-only fallback。
 - `invalid_evidence_terms_removed` 不是自动通过的一票否决；P2.3d 起 evidence 只作为审计信息，gate 可以自动通过并在 `review_notes` 中记录 `ai_evidence_terms_partially_removed`。
-- AI `item_confidence === "high"`。
+- AI proposal 正常参与 gate 时要求 `item_confidence === "high"`；rule-only fallback 不依赖 AI confidence。
 - 至少一个 `target_skills` 与 rule proposal 一致，或者 rule proposal 原本没有 target skill 但 AI 高置信补出了合法 target skill。
 - `method_tags` 不要求完全一致；AI 可以补充 rule 漏掉的解题方法，自动通过时最终 `method_tags` 取 rule、AI 和 target skill 派生标签的并集。
 - 非视觉 `feature_flags` 不要求完全一致；AI 可以补充客观题型/公式特征，自动通过时最终 feature flag 取 rule 与 AI 的非视觉并集。
@@ -333,10 +333,10 @@ Merge/gate 阶段读取：
 以下题目必须进入人工审核队列：
 
 - AI 与 rule 的 `target_skills` 完全冲突。
-- AI confidence 是 `medium` 或 `low`。
+- AI confidence 是 `medium` 或 `low`，且 rule proposal 没有可兜底的 `target_skills`。
 - AI 或 rule 标记 `needs_visual`。
-- AI proposal 带有硬错误 parser warning，例如 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json`、`invalid_ai_schema`。
-- AI 没有给出 target skill。
+- AI proposal 带有硬错误 parser warning，例如 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json`、`invalid_ai_schema`，且 rule proposal 没有可兜底的 `target_skills`。
+- AI 没有给出 target skill，且 rule proposal 也没有可兜底的 target skill。
 - 规则没有 target skill 且 AI 也没有 target skill。
 - 人工审核已有记录但和 AI/规则不一致。
 

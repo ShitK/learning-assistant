@@ -86,13 +86,38 @@ for (const warning of [
 ]) {
   const invalid = buildOne({
     itemId: `warning-${warning}`,
-    ruleTags: tags({ target_skills: ["tangent_slope"], method_tags: ["tangent_slope"] }),
+    ruleTags: tags({ method_tags: ["tangent_slope"] }),
     aiTags: tags({ target_skills: ["tangent_slope"], method_tags: ["tangent_slope"] }, "llm"),
     warnings: [warning],
   });
 
   assert.equal(invalid.review_queue.length, 1);
   assert.equal(invalid.review_queue[0].gate_reasons.includes("invalid_ai_proposal"), true);
+}
+
+{
+  const ruleOnlyFallback = buildOne({
+    itemId: "rule-only-fallback",
+    ruleTags: tags({
+      target_skills: ["monotonicity", "parameter_range"],
+      method_tags: ["monotonicity_by_derivative", "parameter_classification"],
+      feature_flags: ["has_fill_blank"],
+    }),
+    aiTags: { target_skills: [], method_tags: [], feature_flags: [] },
+    itemConfidence: "low",
+    warnings: ["invalid_ai_json"],
+  });
+
+  assert.equal(ruleOnlyFallback.auto_review_records.length, 1);
+  assert.equal(ruleOnlyFallback.review_queue.length, 0);
+  assert.deepEqual(
+    ruleOnlyFallback.auto_review_records[0].reviewed_tags.target_skills,
+    ["monotonicity", "parameter_range"],
+  );
+  assert.equal(
+    ruleOnlyFallback.auto_review_records[0].review_notes.includes("rule_only_fallback"),
+    true,
+  );
 }
 
 {
