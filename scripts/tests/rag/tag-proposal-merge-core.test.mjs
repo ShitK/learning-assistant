@@ -88,6 +88,48 @@ for (const warning of [
 }
 
 {
+  const aiAddsMethodAndFeature = buildOne({
+    itemId: "ai-adds-method-and-feature",
+    ruleTags: tags({
+      target_skills: ["tangent_slope"],
+      method_tags: ["tangent_slope", "derivative_definition"],
+      feature_flags: ["has_choice_options", "has_ln_exp"],
+    }),
+    aiTags: tags(
+      {
+        target_skills: ["tangent_slope", "derivative_geometric_meaning"],
+        method_tags: ["tangent_slope", "logarithmic_derivative_formula"],
+        feature_flags: ["has_choice_options", "has_ln_exp", "has_parameter"],
+      },
+      "llm",
+    ),
+  });
+
+  assert.equal(aiAddsMethodAndFeature.auto_review_records.length, 1);
+  assert.equal(aiAddsMethodAndFeature.review_queue.length, 0);
+  assert.deepEqual(
+    aiAddsMethodAndFeature.auto_review_records[0].reviewed_tags.target_skills,
+    ["tangent_slope", "derivative_geometric_meaning"],
+  );
+  assert.deepEqual(
+    aiAddsMethodAndFeature.auto_review_records[0].reviewed_tags.method_tags,
+    ["tangent_slope", "derivative_definition", "logarithmic_derivative_formula"],
+  );
+  assert.deepEqual(
+    aiAddsMethodAndFeature.auto_review_records[0].reviewed_tags.feature_flags,
+    ["has_choice_options", "has_ln_exp", "has_parameter"],
+  );
+  assert.equal(
+    aiAddsMethodAndFeature.auto_review_records[0].review_notes.includes("ai_added_method_tags"),
+    true,
+  );
+  assert.equal(
+    aiAddsMethodAndFeature.auto_review_records[0].review_notes.includes("ai_added_feature_flags"),
+    true,
+  );
+}
+
+{
   const derivativeCalculation = buildOne({
     itemId: "derivative-calculation",
     ruleTags: tags({
@@ -185,25 +227,48 @@ for (const warning of [
 }
 
 {
-  const methodConflict = buildOne({
-    itemId: "method-conflict",
+  const aiMethodWithoutEvidence = buildOne({
+    itemId: "ai-method-without-evidence",
     ruleTags: tags({ target_skills: ["tangent_slope"], method_tags: ["tangent_slope"] }),
-    aiTags: tags({ target_skills: ["tangent_slope"], method_tags: ["zero_count"] }, "llm"),
+    aiTags: {
+      target_skills: tags({ target_skills: ["tangent_slope"] }, "llm").target_skills,
+      method_tags: [
+        {
+          tag: "zero_count",
+          display_name: "zero_count",
+          confidence: "high",
+          evidence_terms: [],
+          source: "llm",
+        },
+      ],
+      feature_flags: [],
+    },
   });
 
-  assert.equal(methodConflict.review_queue.length, 1);
-  assert.equal(methodConflict.review_queue[0].gate_reasons.includes("method_tag_conflict"), true);
+  assert.equal(aiMethodWithoutEvidence.auto_review_records.length, 0);
+  assert.equal(aiMethodWithoutEvidence.review_queue.length, 1);
+  assert.equal(aiMethodWithoutEvidence.review_queue[0].gate_reasons.includes("missing_ai_evidence"), true);
 }
 
 {
-  const featureConflict = buildOne({
-    itemId: "feature-conflict",
+  const aiAddsFeatureFlags = buildOne({
+    itemId: "ai-adds-feature-flags",
     ruleTags: tags({ target_skills: ["tangent_slope"], feature_flags: ["has_choice_options"] }),
-    aiTags: tags({ target_skills: ["tangent_slope"], feature_flags: ["has_fill_blank"] }, "llm"),
+    aiTags: tags(
+      {
+        target_skills: ["tangent_slope"],
+        feature_flags: ["has_choice_options", "has_fill_blank", "has_parameter"],
+      },
+      "llm",
+    ),
   });
 
-  assert.equal(featureConflict.review_queue.length, 1);
-  assert.equal(featureConflict.review_queue[0].gate_reasons.includes("feature_flag_conflict"), true);
+  assert.equal(aiAddsFeatureFlags.auto_review_records.length, 1);
+  assert.equal(aiAddsFeatureFlags.review_queue.length, 0);
+  assert.deepEqual(
+    aiAddsFeatureFlags.auto_review_records[0].reviewed_tags.feature_flags,
+    ["has_choice_options", "has_fill_blank", "has_parameter"],
+  );
 }
 
 {

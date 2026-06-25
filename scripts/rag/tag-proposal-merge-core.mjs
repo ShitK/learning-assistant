@@ -173,12 +173,10 @@ export function getGateDecision({ ruleTags, aiTags, aiProposal }) {
   if (hasUnknownOrInvalidWarnings(aiProposal)) {
     blockingReasons.push("invalid_ai_proposal");
   }
-  if (hasWarning(aiProposal, "invalid_evidence_terms_removed")) {
-    if (hasAiTagWithoutEvidence(aiTags)) {
-      blockingReasons.push("missing_ai_evidence");
-    } else {
-      successReasons.push("ai_evidence_terms_partially_removed");
-    }
+  if (hasAnyAiTagWithoutEvidence(aiTags)) {
+    blockingReasons.push("missing_ai_evidence");
+  } else if (hasWarning(aiProposal, "invalid_evidence_terms_removed")) {
+    successReasons.push("ai_evidence_terms_partially_removed");
   }
 
   const targetOverlap = intersect(normalizedRuleTags.target_skills, normalizedAiTags.target_skills);
@@ -195,12 +193,16 @@ export function getGateDecision({ ruleTags, aiTags, aiProposal }) {
     successReasons.push("ai_completed_missing_target_skill");
   }
 
-  const finalTargetSkills = mergeUnique(normalizedRuleTags.target_skills, normalizedAiTags.target_skills);
-  if (hasMethodTagConflict({ ruleTags: normalizedRuleTags, aiTags: normalizedAiTags, finalTargetSkills })) {
-    blockingReasons.push("method_tag_conflict");
+  if (hasAiAddedValues(normalizedRuleTags.method_tags, normalizedAiTags.method_tags)) {
+    successReasons.push("ai_added_method_tags");
   }
-  if (hasFeatureFlagConflict(normalizedRuleTags.feature_flags, normalizedAiTags.feature_flags)) {
-    blockingReasons.push("feature_flag_conflict");
+  if (
+    hasAiAddedValues(
+      normalizedRuleTags.feature_flags.filter((tag) => tag !== "needs_visual"),
+      normalizedAiTags.feature_flags.filter((tag) => tag !== "needs_visual"),
+    )
+  ) {
+    successReasons.push("ai_added_feature_flags");
   }
 
   return blockingReasons.length === 0
@@ -215,10 +217,13 @@ export function chooseFinalTags({ ruleTags, aiTags, taxonomy }) {
   const derivedMethodTags = deriveMethodTagsFromTargetSkills(target_skills, taxonomy);
   const method_tags = mergeUnique(
     derivedMethodTags,
-    intersect(normalizedRuleTags.method_tags, normalizedAiTags.method_tags),
-    normalizedAiTags.method_tags.filter((tag) => isMethodTagValidForTargets(tag, target_skills, taxonomy)),
+    normalizedRuleTags.method_tags,
+    normalizedAiTags.method_tags,
   );
-  const feature_flags = intersect(normalizedRuleTags.feature_flags, normalizedAiTags.feature_flags).filter((tag) => tag !== "needs_visual");
+  const feature_flags = mergeUnique(
+    normalizedRuleTags.feature_flags,
+    normalizedAiTags.feature_flags,
+  ).filter((tag) => tag !== "needs_visual");
   return { target_skills, method_tags, feature_flags };
 }
 
@@ -250,11 +255,13 @@ function hasWarning(aiProposal, warning) {
   return (aiProposal?.warnings ?? []).includes(warning);
 }
 
-function hasAiTagWithoutEvidence(aiTags) {
+function hasAnyAiTagWithoutEvidence(aiTags) {
   for (const tagList of Object.values(aiTags ?? {})) {
     if (!Array.isArray(tagList)) continue;
     for (const tag of tagList) {
-      if (typeof tag === "string") continue;
+      if (typeof tag === "string") {
+        continue;
+      }
       const evidenceTerms = tag?.evidence_terms;
       if (!Array.isArray(evidenceTerms) || evidenceTerms.length === 0) {
         return true;
@@ -264,22 +271,9 @@ function hasAiTagWithoutEvidence(aiTags) {
   return false;
 }
 
-function hasMethodTagConflict({ ruleTags, aiTags, finalTargetSkills }) {
-  if (finalTargetSkills.length === 0) return false;
-  const overlappingMethodTags = new Set(intersect(ruleTags.method_tags, aiTags.method_tags));
-  return aiTags.method_tags.some(
-    (tag) => !overlappingMethodTags.has(tag) && !isMethodTagValidForTargets(tag, finalTargetSkills),
-  );
-}
-
-function hasFeatureFlagConflict(ruleFeatureFlags, aiFeatureFlags) {
-  const ruleNonVisual = ruleFeatureFlags.filter((tag) => tag !== "needs_visual");
-  const aiNonVisual = aiFeatureFlags.filter((tag) => tag !== "needs_visual");
-  return !sameSet(ruleNonVisual, aiNonVisual);
-}
-
-function isMethodTagValidForTargets(methodTag, targetSkills) {
-  return deriveMethodTagsFromTargetSkills(targetSkills).includes(methodTag);
+function hasAiAddedValues(ruleValues, aiValues) {
+  const ruleSet = new Set(ruleValues);
+  return aiValues.some((value) => !ruleSet.has(value));
 }
 
 function normalizeProposalTags(proposedTags) {
@@ -366,12 +360,6 @@ function mergeUnique(...groups) {
     }
   }
   return values;
-}
-
-function sameSet(left, right) {
-  const leftUnique = mergeUnique(left);
-  const rightUnique = mergeUnique(right);
-  return leftUnique.length === rightUnique.length && leftUnique.every((tag) => rightUnique.includes(tag));
 }
 
 function hasTag(tags, tag) {

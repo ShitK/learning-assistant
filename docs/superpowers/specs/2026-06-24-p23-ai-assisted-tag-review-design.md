@@ -322,10 +322,10 @@ Merge/gate 阶段读取：
 - `invalid_evidence_terms_removed` 不是自动通过的一票否决；只要清洗后每个 AI tag 仍保留至少一个有效 `evidence_terms`，gate 可以自动通过并在 `review_notes` 中记录 `ai_evidence_terms_partially_removed`。
 - AI `item_confidence === "high"`。
 - 至少一个 `target_skills` 与 rule proposal 一致，或者 rule proposal 原本没有 target skill 但 AI 高置信补出了合法 target skill。
-- `method_tags` 至少有一个重叠，或者 AI 的 method tag 能由最终 target skill 合法派生。
-- 非视觉 `feature_flags` 必须一致；自动通过时最终 feature flag 等于 rule 与 AI 的共同集合。
+- `method_tags` 不要求完全一致；AI 可以在高置信、有有效 `evidence_terms` 且标签存在于 taxonomy 的情况下补充 rule 漏掉的解题方法，自动通过时最终 `method_tags` 取 rule、AI 和 target skill 派生标签的并集。
+- 非视觉 `feature_flags` 不要求完全一致；AI 可以在高置信、有有效 `evidence_terms` 且标签存在于 taxonomy 的情况下补充客观题型/公式特征，自动通过时最终 feature flag 取 rule 与 AI 的非视觉并集。
 - rule 或 AI 的 `feature_flags` 都不能包含 `needs_visual`；`needs_visual` 永远不能进入自动通过记录。
-- 规则和 AI 不在 `needs_visual` / `has_graph` / 题型 flag 上发生冲突或缺失。
+- 规则和 AI 不在 `needs_visual` / `has_graph` 这类图像依赖信号上发生冲突或缺失。
 - AI rationale 非空，但不作为 correctness 证明，只作为审核解释。
 
 ### 7.3 进入 review queue 的条件
@@ -333,12 +333,10 @@ Merge/gate 阶段读取：
 以下题目必须进入人工审核队列：
 
 - AI 与 rule 的 `target_skills` 完全冲突。
-- AI 与 rule 的 `method_tags` 冲突，且不能由最终 target skill 合法派生。
-- AI 与 rule 的 `feature_flags` 冲突。
 - AI confidence 是 `medium` 或 `low`。
 - AI 或 rule 标记 `needs_visual`。
 - AI proposal 带有硬错误 parser warning，例如 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json`、`invalid_ai_schema`。
-- AI proposal 带有 `invalid_evidence_terms_removed`，且清洗后某个 AI tag 没有任何有效 `evidence_terms`，此时 gate reason 使用 `missing_ai_evidence`。
+- AI proposal 中任意 AI tag 清洗后没有任何有效 `evidence_terms`，此时 gate reason 使用 `missing_ai_evidence`；如果只是部分 evidence term 被删，但每个 tag 仍有有效证据，可以自动通过并记录 `ai_evidence_terms_partially_removed`。
 - AI 没有给出 target skill。
 - 规则没有 target skill 且 AI 也没有 target skill。
 - 多标签复杂题命中 3 个以上 target skills。
