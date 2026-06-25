@@ -16,7 +16,7 @@
 - Preserve `sample_diagnosis` and all main app routes.
 - Keep RAG as the variant-practice retrieval/source layer; do not write `memory_events`, `student_profiles`, or evidence API data.
 - `needs_visual` remains conservative: if rule or AI marks `needs_visual`, the item must remain in the review queue.
-- AI JSON/schema/unknown-tag parser warnings, non-high AI confidence, missing AI target skill, no Rule/AI target skill intersection, too many AI target skills, and visual dependency remain review-queue reasons.
+- AI JSON/schema/unknown-tag parser warnings, non-high AI confidence, missing AI target skill, no Rule/AI target skill intersection, and visual dependency remain review-queue reasons.
 - This task removes redundant P2.3c evidence/method/feature hard-blocking logic; it does not change taxonomy, provider prompts, review UI layout, database schema, or frontend product routes.
 
 ---
@@ -28,7 +28,6 @@ Auto approval requires:
 - `aiProposal.item_confidence === "high"`.
 - No hard parser warnings: `unknown_tag_removed`, `empty_tag_removed`, `invalid_confidence_removed`, `invalid_ai_json`, `invalid_ai_schema`.
 - AI has at least one `target_skills` tag.
-- AI has at most 3 `target_skills` tags.
 - Rule and AI `target_skills` have at least one intersection when rule has target skills.
 - Neither Rule nor AI contains `needs_visual`.
 

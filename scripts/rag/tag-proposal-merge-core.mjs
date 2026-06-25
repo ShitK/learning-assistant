@@ -184,9 +184,6 @@ export function getGateDecision({ ruleTags, aiTags, aiProposal }) {
   if (normalizedAiTags.target_skills.length === 0) {
     blockingReasons.push("missing_ai_target_skill");
   }
-  if (normalizedAiTags.target_skills.length > 3) {
-    blockingReasons.push("too_many_target_skills");
-  }
   if (normalizedRuleTags.target_skills.length === 0 && normalizedAiTags.target_skills.length > 0) {
     successReasons.push("ai_completed_missing_target_skill");
   }

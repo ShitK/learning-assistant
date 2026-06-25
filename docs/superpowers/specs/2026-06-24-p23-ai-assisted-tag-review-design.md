@@ -338,7 +338,6 @@ Merge/gate 阶段读取：
 - AI proposal 带有硬错误 parser warning，例如 `unknown_tag_removed`、`empty_tag_removed`、`invalid_confidence_removed`、`invalid_ai_json`、`invalid_ai_schema`。
 - AI 没有给出 target skill。
 - 规则没有 target skill 且 AI 也没有 target skill。
-- 多标签复杂题命中 3 个以上 target skills。
 - 人工审核已有记录但和 AI/规则不一致。
 
 ### 7.4 输出

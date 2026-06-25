@@ -53,6 +53,30 @@ const generatedAt = "2026-06-24T00:00:00.000Z";
   assert.equal(conflict.review_queue[0].recommended_review_status, "needs_fix");
 }
 
+{
+  const manyTargetsWithOverlap = buildOne({
+    itemId: "many-targets-with-overlap",
+    ruleTags: tags({ target_skills: ["tangent_slope"], method_tags: ["tangent_slope"] }),
+    aiTags: tags({
+      target_skills: [
+        "tangent_slope",
+        "derivative_geometric_meaning",
+        "derivative_calculation",
+        "monotonicity",
+        "extrema",
+      ],
+      method_tags: ["tangent_slope", "monotonicity_by_derivative", "extremum_by_derivative"],
+    }, "llm"),
+  });
+
+  assert.equal(manyTargetsWithOverlap.auto_review_records.length, 1);
+  assert.equal(manyTargetsWithOverlap.review_queue.length, 0);
+  assert.equal(
+    manyTargetsWithOverlap.auto_review_records[0].reviewed_tags.target_skills.includes("tangent_slope"),
+    true,
+  );
+}
+
 for (const warning of [
   "unknown_tag_removed",
   "invalid_confidence_removed",
