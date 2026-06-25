@@ -32,6 +32,8 @@ const suites = {
     "scripts/tests/rag/enriched-practice-corpus-cli.test.mjs",
     "scripts/tests/rag/variant-practice-agent-core.test.mjs",
     "scripts/tests/rag/variant-practice-agent-cli.test.mjs",
+    "scripts/tests/rag/variant-practice-agent-ui-core.test.mjs",
+    "scripts/tests/rag/variant-practice-agent-ui-cli.test.mjs",
     "scripts/tests/image-diagnosis/vision-extraction-parser.test.mjs",
     "scripts/tests/providers/anthropic-compatible-provider.test.mjs",
     "scripts/tests/providers/analysis-provider.test.mjs",
