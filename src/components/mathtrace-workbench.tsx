@@ -74,6 +74,7 @@ import type { FollowUpAnswerDraft } from "@/lib/diagnosis/diagnose-api";
 import type { MistakeBookResponse } from "@/lib/mistake-book/mistake-book-client";
 import type { PreparedImageUpload } from "@/lib/image-diagnosis/image-upload-client";
 import type { StudentProfileEvidenceSummary } from "@/lib/student-profile/student-profile-evidence-service";
+import type { ProductVariantPractice } from "@/lib/rag/variant-practice-product-view-model";
 
 const DEFAULT_SAMPLE_ID: SampleQuestionId = "sample_derivative_001";
 const cloudProfileStaleWarnings: readonly string[] = [
@@ -84,7 +85,11 @@ const cloudProfileStaleWarnings: readonly string[] = [
 
 type MistakeBookPanelStatus = "loading" | "ready" | "error";
 
-export function MathTraceWorkbench(): ReactElement {
+export function MathTraceWorkbench({
+  initialVariantPractice = null,
+}: {
+  initialVariantPractice?: ProductVariantPractice | null;
+}): ReactElement {
   const hasHydrated = useHasHydrated();
   const restoredStudentProfile = hasHydrated
     ? readStoredStudentProfile(window.localStorage)
@@ -150,6 +155,10 @@ export function MathTraceWorkbench(): ReactElement {
   const isTimelineRunning =
     isTimelineAnimating && completedStepCount < diagnosisView.steps.length;
   const isDiagnosing = isRequestPending || isTimelineRunning;
+  const visibleVariantPractice =
+    diagnosisMode === "sample" && diagnosisView.id === DEFAULT_SAMPLE_ID
+      ? initialVariantPractice
+      : null;
 
   const refreshMistakeBook = useCallback(async (): Promise<void> => {
     setMistakeBookStatus("loading");
@@ -803,7 +812,10 @@ export function MathTraceWorkbench(): ReactElement {
           </div>
         </section>
 
-        <PracticeLab diagnosis={diagnosisView} />
+        <PracticeLab
+          diagnosis={diagnosisView}
+          variantPractice={visibleVariantPractice}
+        />
 
         <section className="mt-8 grid gap-8 xl:grid-cols-[0.92fr_1.08fr]">
           <ProfileInsights

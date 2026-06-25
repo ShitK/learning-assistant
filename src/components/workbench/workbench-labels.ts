@@ -7,11 +7,19 @@ import type {
   PracticeLevel,
   Severity,
 } from "@/data/mathtrace-demo";
+import type { ProductVariantPracticeType } from "@/lib/rag/variant-practice-product-view-model";
 
 export const practiceLevelLabels: Record<PracticeLevel, string> = {
   basic: "基础巩固",
   transfer: "同类迁移",
   gaokao_style: "高考综合",
+};
+
+export const variantPracticeTypeLabels: Record<ProductVariantPracticeType, string> = {
+  foundation: "巩固题",
+  near_transfer: "近迁移题",
+  mixed_application: "综合应用题",
+  additional_practice: "补充练习题",
 };
 
 export const severityLabels: Record<Severity, string> = {

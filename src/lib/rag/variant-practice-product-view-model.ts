@@ -92,24 +92,28 @@ function toProductItem(value: unknown): ProductVariantPracticeItem | null {
     question_text?: unknown;
     reason?: unknown;
   };
+  const rank = item.rank;
+  const questionText = item.question_text;
+  const reason = item.reason;
   const type = normalizeRecommendationType(item.recommendation_type);
 
   if (
     type === null ||
-    !Number.isInteger(item.rank) ||
-    typeof item.question_text !== "string" ||
-    !item.question_text.trim() ||
-    typeof item.reason !== "string" ||
-    !item.reason.trim()
+    typeof rank !== "number" ||
+    !Number.isInteger(rank) ||
+    typeof questionText !== "string" ||
+    !questionText.trim() ||
+    typeof reason !== "string" ||
+    !reason.trim()
   ) {
     return null;
   }
 
   return {
-    rank: item.rank,
+    rank,
     type,
     title: recommendationTypeLabels[type],
-    question_text: item.question_text.trim(),
+    question_text: questionText.trim(),
     reason: productReasons[type],
   };
 }

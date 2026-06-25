@@ -210,6 +210,37 @@ assert.equal(
   "错题本只读面板不能读取 Supabase service role key。",
 );
 
+assert.match(
+  source,
+  /initialVariantPractice\?: ProductVariantPractice \| null/,
+  "MathTraceWorkbench 应接收服务端传入的变式练习推荐 view model。",
+);
+
+assert.match(
+  workbenchStructureSources["practice-lab.tsx"],
+  /variantPractice\?: ProductVariantPractice \| null/,
+  "PracticeLab 应能消费正式产品裁剪后的变式练习 view model。",
+);
+
+for (const forbidden of [
+  "matched_dimensions",
+  "knowledge_point",
+  "derivative_geometric_meaning",
+  "tangent_slope",
+  "命中目标技能标签",
+  "score",
+  "target_skill",
+  "method_tag",
+  "query_term",
+  "source_candidate_id",
+]) {
+  assert.equal(
+    workbenchStructureSources["practice-lab.tsx"].includes(forbidden),
+    false,
+    `正式变式练习 UI 不应展示内部 RAG 字段: ${forbidden}`,
+  );
+}
+
 assert.equal(calculateWeaknessIndex(35), 65);
 assert.equal(calculateWeaknessIndex(27), 73);
 assert.equal(getWeaknessStatus(73).label, "高优先级");

@@ -1,7 +1,7 @@
 // server-only: this file reads ignored local artifacts with node:fs/promises.
 // Do not import it from Client Components.
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { isAbsolute, join } from "node:path";
 import {
   createVariantPracticeProductViewModel,
   type ProductVariantPractice,
@@ -17,7 +17,10 @@ export async function readVariantPracticeProductRecommendations({
   expectedQueryId?: string;
 } = {}): Promise<ProductVariantPractice | null> {
   try {
-    const rawText = await readFile(resolve(filePath), "utf8");
+    const absoluteFilePath = isAbsolute(filePath)
+      ? filePath
+      : join(/* turbopackIgnore: true */ process.cwd(), filePath);
+    const rawText = await readFile(absoluteFilePath, "utf8");
     const parsed: unknown = JSON.parse(rawText);
     return createVariantPracticeProductViewModel(parsed, { expectedQueryId });
   } catch {
