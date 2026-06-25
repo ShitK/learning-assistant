@@ -75,8 +75,9 @@ import type { MistakeBookResponse } from "@/lib/mistake-book/mistake-book-client
 import type { PreparedImageUpload } from "@/lib/image-diagnosis/image-upload-client";
 import type { StudentProfileEvidenceSummary } from "@/lib/student-profile/student-profile-evidence-service";
 import type { ProductVariantPractice } from "@/lib/rag/variant-practice-product-view-model";
+import { DEFAULT_VARIANT_PRACTICE_SAMPLE_ID } from "@/lib/rag/variant-practice-demo-config";
 
-const DEFAULT_SAMPLE_ID: SampleQuestionId = "sample_derivative_001";
+const DEFAULT_SAMPLE_ID: SampleQuestionId = DEFAULT_VARIANT_PRACTICE_SAMPLE_ID;
 const cloudProfileStaleWarnings: readonly string[] = [
   PROFILE_SYNC_FAILED_WARNING,
   DATABASE_WRITE_FAILED_WARNING,

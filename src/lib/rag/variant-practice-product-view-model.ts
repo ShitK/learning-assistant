@@ -35,6 +35,20 @@ const productReasons: Record<ProductVariantPracticeType, string> = {
   additional_practice: "当前题库暂缺稳定综合应用题，已为你补充一题相近练习。",
 };
 
+const internalDebugFragments = [
+  "matched_dimensions",
+  "knowledge_point",
+  "target_skill",
+  "method_tag",
+  "query_term",
+  "source_candidate_id",
+  "item_id",
+  "demo_fill_used",
+  "derivative_geometric_meaning",
+  "tangent_slope",
+  "命中目标技能标签",
+];
+
 export function createVariantPracticeProductViewModel(
   value: unknown,
   { expectedQueryId }: { expectedQueryId?: string } = {},
@@ -103,6 +117,7 @@ function toProductItem(value: unknown): ProductVariantPracticeItem | null {
     !Number.isInteger(rank) ||
     typeof questionText !== "string" ||
     !questionText.trim() ||
+    hasInternalDebugFragment(questionText) ||
     typeof reason !== "string" ||
     !reason.trim()
   ) {
@@ -140,4 +155,8 @@ function filterStringArray(value: unknown): string[] {
         ),
       ]
     : [];
+}
+
+function hasInternalDebugFragment(text: string): boolean {
+  return internalDebugFragments.some((fragment) => text.includes(fragment));
 }

@@ -101,4 +101,31 @@ assert.equal(
   null,
 );
 
+const contaminatedArtifact = {
+  agent_version: "variant-practice-agent-v0",
+  query_id: "demo-derivative-tangent-slope",
+  recommendations: [
+    {
+      rank: 1,
+      recommendation_type: "foundation",
+      question_text: "1. derivative_geometric_meaning 内部标签污染题干。",
+      reason: "同标签。",
+    },
+    {
+      rank: 2,
+      recommendation_type: "near_transfer",
+      question_text: "2. 已知 $f'(1)=2$，求切线斜率。",
+      reason: "同标签。",
+    },
+  ],
+  warnings: [],
+};
+const cleanedViewModel = createVariantPracticeProductViewModel(contaminatedArtifact);
+assert.equal(cleanedViewModel.items.length, 1);
+assert.equal(cleanedViewModel.items[0].rank, 2);
+assert.equal(
+  JSON.stringify(cleanedViewModel).includes("derivative_geometric_meaning"),
+  false,
+);
+
 console.log("variant practice product view model tests passed");

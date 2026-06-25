@@ -2537,6 +2537,10 @@ P2.3 已经在本地工具链层面把“AI 做多数标签建议，人类只审
   - `scripts/rag/build-tag-review-ui.mjs`（生成本地标签审核静态页面的 CLI 脚本）
   - `scripts/rag/merge-tag-review-records.mjs`（合并自动审核记录与人工审核记录的 CLI 脚本）
   - `scripts/rag/enriched-practice-corpus-core.mjs`（把最终审核标签写入带标签题库，并保留 P2.3 审计字段）
+  - `src/lib/rag/variant-practice-product-view-model.ts`（P2.5 产品展示模型转换器，裁剪内部字段并重写推荐理由）
+  - `src/lib/rag/variant-practice-demo-config.ts`（P2.5 默认样例与推荐 query 的共享配置）
+  - `src/lib/server/rag/variant-practice-product-loader.ts`（P2.5 服务端本地推荐结果读取器）
+  - `src/components/workbench/practice-lab.tsx`（P2.5 变式练习产品卡片展示组件）
   - `scripts/run-tests.mjs`（把 P2.3 测试纳入 default 测试套件）
 - 测试：
   - `scripts/tests/rag/practice-tag-taxonomy.test.mjs`（验证 taxonomy registry、允许标签集合和兼容导出）
@@ -2550,6 +2554,9 @@ P2.3 已经在本地工具链层面把“AI 做多数标签建议，人类只审
   - `scripts/tests/rag/tag-review-record-merge-cli.test.mjs`（验证自动/人工审核记录合并、覆盖顺序和 stdout 安全边界）
   - `scripts/tests/rag/enriched-practice-corpus-core.test.mjs`（验证 P2.3 审计字段进入 `tag_review_meta`，旧记录缺字段保持兼容）
   - `scripts/tests/rag/variant-practice-agent-core.test.mjs`（验证新增 `derivative_calculation`（求导运算）标签能驱动变式练习推荐）
+  - `scripts/tests/rag/variant-practice-product-view-model.test.mjs`（验证 P2.5 产品展示模型字段裁剪、推荐理由重写和题干污染过滤）
+  - `scripts/tests/rag/variant-practice-product-loader.test.mjs`（验证 P2.5 服务端 loader 的缺文件、坏 JSON 和 query id 不匹配回退）
+  - `scripts/tests/ui/mathtrace-workbench-ui.test.mjs`（验证 P2.5 工作台只消费裁剪后的变式练习 view model，且不展示内部 RAG 字段）
 - 文档：
   - `docs/superpowers/specs/2026-06-24-p23-ai-assisted-tag-review-design.md`（P2.3 AI 辅助标签审核设计说明）
   - `docs/superpowers/plans/2026-06-24-p23-ai-assisted-tag-review.md`（P2.3 实施计划）
@@ -2568,6 +2575,7 @@ P2.3 已经在本地工具链层面把“AI 做多数标签建议，人类只审
   - `node scripts/rag/build-practice-tag-proposals.mjs --corpus artifacts/rag/practice-corpus/practice_corpus.json --out artifacts/rag/tag-proposals`
   - `node scripts/rag/build-enriched-practice-corpus.mjs --corpus artifacts/rag/practice-corpus/practice_corpus.json --proposals artifacts/rag/tag-proposals/candidate_tag_proposals.json --accept-rule-proposals --out artifacts/rag/enriched-practice-corpus`
   - `node scripts/rag/recommend-variant-practice.mjs --corpus artifacts/rag/enriched-practice-corpus/enriched_practice_corpus.json --query artifacts/rag/variant-practice-agent/demo-query.json --out artifacts/rag/variant-practice-agent --limit 12`
+  - P2.5 产品页 HTML smoke：本地打开 `http://localhost:3000` 后检查 `巩固题`、`近迁移题`、`补充练习题` 出现，并确认 `matched_dimensions`、`score`、`target_skill`、`method_tag`、`source_candidate_id` 等内部字段不出现在 HTML 中。
   - AI proposal 真实 provider smoke：本地配置 DeepSeek-compatible provider（兼容 OpenAI 协议的 DeepSeek 模型服务）后，已生成 69 道题的 `candidate_ai_tag_proposals.json`（AI 生成的候选标签建议文件），并生成 `merged_tag_proposals.json`（规则与 AI 合并后的标签建议文件）、`auto_tag_review_records.json`（自动通过的标签审核记录文件）和 `tag_review_queue.json`（需要人工复核的标签审核队列文件）。这些文件属于本地 ignored artifact（被 Git 忽略的本地产物），不提交。
 
 ---

@@ -6,12 +6,13 @@ import {
   createVariantPracticeProductViewModel,
   type ProductVariantPractice,
 } from "@/lib/rag/variant-practice-product-view-model";
+import { DEFAULT_VARIANT_PRACTICE_QUERY_ID } from "@/lib/rag/variant-practice-demo-config";
 
 const defaultRecommendationsPath = "artifacts/rag/variant-practice-agent/recommendations.json";
 
 export async function readVariantPracticeProductRecommendations({
   filePath = defaultRecommendationsPath,
-  expectedQueryId = "demo-derivative-tangent-slope",
+  expectedQueryId = DEFAULT_VARIANT_PRACTICE_QUERY_ID,
 }: {
   filePath?: string;
   expectedQueryId?: string;
