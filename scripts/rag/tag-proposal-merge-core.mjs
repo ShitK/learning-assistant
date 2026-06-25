@@ -11,7 +11,6 @@ const INVALID_AI_WARNING_VALUES = new Set([
   "invalid_confidence_removed",
   "invalid_ai_json",
   "invalid_ai_schema",
-  "invalid_evidence_terms_removed",
 ]);
 
 export function buildMergedTagProposals({
@@ -31,9 +30,11 @@ export function buildMergedTagProposals({
     const itemId = item?.id;
     const ruleProposal = ruleByItemId.get(itemId);
     const aiProposal = aiByItemId.get(itemId) ?? buildMissingAiProposal(itemId, taxonomy);
+    const rawRuleTags = ruleProposal?.proposed_tags;
+    const rawAiTags = aiProposal?.proposed_tags;
     const ruleTags = normalizeProposalTags(ruleProposal?.proposed_tags);
     const aiTags = normalizeProposalTags(aiProposal?.proposed_tags);
-    const gateDecision = getGateDecision({ ruleTags, aiTags, aiProposal });
+    const gateDecision = getGateDecision({ ruleTags: rawRuleTags, aiTags: rawAiTags, aiProposal });
     const finalTags = chooseFinalTags({ ruleTags, aiTags, taxonomy });
     const mergedProposal = {
       item_id: itemId,
@@ -172,6 +173,13 @@ export function getGateDecision({ ruleTags, aiTags, aiProposal }) {
   if (hasUnknownOrInvalidWarnings(aiProposal)) {
     blockingReasons.push("invalid_ai_proposal");
   }
+  if (hasWarning(aiProposal, "invalid_evidence_terms_removed")) {
+    if (hasAiTagWithoutEvidence(aiTags)) {
+      blockingReasons.push("missing_ai_evidence");
+    } else {
+      successReasons.push("ai_evidence_terms_partially_removed");
+    }
+  }
 
   const targetOverlap = intersect(normalizedRuleTags.target_skills, normalizedAiTags.target_skills);
   if (normalizedRuleTags.target_skills.length > 0 && normalizedAiTags.target_skills.length > 0 && targetOverlap.length === 0) {
@@ -236,6 +244,24 @@ function buildAutoReviewRecord({ itemId, finalTags, gateDecision, taxonomy, aiPr
 
 function hasUnknownOrInvalidWarnings(aiProposal) {
   return (aiProposal?.warnings ?? []).some((warning) => INVALID_AI_WARNING_VALUES.has(warning));
+}
+
+function hasWarning(aiProposal, warning) {
+  return (aiProposal?.warnings ?? []).includes(warning);
+}
+
+function hasAiTagWithoutEvidence(aiTags) {
+  for (const tagList of Object.values(aiTags ?? {})) {
+    if (!Array.isArray(tagList)) continue;
+    for (const tag of tagList) {
+      if (typeof tag === "string") continue;
+      const evidenceTerms = tag?.evidence_terms;
+      if (!Array.isArray(evidenceTerms) || evidenceTerms.length === 0) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function hasMethodTagConflict({ ruleTags, aiTags, finalTargetSkills }) {

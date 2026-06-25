@@ -58,7 +58,6 @@ for (const warning of [
   "invalid_confidence_removed",
   "invalid_ai_json",
   "invalid_ai_schema",
-  "invalid_evidence_terms_removed",
   "empty_tag_removed",
 ]) {
   const invalid = buildOne({
@@ -70,6 +69,47 @@ for (const warning of [
 
   assert.equal(invalid.review_queue.length, 1);
   assert.equal(invalid.review_queue[0].gate_reasons.includes("invalid_ai_proposal"), true);
+}
+
+{
+  const evidenceWarningOnly = buildOne({
+    itemId: "partial-evidence-removed",
+    ruleTags: tags({ target_skills: ["tangent_slope"], method_tags: ["tangent_slope"] }),
+    aiTags: tags({ target_skills: ["tangent_slope"], method_tags: ["tangent_slope"] }, "llm"),
+    warnings: ["invalid_evidence_terms_removed"],
+  });
+
+  assert.equal(evidenceWarningOnly.auto_review_records.length, 1);
+  assert.equal(evidenceWarningOnly.review_queue.length, 0);
+  assert.equal(
+    evidenceWarningOnly.auto_review_records[0].review_notes.includes("ai_evidence_terms_partially_removed"),
+    true,
+  );
+}
+
+{
+  const missingEvidenceAfterCleanup = buildOne({
+    itemId: "missing-ai-evidence",
+    ruleTags: tags({ target_skills: ["tangent_slope"], method_tags: ["tangent_slope"] }),
+    aiTags: {
+      target_skills: [
+        {
+          tag: "tangent_slope",
+          display_name: "tangent_slope",
+          confidence: "high",
+          evidence_terms: [],
+          source: "llm",
+        },
+      ],
+      method_tags: tags({ method_tags: ["tangent_slope"] }, "llm").method_tags,
+      feature_flags: [],
+    },
+    warnings: ["invalid_evidence_terms_removed"],
+  });
+
+  assert.equal(missingEvidenceAfterCleanup.auto_review_records.length, 0);
+  assert.equal(missingEvidenceAfterCleanup.review_queue.length, 1);
+  assert.equal(missingEvidenceAfterCleanup.review_queue[0].gate_reasons.includes("missing_ai_evidence"), true);
 }
 
 {

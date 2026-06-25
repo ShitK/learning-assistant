@@ -43,6 +43,7 @@ export function buildAiTagPrompt({ item, ruleProposal, taxonomy }) {
 
 export function parseAiTagProposalResponse({ item, text, taxonomy, ruleProposal }) {
   const warnings = [];
+  const removedEvidenceTerms = [];
   const parsed = parseJsonObject(text);
   if (!parsed.ok) {
     return buildEmptyProposal({ item, taxonomy, warnings: [parsed.warning] });
@@ -58,6 +59,8 @@ export function parseAiTagProposalResponse({ item, text, taxonomy, ruleProposal 
       displayNames.target_skills,
       allowedEvidence,
       warnings,
+      removedEvidenceTerms,
+      "target_skills",
     ),
     method_tags: sanitizeTagList(
       parsed.value.method_tags,
@@ -65,6 +68,8 @@ export function parseAiTagProposalResponse({ item, text, taxonomy, ruleProposal 
       displayNames.method_tags,
       allowedEvidence,
       warnings,
+      removedEvidenceTerms,
+      "method_tags",
     ),
     feature_flags: sanitizeTagList(
       parsed.value.feature_flags,
@@ -72,6 +77,8 @@ export function parseAiTagProposalResponse({ item, text, taxonomy, ruleProposal 
       displayNames.feature_flags,
       allowedEvidence,
       warnings,
+      removedEvidenceTerms,
+      "feature_flags",
     ),
   };
   let itemConfidence = parsed.value.item_confidence;
@@ -88,6 +95,7 @@ export function parseAiTagProposalResponse({ item, text, taxonomy, ruleProposal 
     proposed_tags: proposedTags,
     item_confidence: itemConfidence,
     warnings,
+    removed_evidence_terms: removedEvidenceTerms,
   };
 }
 
@@ -242,7 +250,7 @@ function stripJsonFence(text) {
   return match ? match[1].trim() : trimmed;
 }
 
-function sanitizeTagList(tags, allowedTags, displayNames, allowedEvidence, warnings) {
+function sanitizeTagList(tags, allowedTags, displayNames, allowedEvidence, warnings, removedEvidenceTerms, group) {
   if (tags === undefined) {
     return [];
   }
@@ -271,7 +279,10 @@ function sanitizeTagList(tags, allowedTags, displayNames, allowedEvidence, warni
       continue;
     }
 
-    const evidenceTerms = sanitizeEvidenceTerms(tag.evidence_terms, allowedEvidence, warnings);
+    const evidenceTerms = sanitizeEvidenceTerms(tag.evidence_terms, allowedEvidence, warnings, removedEvidenceTerms, {
+      group,
+      tag: tagKey,
+    });
     const nextTag = {
       tag: tagKey,
       display_name: displayNames.get(tagKey) ?? tagKey,
@@ -287,7 +298,7 @@ function sanitizeTagList(tags, allowedTags, displayNames, allowedEvidence, warni
   return sanitized;
 }
 
-function sanitizeEvidenceTerms(evidenceTerms, allowedEvidence, warnings) {
+function sanitizeEvidenceTerms(evidenceTerms, allowedEvidence, warnings, removedEvidenceTerms, context) {
   if (!Array.isArray(evidenceTerms)) {
     if (evidenceTerms !== undefined) pushWarning(warnings, "invalid_evidence_terms_removed");
     return [];
@@ -301,6 +312,12 @@ function sanitizeEvidenceTerms(evidenceTerms, allowedEvidence, warnings) {
     const trimmedTerm = term.trim();
     if (!isAllowedEvidenceTerm(trimmedTerm, allowedEvidence)) {
       pushWarning(warnings, "invalid_evidence_terms_removed");
+      removedEvidenceTerms.push({
+        group: context.group,
+        tag: context.tag,
+        term: trimmedTerm,
+        reason: "not_found_in_source",
+      });
       continue;
     }
     sanitized.push(trimmedTerm);
@@ -321,6 +338,7 @@ function buildEmptyProposal({ item, taxonomy, warnings }) {
     },
     item_confidence: "low",
     warnings,
+    removed_evidence_terms: [],
   };
 }
 
@@ -424,10 +442,32 @@ function validateProposal(proposal, index, taxonomy, errors) {
   if (!Array.isArray(proposal.warnings)) {
     errors.push(`${path}.warnings must be an array`);
   }
+  validateRemovedEvidenceTerms(proposal.removed_evidence_terms, `${path}.removed_evidence_terms`, errors);
   const tagSets = getAllowedTagSets(taxonomy);
   validateTagList(proposal.proposed_tags?.target_skills, `${path}.proposed_tags.target_skills`, tagSets.targetSkills, errors);
   validateTagList(proposal.proposed_tags?.method_tags, `${path}.proposed_tags.method_tags`, tagSets.methodTags, errors);
   validateTagList(proposal.proposed_tags?.feature_flags, `${path}.proposed_tags.feature_flags`, tagSets.featureFlags, errors);
+}
+
+function validateRemovedEvidenceTerms(terms, path, errors) {
+  if (terms === undefined) {
+    return;
+  }
+  if (!Array.isArray(terms)) {
+    errors.push(`${path} must be an array`);
+    return;
+  }
+  for (const [index, term] of terms.entries()) {
+    if (!term || typeof term !== "object" || Array.isArray(term)) {
+      errors.push(`${path}[${index}] must be an object`);
+      continue;
+    }
+    for (const key of ["group", "tag", "term", "reason"]) {
+      if (typeof term[key] !== "string" || !term[key].trim()) {
+        errors.push(`${path}[${index}].${key} must be a non-empty string`);
+      }
+    }
+  }
 }
 
 function validateTagList(tags, path, allowedTags, errors) {

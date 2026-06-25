@@ -128,6 +128,20 @@ assert.equal(unsupportedEvidenceTerms.warnings.includes("invalid_evidence_terms_
 assert.deepEqual(unsupportedEvidenceTerms.proposed_tags.target_skills[0].evidence_terms, ["切线"]);
 assert.deepEqual(unsupportedEvidenceTerms.proposed_tags.method_tags[0].evidence_terms, ["斜率", "可导"]);
 assert.deepEqual(unsupportedEvidenceTerms.proposed_tags.feature_flags[0].evidence_terms, ["A."]);
+assert.deepEqual(unsupportedEvidenceTerms.removed_evidence_terms, [
+  {
+    group: "target_skills",
+    tag: "tangent_slope",
+    term: "AI新增证据词",
+    reason: "not_found_in_source",
+  },
+  {
+    group: "feature_flags",
+    tag: "has_choice_options",
+    term: "不存在的选项",
+    reason: "not_found_in_source",
+  },
+]);
 
 const fenced = parseAiTagProposalResponse({
   item,
@@ -150,6 +164,7 @@ const artifact = buildAiTagProposalArtifact({
 const validation = validateAiTagProposalArtifact(artifact, taxonomy);
 assert.equal(validation.ok, true);
 assert.equal(artifact.proposals[0].taxonomy_id, "math_derivative_v0");
+assert.deepEqual(artifact.proposals[0].removed_evidence_terms, []);
 assert.equal("headers" in artifact.provider_meta, false);
 assert.equal("raw_response" in artifact.provider_meta, false);
 const summary = summarizeAiTagProposals(artifact);
