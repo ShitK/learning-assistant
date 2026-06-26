@@ -271,10 +271,10 @@ const mismatchedAnalysisResult = await handleConfirmRequest(
         return {
           ok: true,
           value: {
-            expected_diagnosis: "不应使用",
-            step_analysis: ["不应使用"],
-            solution_highlights: ["不应使用"],
-            standard_solution: "不应使用",
+            expected_diagnosis: "DeepSeek 基于编辑后题干生成展示分析。",
+            step_analysis: ["DeepSeek 编辑后展示步骤"],
+            solution_highlights: ["DeepSeek 编辑后展示高亮"],
+            standard_solution: "DeepSeek 基于编辑后题干生成标准解法。",
             warnings: [],
           },
         };
@@ -283,7 +283,11 @@ const mismatchedAnalysisResult = await handleConfirmRequest(
   },
 );
 
-assert.equal(mismatchAnalysisCallCount, 0);
+assert.equal(mismatchAnalysisCallCount, 1);
+assert.equal(
+  mismatchedAnalysisResult.body.mistake_diagnosis.standard_solution,
+  "DeepSeek 基于编辑后题干生成标准解法。",
+);
 assert.equal(
   mismatchedAnalysisResult.body.memory_delta.should_persist,
   false,
@@ -490,18 +494,46 @@ const mismatchedProblemOnlyToken = createImageConfirmationToken({
   can_persist_after_confirmation: false,
   draft_fingerprint: "different-problem-only-fingerprint",
 });
-const mismatchedSkipFollowUpResult = await handleConfirmRequest({
-  student_id: "demo_student_001",
-  task_type: "confirmed_image_diagnosis",
-  confirmation_token: mismatchedProblemOnlyToken,
-  confirmation_action: "skip_follow_up",
-  confirmed_extraction: problemOnlyExtraction,
-  student_profile: demoStudentProfile,
-  mistake_history: [],
-});
+let mismatchedAnalysisCallCount = 0;
+const mismatchedSkipFollowUpResult = await handleConfirmRequest(
+  {
+    student_id: "demo_student_001",
+    task_type: "confirmed_image_diagnosis",
+    confirmation_token: mismatchedProblemOnlyToken,
+    confirmation_action: "skip_follow_up",
+    confirmed_extraction: problemOnlyExtraction,
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  },
+  {
+    analysis_provider: {
+      async analyzeConfirmedExtraction(extraction, context) {
+        mismatchedAnalysisCallCount += 1;
+        assert.equal(extraction.question_text.trim().length > 0, true);
+        assert.equal(context.confirmation_action, "skip_follow_up");
+
+        return {
+          ok: true,
+          value: {
+            expected_diagnosis: "DeepSeek 基于确认题干生成展示分析。",
+            step_analysis: ["DeepSeek 展示步骤"],
+            solution_highlights: ["DeepSeek 展示高亮"],
+            standard_solution: "DeepSeek 基于确认题干生成标准解法。",
+            warnings: [],
+          },
+        };
+      },
+    },
+  },
+);
 
 assert.equal(mismatchedSkipFollowUpResult.status, 200);
+assert.equal(mismatchedAnalysisCallCount, 1);
 assert.equal(mismatchedSkipFollowUpResult.body.evidence_level, "problem_only");
+assert.equal(
+  mismatchedSkipFollowUpResult.body.mistake_diagnosis.standard_solution,
+  "DeepSeek 基于确认题干生成标准解法。",
+);
 assert.equal(
   mismatchedSkipFollowUpResult.body.profile_update_kind,
   "none",

@@ -216,9 +216,7 @@ function parseConfirmImageDiagnosisRequest(
       extraction: finalExtraction,
       confirmation_action: confirmationAction.value,
       follow_up_answer: followUpAnswer.value,
-      can_use_analysis_provider:
-        isDraftFingerprintMatched &&
-        evidence.evidence_level !== "insufficient",
+      can_use_analysis_provider: evidence.evidence_level !== "insufficient",
       is_confirmation_token_matched: isDraftFingerprintMatched,
     },
   };
