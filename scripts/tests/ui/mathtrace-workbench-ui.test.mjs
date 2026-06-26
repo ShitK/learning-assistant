@@ -8,6 +8,12 @@ function stripComments(sourceText) {
     .replace(/^\s*\/\/.*$/gm, "");
 }
 
+function assertIncludesAll(sourceText, fragments, message) {
+  for (const fragment of fragments) {
+    assert.equal(sourceText.includes(fragment), true, `${message} 缺少 ${fragment}`);
+  }
+}
+
 const jiti = createProjectJiti({ jsx: true });
 const source = stripComments(
   await readFile("src/components/mathtrace-workbench.tsx", "utf8"),
@@ -220,6 +226,67 @@ assert.match(
   workbenchStructureSources["practice-lab.tsx"],
   /variantPractice\?: ProductVariantPractice \| null/,
   "PracticeLab 应能消费正式产品裁剪后的变式练习 view model。",
+);
+
+assert.equal(
+  source.includes(
+    'import { requestDynamicVariantPractice } from "@/lib/rag/dynamic-variant-practice-client";',
+  ),
+  true,
+  "工作台应通过 browser-safe client 请求动态变式练习。",
+);
+
+assertIncludesAll(
+  source,
+  [
+    "dynamicVariantPractice",
+    "setDynamicVariantPractice",
+    "dynamicVariantPracticeRequestIdRef",
+    "useRef(0)",
+  ],
+  "工作台应持有动态 RAG 状态和 request id ref。",
+);
+
+assertIncludesAll(
+  source,
+  [
+    "const visibleVariantPractice =",
+    "isCurrentConfirmedImageReport",
+    'diagnosisView.source === "image"',
+    "dynamicVariantPractice",
+    "initialVariantPractice",
+  ],
+  "变式练习展示优先级应覆盖确认上传题动态推荐和默认样例静态推荐。",
+);
+
+assertIncludesAll(
+  source,
+  [
+    "const refreshDynamicVariantPractice = useCallback",
+    "requestDynamicVariantPractice({",
+    "const requestId = ++dynamicVariantPracticeRequestIdRef.current;",
+    "requestId !== dynamicVariantPracticeRequestIdRef.current",
+    "setDynamicVariantPractice(variantPractice);",
+  ],
+  "动态 RAG 请求应调用 client，并只允许最新请求写入状态。",
+);
+
+assert.equal(
+  source.includes("void refreshDynamicVariantPractice(diagnosis);"),
+  true,
+  "确认上传题生成报告后应异步请求动态变式练习。",
+);
+
+assertIncludesAll(
+  source,
+  [
+    "function clearDynamicVariantPractice(): void",
+    "dynamicVariantPracticeRequestIdRef.current += 1;",
+    "setDynamicVariantPractice(null);",
+    "function handleImagePrepareError(message: string): void",
+    "function handleClearImage(): void",
+  ],
+  "开始新诊断、图片准备失败或清空图片时应清空动态 RAG 推荐并废弃旧请求。",
 );
 
 for (const forbidden of [

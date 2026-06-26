@@ -5,6 +5,9 @@ const jiti = createProjectJiti();
 
 const { POST: diagnoseRoutePost } = jiti("./src/app/api/diagnose/route.ts");
 const { POST: confirmRoutePost } = jiti("./src/app/api/confirm/route.ts");
+const { POST: variantPracticeRoutePost } = jiti(
+  "./src/app/api/variant-practice/route.ts",
+);
 const { handleDiagnoseRequest } = jiti("./src/lib/diagnosis/diagnose-service.ts");
 const { handleConfirmRequest } = jiti("./src/lib/diagnosis/confirm-service.ts");
 const { demoStudentProfile, mistakeHistory } = jiti(
@@ -31,6 +34,12 @@ await assertRouteError(
 );
 
 await assertRouteError(confirmRoutePost, rawRequest("{"), 400, "invalid_json");
+await assertRouteError(
+  variantPracticeRoutePost,
+  rawRequest("{"),
+  400,
+  "invalid_json",
+);
 
 const sampleRouteResponse = await diagnoseRoutePost(jsonRequest(samplePayload));
 const sampleRouteBody = await sampleRouteResponse.json();
@@ -135,6 +144,48 @@ await assertRouteError(
   }),
   400,
   "invalid_request",
+);
+
+await assertRouteError(
+  variantPracticeRoutePost,
+  jsonRequest({
+    student_id: "student_002",
+    request_source: "confirmed_image_diagnosis",
+    evidence_level: "student_work_sufficient",
+    persistence_evidence: "student_work",
+    profile_update_kind: "mistake_cause",
+    question_text: "已知函数 $f(x)=\\ln x-ax+1$，讨论函数单调性。",
+    knowledge_points: ["derivative_monotonicity"],
+    mistake_causes: ["classification_missing"],
+  }),
+  400,
+  "invalid_request",
+);
+
+const variantPracticeRouteResponse = await variantPracticeRoutePost(
+  jsonRequest({
+    student_id: "demo_student_001",
+    request_source: "confirmed_image_diagnosis",
+    evidence_level: "student_work_sufficient",
+    persistence_evidence: "student_work",
+    profile_update_kind: "mistake_cause",
+    question_text: "已知函数 $f(x)=\\ln x-ax+1$，讨论函数单调性并求参数范围。",
+    knowledge_points: ["derivative_monotonicity"],
+    mistake_causes: ["classification_missing"],
+  }),
+);
+const variantPracticeRouteBody = await variantPracticeRouteResponse.json();
+
+assert.equal(variantPracticeRouteResponse.status, 200);
+assert.equal(
+  variantPracticeRouteBody.variant_practice === null ||
+    variantPracticeRouteBody.variant_practice.items.length === 3,
+  true,
+);
+assert.equal(JSON.stringify(variantPracticeRouteBody).includes("score"), false);
+assert.equal(
+  JSON.stringify(variantPracticeRouteBody).includes("matched_dimensions"),
+  false,
 );
 
 const confirmResult = await handleConfirmRequest(confirmPayload);

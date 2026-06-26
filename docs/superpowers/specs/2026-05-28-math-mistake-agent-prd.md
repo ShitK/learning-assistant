@@ -165,6 +165,8 @@ P1.9 在 P1.8 云端画像快照基础上重构学生画像展示语义，但不
 
 P1.10 在 P1.8/P1.9 之上新增 profile evidence API：`GET /api/student-profile/evidence?student_id=demo_student_001&limit=8`。该接口只在服务端读取最近 `memory_events`，返回知识点薄弱证据、错因新增证据和最近事件摘要，不返回完整 `memory_delta`、题目正文、学生答案、标准答案、完整 `diagnosis_runs` 或图片内容。前端有 evidence 时用它增强“推荐依据”；读取失败、数据库未配置或无事件时继续使用 P1.9 fallback。
 
+P2.7 在确认后的上传题诊断报告之后新增只读动态变式练习 API：`POST /api/variant-practice`。该接口只接收诊断摘要，服务端从受控知识点、错因和证据等级构造 Practice Query，读取本地 `enriched_practice_corpus.json` 并调用 Variant Practice Agent，返回裁剪后的 `ProductVariantPractice`。它只替换前端练习展示来源，不改变 `/api/confirm` 诊断响应、不写 `memory_events` / `student_profiles` / 错题本、不决定 `memory_delta` 或画像持久化。非导数题、证据不足、题库 artifact 缺失、题库非法或推荐不足 3 道时，前端继续展示诊断响应自带的 `practice_questions`。
+
 ### 可逐步 Agent 化的边界
 
 为保证演示稳定、数据可控、学生画像不被模型污染，P0/P1 的确定性 Pipeline 是主线。后续可以逐步把部分环节替换为 Agent 或工具调用，但所有智能化输出都必须经过 schema 校验和业务规则收口。

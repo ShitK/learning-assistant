@@ -2580,6 +2580,91 @@ P2.3 已经在本地工具链层面把“AI 做多数标签建议，人类只审
 
 ---
 
+## 21. P2.7 Dynamic Variant Practice（上传题后的动态变式练习）
+
+### 当前状态
+
+已完成实现和本地验证，待完成本地 Claude Code 审查。这个阶段把 P2.5 的静态推荐 artifact 推进到确认上传题后的只读动态推荐 API：上传题经 `/api/confirm` 生成诊断报告后，前端再异步请求 `POST /api/variant-practice`，服务端基于诊断摘要从本地增强题库中推荐 3 道变式练习。
+
+### 功能价值
+
+P2.5 能在产品页展示真实教辅题库里的练习题，但推荐仍绑定默认样例题 artifact。P2.7 让“上传题诊断 -> 下一步练什么”形成产品闭环：同一个学生上传不同导数题，练习区可以基于本次知识点、错因和题干信号动态推荐，而不是永远展示同一份预生成结果。
+
+### 关键设计
+
+P2.7 没有把 RAG 合进 `/api/confirm`。诊断和画像写入仍走原来的确认链路；RAG 是独立的只读 API。这样 artifact 缺失、题库 JSON 损坏、Agent 模块加载失败或推荐不足，都不会影响诊断报告、错题本写入、`memory_events` 或 `student_profiles`。
+
+动态 Practice Query 的专题归属先看 `knowledge_points`，只支持导数专题。`classification_missing` 这类跨专题错因不能单独把数列或函数定义域题路由到导数题库，只能在已确认导数专题后作为辅助信号。上传题没有 `section_title`，所以服务端用受控映射推导导数章节；如果目标章节在 corpus 中不存在，就降级为只用知识点和目标能力标签搜索。
+
+前端展示仍只消费 `ProductVariantPractice`。正式页面不展示 `score`、`matched_dimensions`、`item_id`、`source_candidate_id`、raw reason 或 raw warnings。动态请求失败时，练习区保持诊断响应自带的 `practice_questions`，避免学生看到空状态。
+
+### 技术决策与取舍
+
+我选择新增 `POST /api/variant-practice`，而不是扩大 `/api/confirm`，是因为 RAG 推荐不是诊断事实，也不是画像写入依据。把它放成独立只读接口，可以让主诊断路径继续稳定，RAG 失败只影响练习展示，不影响报告本身。
+
+第一版坚持“动态 RAG 成功就展示 3 道，否则回退”，是为了保持 P2.5 三卡片演示体验一致。这个策略牺牲了一些部分可用性，但避免把 1-2 道半成品推荐包装成完整练习链路。后续题库更大或 UI 支持不满 3 道提示后，可以放宽为 1-2 道 + notice。
+
+### 性能收益（如适用）
+
+动态推荐不调用模型、不访问数据库、不走网络题库，只读取本地 ignored artifact 并运行确定性 Agent。前端也不等待它完成才展示诊断报告，而是先显示 fallback 练习题，RAG 成功后替换，因此不会拉长 `/api/confirm` 主流程。
+
+### 面试官可能怎么问
+
+1. 为什么不把 RAG 直接放进 `/api/confirm`？
+2. 上传题没有章节标题，你怎么构造 RAG query？
+3. 怎么避免非导数题误召回导数题库？
+4. RAG 推荐会不会污染学生画像？
+5. 为什么动态推荐不足 3 道就回退？
+6. 前端怎么避免旧请求覆盖新报告？
+7. 为什么只返回 product view model，不返回 score 和 source ref？
+
+### 推荐回答
+
+我会这样回答：
+
+P2.7 的重点是把 RAG 变成“下一步练什么”的只读题源服务，而不是把它变成诊断事实来源。`/api/confirm` 仍然负责用户确认、证据等级、错因诊断、`memory_delta` 和可选持久化；`/api/variant-practice` 只负责在报告完成后，根据诊断摘要找 3 道练习题。这样 RAG artifact 坏了，学生还是能看到诊断报告和 fallback 练习题。
+
+上传题没有章节标题，所以我没有让前端传自由章节名，而是在服务端按受控规则从知识点和题干信号推导。专题归属必须先看 `knowledge_points`，例如 `derivative_monotonicity` 或 `parameter_classification`。`classification_missing` 只是跨专题错因，不能单独决定导数路由，这避免了数列分类讨论题被错误推荐导数参数题。
+
+RAG 输出不会写画像。它不写 `memory_events`、不改 `student_profiles`、不影响 `memory_delta.should_persist`。它返回的也不是 raw Agent artifact，而是裁剪后的 `ProductVariantPractice`：只包含题型、题干和学生可读理由，隐藏内部标签、分数和调试字段。
+
+### 可能被继续追问
+
+- 多专题题库接入后，query 映射如何从硬编码演进为 taxonomy registry？
+- 什么时候允许返回 1-2 道动态推荐？
+- 真实 corpus 足够大后，是否还需要 pgvector？
+- 如何评估动态推荐质量，而不是只看是否凑满 3 道？
+
+### 反思与后续优化
+
+P2.7 仍然是 demo-scoped：固定 `demo_student_001`，只支持导数专题，题库来自本地 ignored artifact。下一步更合理的是增加动态推荐质量评估和多专题 taxonomy 映射，而不是马上引入登录、老师端或向量数据库。
+
+### 项目中的真实证据
+
+- 代码：
+  - `src/app/api/variant-practice/route.ts`
+  - `src/lib/rag/dynamic-variant-practice-query.ts`
+  - `src/lib/server/rag/dynamic-variant-practice-service.ts`
+  - `src/lib/rag/dynamic-variant-practice-client.ts`
+  - `src/components/mathtrace-workbench.tsx`
+- 测试：
+  - `scripts/tests/rag/dynamic-variant-practice-query.test.mjs`
+  - `scripts/tests/rag/dynamic-variant-practice-service.test.mjs`
+  - `scripts/tests/rag/dynamic-variant-practice-client.test.mjs`
+  - `scripts/tests/ui/mathtrace-workbench-ui.test.mjs`
+  - `scripts/tests/smoke/api-smoke.test.mjs`
+- 文档：
+  - `docs/superpowers/specs/2026-06-26-p27-dynamic-variant-practice-design.md`
+  - `docs/superpowers/plans/2026-06-26-p27-dynamic-variant-practice.md`
+- 验证：
+  - `node scripts/run-tests.mjs default`
+  - `npm run test:smoke`
+  - `npm run lint`
+  - `npm run build`
+  - `git diff --check`
+
+---
+
 ## 后续可追加的阶段
 
 这些阶段还没有完全完成，后续实现后可以继续按同一模板追加：
@@ -2588,7 +2673,7 @@ P2.3 已经在本地工具链层面把“AI 做多数标签建议，人类只审
 - 数据库支持的图片确认草稿版本审计。
 - P2.3 evidence gate calibration（证据门控校准）评估报告：统计 `invalid_evidence_terms_removed`（有证据词被清洗移除）、`removed_evidence_terms`（被清洗移除的证据词列表）和校准前后的 auto approved（自动通过）数量变化。
 - 多专题 taxonomy registry（标签体系注册表）和 tag key（内部标签 key）治理。
-- 变式题推荐模块的前端 demo 接入。
+- 多专题动态变式练习推荐和推荐质量评估。
 - 图像题 corpus 处理和图文混合题召回。
 - 动态生成变式练习题。
 - Kimi / GLM / DeepSeek provider 的生产级 telemetry 与审计。
@@ -2600,32 +2685,32 @@ P2.3 已经在本地工具链层面把“AI 做多数标签建议，人类只审
 
 ### LLM 安全边界
 
-重点阶段：5、7、9、10、11、12、13、14、15、16、17、20。核心表达：模型只做抽取、确认后文本增强或受控 proposal，不直接写画像；所有模型输出先过 JSON parser、业务边界校验或 taxonomy validator；只有学生步骤或用户确认构成足够证据时才写具体错因；数据库写入也必须经过服务端确认和证据策略，云端当前画像也只能从受控 `memory_events` 投影。P1.9 进一步强调展示层只能派生“薄弱指数”和推荐依据，P1.10 只暴露服务端摘要后的 evidence，不把模型、UI 文案或完整事件历史升级成画像写入事实；P2.0 题源 corpus 也只能作为检索来源，不能决定画像写入。P2.3 让 AI 做标签建议，但最终标签必须经过 taxonomy、auto gate 或人工 review records。
+重点阶段：5、7、9、10、11、12、13、14、15、16、17、20、21。核心表达：模型只做抽取、确认后文本增强或受控 proposal，不直接写画像；所有模型输出先过 JSON parser、业务边界校验或 taxonomy validator；只有学生步骤或用户确认构成足够证据时才写具体错因；数据库写入也必须经过服务端确认和证据策略，云端当前画像也只能从受控 `memory_events` 投影。P1.9 进一步强调展示层只能派生“薄弱指数”和推荐依据，P1.10 只暴露服务端摘要后的 evidence，不把模型、UI 文案或完整事件历史升级成画像写入事实；P2.0 题源 corpus 也只能作为检索来源，不能决定画像写入。P2.3 让 AI 做标签建议，但最终标签必须经过 taxonomy、auto gate 或人工 review records；P2.7 让 RAG 只返回练习展示模型，不写画像事实层。
 
 ### Demo 稳定性
 
-重点阶段：1、2、6、9、10、11、12、13、14、15、16、17、19、20。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像；P1.6a 用 `npm run test:smoke` 和浏览器 checklist 锁住合并前主路径；P1.7/P1.8 未配置数据库时仍保持 demo 可运行；P1.10 读取 evidence 失败、数据库未配置或无事件时继续使用 P1.9 fallback；P2.0/P2.2/P2.3 题源工具只生成本地 ignored artifact，不影响 `sample_diagnosis`。
+重点阶段：1、2、6、9、10、11、12、13、14、15、16、17、19、20、21。核心表达：P0 样例题是正式演示路径，不依赖模型；P1 图片诊断失败不会破坏样例题主线；题干-only 图片进入可信追问，不污染画像；P1.6a 用 `npm run test:smoke` 和浏览器 checklist 锁住合并前主路径；P1.7/P1.8 未配置数据库时仍保持 demo 可运行；P1.10 读取 evidence 失败、数据库未配置或无事件时继续使用 P1.9 fallback；P2.0/P2.2/P2.3 题源工具只生成本地 ignored artifact，不影响 `sample_diagnosis`；P2.7 动态推荐失败时继续展示诊断响应自带练习题。
 
 ### Agent 工程化
 
-重点阶段：4、5、13、14、15、16、17、18、19、20。核心表达：先用确定性 pipeline 表达 Agent 流程，再逐步把适合的环节替换为模型或工具调用；长期记忆不是模型自由记忆，而是确认后的学习证据先进入 `diagnosis_runs` / `memory_events`，再投影成 `student_profiles` 当前画像。P1.9 把展示派生收口到前端 view model，P1.10 再用只读 evidence API 解释推荐依据，说明 Agent 产生的结构化事实、当前画像和 UI 解释层要分开。P2.0 开始把 RAG 拆成题源工程、人工审核、corpus fixture 和后续检索模块，P2.1/P2.2 再用本地 Agent 和 metadata enrichment 证明题源如何服务“下一步练什么”，P2.3 进一步让 AI 做 taxonomy-bound proposal，再由 auto gate 和人工 review 收口，而不是把“向量库”直接塞进 Agent 主链路。可以类比 Hermes persistent memory / session search 的分层、mem0 的按用户范围检索思路和 OpenClaw 的可检查上下文边界，但 MathTrace 没集成这些库，只借鉴分层、门控和安全边界原则。
+重点阶段：4、5、13、14、15、16、17、18、19、20、21。核心表达：先用确定性 pipeline 表达 Agent 流程，再逐步把适合的环节替换为模型或工具调用；长期记忆不是模型自由记忆，而是确认后的学习证据先进入 `diagnosis_runs` / `memory_events`，再投影成 `student_profiles` 当前画像。P1.9 把展示派生收口到前端 view model，P1.10 再用只读 evidence API 解释推荐依据，说明 Agent 产生的结构化事实、当前画像和 UI 解释层要分开。P2.0 开始把 RAG 拆成题源工程、人工审核、corpus fixture 和后续检索模块，P2.1/P2.2 再用本地 Agent 和 metadata enrichment 证明题源如何服务“下一步练什么”，P2.3 进一步让 AI 做 taxonomy-bound proposal，再由 auto gate 和人工 review 收口，P2.7 才把这条链路接到上传题后的只读练习推荐 API。
 
 ### 长期记忆与数据持久化
 
-重点阶段：6、13、14、15、16、17、19、20。核心表达：localStorage 只是 demo fallback，Postgres 才是服务端事实层；P1.7 存诊断运行、错题本条目和画像变化事件，P1.8 再用 `student_profiles` 保存从 gated `memory_events` 投影出的当前画像快照；P1.9 的“薄弱指数”只是从 `mastery_scores` 派生的展示值，不写回 DB；P1.10 读取最近 `memory_events` 摘要增强推荐依据，但不暴露完整事件、完整诊断或题目正文。P2.0/P2.2/P2.3 的 RAG 题源 corpus、enriched corpus 和 tag review records 仍是检索层，不是画像事实层；它不会替代 `memory_events`、`student_profiles` 或 evidence API。面试时要说清楚当前仍固定 `demo_student_001`，无登录、真实多用户、面向用户的 RLS 策略或老师端，前端不直连数据库，service role only server side。
+重点阶段：6、13、14、15、16、17、19、20、21。核心表达：localStorage 只是 demo fallback，Postgres 才是服务端事实层；P1.7 存诊断运行、错题本条目和画像变化事件，P1.8 再用 `student_profiles` 保存从 gated `memory_events` 投影出的当前画像快照；P1.9 的“薄弱指数”只是从 `mastery_scores` 派生的展示值，不写回 DB；P1.10 读取最近 `memory_events` 摘要增强推荐依据，但不暴露完整事件、完整诊断或题目正文。P2.0/P2.2/P2.3 的 RAG 题源 corpus、enriched corpus 和 tag review records 仍是检索层，不是画像事实层；P2.7 动态推荐也不写 `memory_events`、`student_profiles` 或错题本。面试时要说清楚当前仍固定 `demo_student_001`，无登录、真实多用户、面向用户的 RLS 策略或老师端，前端不直连数据库，service role only server side。
 
 ### 前端状态管理
 
-重点阶段：2、6、7、11、12、13、14、15、16。核心表达：单页工作台用 React state 足够；localStorage 只做 P0/P1 演示状态恢复；前端只在服务端 `memory_delta.should_persist=true` 且响应 guard 通过时持久化本地 demo 状态；P1.7/P1.8 前端不直连数据库，只通过 Next API 读取错题本和云端画像。页面启动时先用 localStorage/demo 保证首屏，再 best-effort 拉取 `/api/student-profile` 和 evidence 摘要，云端失败时不覆盖本地 fallback。P1.9 的画像展示由 browser-safe view model 派生，P1.10 的 evidence 请求由 workbench 统一管理，不让 `ProfileInsights` 直接 fetch 或读取 Supabase。
+重点阶段：2、6、7、11、12、13、14、15、16、21。核心表达：单页工作台用 React state 足够；localStorage 只做 P0/P1 演示状态恢复；前端只在服务端 `memory_delta.should_persist=true` 且响应 guard 通过时持久化本地 demo 状态；P1.7/P1.8 前端不直连数据库，只通过 Next API 读取错题本和云端画像。页面启动时先用 localStorage/demo 保证首屏，再 best-effort 拉取 `/api/student-profile` 和 evidence 摘要，云端失败时不覆盖本地 fallback。P1.9 的画像展示由 browser-safe view model 派生，P1.10 的 evidence 请求由 workbench 统一管理，不让 `ProfileInsights` 直接 fetch 或读取 Supabase；P2.7 的动态 RAG 请求由 workbench 管理 request id，避免旧请求覆盖新报告。
 
 ### 测试策略
 
-重点阶段：3、4、5、6、7、9、10、11、12、13、14、15、16、17、18、19、20。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界；P1.6a 用 smoke 测试验证 Demo 主路径和 API contract 是否仍能跑通；P1.7/P1.8 需要覆盖数据库未配置、fake repo 写入、只读错题本 API 和云端画像投影/读取；P1.9 用 view model/UI 测试锁住薄弱指数、错因筛选和“不声称读取完整 `memory_events`”的展示边界；P1.10 增加 evidence service/client/UI/architecture 边界测试；P2.0-P2.3 题源工具用 Node 脚本测试覆盖 OCR 候选映射、审核页导出、corpus schema、tag proposal、AI proposal fake provider、merge gate、tag review UI、review record merge、enriched corpus、Agent evaluation、CLI 默认输出和敏感输出边界。
+重点阶段：3、4、5、6、7、9、10、11、12、13、14、15、16、17、18、19、20、21。核心表达：核心风险点都拆成可测试的 TypeScript helper 或 service；P1.5 用 eval harness 固化“无学生证据不写具体错因”的边界；P1.6a 用 smoke 测试验证 Demo 主路径和 API contract 是否仍能跑通；P1.7/P1.8 需要覆盖数据库未配置、fake repo 写入、只读错题本 API 和云端画像投影/读取；P1.9 用 view model/UI 测试锁住薄弱指数、错因筛选和“不声称读取完整 `memory_events`”的展示边界；P1.10 增加 evidence service/client/UI/architecture 边界测试；P2.0-P2.3 题源工具用 Node 脚本测试覆盖 OCR 候选映射、审核页导出、corpus schema、tag proposal、AI proposal fake provider、merge gate、tag review UI、review record merge、enriched corpus、Agent evaluation、CLI 默认输出和敏感输出边界；P2.7 增加 query mapper、service、client、API smoke 和 workbench 源码回归测试。
 
 ### 性能收益
 
-重点阶段：1、2、3、4、5、6、7、8、9、10、11、12、13、14、15、16、17、19、20。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退、`npm run test:eval`、`npm run test:smoke`、数据库未配置 no-op 降级、`student_profiles` 当前画像快照读取，P1.9 只在前端纯函数中派生画像展示，P1.10 读取最近 N 条 `memory_events` 摘要而不是前端拉全量历史，P2.0 用 9MB 导数切片、本地静态审核页和 Node CLI 快速验证 69 道可用 corpus item，P2.2 用本地 deterministic pipeline 生成 proposal、enriched corpus 和 Agent evaluation，P2.3 用 AI proposal + auto gate + review queue 降低人工逐题标注成本。
+重点阶段：1、2、3、4、5、6、7、8、9、10、11、12、13、14、15、16、17、19、20、21。核心表达：性能收益不只看运行速度，也包括减少模型调用、减少网络往返、压缩上传 payload、缩短测试反馈、降低调试数据体积和提升演示稳定性。面试回答时要尽量绑定证据，例如 1MB 上传上限、一次 `/api/diagnose` 返回完整结果、确定性 pipeline、localStorage 恢复、确认后文本增强失败回退、`npm run test:eval`、`npm run test:smoke`、数据库未配置 no-op 降级、`student_profiles` 当前画像快照读取，P1.9 只在前端纯函数中派生画像展示，P1.10 读取最近 N 条 `memory_events` 摘要而不是前端拉全量历史，P2.0 用 9MB 导数切片、本地静态审核页和 Node CLI 快速验证 69 道可用 corpus item，P2.2 用本地 deterministic pipeline 生成 proposal、enriched corpus 和 Agent evaluation，P2.3 用 AI proposal + auto gate + review queue 降低人工逐题标注成本，P2.7 不拉长 `/api/confirm` 主流程，动态 RAG 成功后再替换练习展示。
 
 ### 范围控制
 
-重点阶段：1、8、11、13、14、15、16、17、19、20。核心表达：不提前做登录、老师端、完整 RAG 和复杂 Agent 框架；先验证错因诊断闭环和可信写入边界，再用 P1.7/P1.8 引入最小数据库底座和当前画像快照。P1.9 只改展示语义；P1.10 只新增 profile evidence 摘要 API，不新增 DB schema、正向练习证据表或完整历史事件浏览。P2.0-P2.3 只完成教辅题源到本地 corpus、proposal、AI-assisted review 和 enriched corpus 的前置闭环，仍不上 pgvector、embedding、检索 API 或产品前端推荐；多用户画像和 RLS 用户策略也仍属于后续演进。
+重点阶段：1、8、11、13、14、15、16、17、19、20、21。核心表达：不提前做登录、老师端、完整 RAG 和复杂 Agent 框架；先验证错因诊断闭环和可信写入边界，再用 P1.7/P1.8 引入最小数据库底座和当前画像快照。P1.9 只改展示语义；P1.10 只新增 profile evidence 摘要 API，不新增 DB schema、正向练习证据表或完整历史事件浏览。P2.0-P2.3 只完成教辅题源到本地 corpus、proposal、AI-assisted review 和 enriched corpus 的前置闭环，P2.7 只做确认上传题后的只读动态推荐，仍不上 pgvector、embedding、多专题线上 RAG 或老师端。

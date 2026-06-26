@@ -1,6 +1,6 @@
 # MathTrace RAG 本地 Artifacts 说明
 
-`artifacts/rag` 是本地生成目录，已被 `.gitignore` 忽略，不进入 Git。它保存 P2.0-P2.5 的 PDF/MinerU 解析、人工审核、题库生成、标签建议、标签审核和变式练习推荐产物。
+`artifacts/rag` 是本地生成目录，已被 `.gitignore` 忽略，不进入 Git。它保存 P2.0-P2.7 的 PDF/MinerU 解析、人工审核、题库生成、标签建议、标签审核和变式练习推荐产物。
 
 ## 核心原则
 
@@ -9,6 +9,7 @@
 - 不删除人工审核成果，除非已经有明确备份。
 - 可再生成的中间产物可以归档或重建，但要先 dry-run。
 - 产品页当前只读取 `artifacts/rag/variant-practice-agent/recommendations.json`，缺失时会回退到预写练习题。
+- P2.7 动态变式练习 API 运行时读取 `artifacts/rag/enriched-practice-corpus/enriched_practice_corpus.json`，只消费已通过标签审核的题；产品页默认样例题仍可读取 `artifacts/rag/variant-practice-agent/recommendations.json`。
 
 ## 文件夹说明
 

@@ -38,6 +38,7 @@ import {
   requestSampleDiagnosis,
   shouldPersistDiagnoseProfile,
 } from "@/lib/diagnosis/diagnose-client";
+import { requestDynamicVariantPractice } from "@/lib/rag/dynamic-variant-practice-client";
 import {
   deleteMistakeBookItem,
   requestMistakeBookItems,
@@ -70,7 +71,10 @@ import type {
   DiagnosisViewModel,
   EditableExtractionDraft,
 } from "@/lib/diagnosis/diagnosis-view-model";
-import type { FollowUpAnswerDraft } from "@/lib/diagnosis/diagnose-api";
+import type {
+  DiagnoseImageSuccessResponse,
+  FollowUpAnswerDraft,
+} from "@/lib/diagnosis/diagnose-api";
 import type { MistakeBookResponse } from "@/lib/mistake-book/mistake-book-client";
 import type { PreparedImageUpload } from "@/lib/image-diagnosis/image-upload-client";
 import type { StudentProfileEvidenceSummary } from "@/lib/student-profile/student-profile-evidence-service";
@@ -123,6 +127,8 @@ export function MathTraceWorkbench({
     useState<StudentProfile | null>(null);
   const [studentProfileEvidence, setStudentProfileEvidence] =
     useState<StudentProfileEvidenceSummary | null>(null);
+  const [dynamicVariantPractice, setDynamicVariantPractice] =
+    useState<ProductVariantPractice | null>(null);
   const studentProfile = sessionStudentProfile ?? restoredStudentProfile;
   const [profilePreview, setProfilePreview] = useState<ProfilePreview | null>(
     null,
@@ -153,13 +159,16 @@ export function MathTraceWorkbench({
   const isDiagnosisRequestLockedRef = useRef(false);
   const cloudProfileRefreshRequestIdRef = useRef(0);
   const studentProfileEvidenceRefreshRequestIdRef = useRef(0);
+  const dynamicVariantPracticeRequestIdRef = useRef(0);
   const isTimelineRunning =
     isTimelineAnimating && completedStepCount < diagnosisView.steps.length;
   const isDiagnosing = isRequestPending || isTimelineRunning;
   const visibleVariantPractice =
-    diagnosisMode === "sample" && diagnosisView.id === DEFAULT_SAMPLE_ID
-      ? initialVariantPractice
-      : null;
+    isCurrentConfirmedImageReport && diagnosisView.source === "image"
+      ? dynamicVariantPractice
+      : diagnosisMode === "sample" && diagnosisView.id === DEFAULT_SAMPLE_ID
+        ? initialVariantPractice
+        : null;
 
   const refreshMistakeBook = useCallback(async (): Promise<void> => {
     setMistakeBookStatus("loading");
@@ -235,6 +244,23 @@ export function MathTraceWorkbench({
       setStudentProfileEvidence(null);
     }
   }, [hasHydrated]);
+
+  const refreshDynamicVariantPractice = useCallback(
+    async (diagnosis: DiagnoseImageSuccessResponse): Promise<void> => {
+      const requestId = ++dynamicVariantPracticeRequestIdRef.current;
+      const variantPractice = await requestDynamicVariantPractice({
+        fetcher: window.fetch.bind(window),
+        diagnosis,
+      });
+
+      if (requestId !== dynamicVariantPracticeRequestIdRef.current) {
+        return;
+      }
+
+      setDynamicVariantPractice(variantPractice);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!hasHydrated) {
@@ -328,6 +354,7 @@ export function MathTraceWorkbench({
   }, [completedStepCount, diagnosisView.steps.length, isTimelineAnimating]);
 
   function handleSelectSample(sampleId: SampleQuestionId): void {
+    clearDynamicVariantPractice();
     const nextSample = getSampleById(sampleId);
     setSelectedSampleId(sampleId);
     setDiagnosisMode("sample");
@@ -348,6 +375,7 @@ export function MathTraceWorkbench({
       return;
     }
 
+    clearDynamicVariantPractice();
     setDiagnosisMode(nextMode);
     setEditableExtractionDraft(null);
     resetFollowUpState();
@@ -366,6 +394,7 @@ export function MathTraceWorkbench({
   }
 
   function handleImagePrepareStart(): void {
+    clearDynamicVariantPractice();
     setIsImagePreparing(true);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
@@ -376,6 +405,7 @@ export function MathTraceWorkbench({
   }
 
   function handleImagePrepared(image: PreparedImageUpload): void {
+    clearDynamicVariantPractice();
     setSelectedImage(image);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
@@ -385,6 +415,7 @@ export function MathTraceWorkbench({
   }
 
   function handleImagePrepareError(message: string): void {
+    clearDynamicVariantPractice();
     setSelectedImage(null);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
@@ -398,6 +429,7 @@ export function MathTraceWorkbench({
       return;
     }
 
+    clearDynamicVariantPractice();
     setSelectedImage(null);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
@@ -513,6 +545,11 @@ export function MathTraceWorkbench({
     setPendingFollowUpAnswer(null);
   }
 
+  function clearDynamicVariantPractice(): void {
+    dynamicVariantPracticeRequestIdRef.current += 1;
+    setDynamicVariantPractice(null);
+  }
+
   function handleResetProfile(): void {
     if (isDiagnosing) {
       return;
@@ -555,6 +592,7 @@ export function MathTraceWorkbench({
     setCompletedStepCount(0);
     setIsTimelineAnimating(true);
     setIsRequestPending(true);
+    clearDynamicVariantPractice();
 
     try {
       if (diagnosisMode === "sample") {
@@ -677,6 +715,7 @@ export function MathTraceWorkbench({
     setCompletedStepCount(0);
     setIsTimelineAnimating(true);
     setIsRequestPending(true);
+    clearDynamicVariantPractice();
 
     try {
       const diagnosis = await requestConfirmedImageDiagnosis({
@@ -691,6 +730,7 @@ export function MathTraceWorkbench({
       const nextView = createImageDiagnosisViewModel(diagnosis);
       setDiagnosisView(nextView);
       setIsCurrentConfirmedImageReport(true);
+      void refreshDynamicVariantPractice(diagnosis);
       if (confirmationAction === "submit_stuck_point") {
         setPendingFollowUpAnswer(options.follow_up_answer ?? null);
       } else {

@@ -26,6 +26,7 @@
 - P1 后端具备 `image_diagnosis` 服务端路径：通用 vision provider adapter，支持通过 `VISION_PROVIDER_*` 切换 Anthropic-compatible 与 OpenAI-compatible provider；模型只做图片抽取，`/api/diagnose` 先返回可编辑 `extraction_review` 草稿，用户确认后再由 `/api/confirm` 复用确定性 Pipeline。
 - P1 前端具备图片上传入口、预览、客户端校验和压缩、识别结果编辑确认表单、可恢复错误态，以及未确认/低置信度/确认令牌不匹配不写入 localStorage 的保护。
 - P1.7/P1.8 已引入 Supabase Postgres 数据底座：确认后的诊断可写入 `students`、`diagnosis_runs`、`mistake_book_items` 和 `memory_events`，`student_profiles` 保存从 gated `memory_events` 投影出的当前画像快照，并支持只读错题本 MVP；未配置 Supabase 时 demo 主流程仍稳定运行。
+- P2.7 起，确认后的导数类上传题诊断可以通过只读 `POST /api/variant-practice` 请求服务端 RAG，从本地增强题库返回裁剪后的 3 道变式练习；失败或不支持时仍回退到诊断响应自带练习题。
 
 当前还没有完成：
 
@@ -33,7 +34,7 @@
 - 真正的 Agent 内部编排模块。
 - 用户登录、权限、老师端、班级端。
 - 动态生成变式练习。
-- 真实登录、RLS 用户策略、老师端、RAG、pgvector/Milvus、多用户云端画像和长期回放。
+- 真实登录、RLS 用户策略、老师端、多专题线上 RAG、pgvector/Milvus、多用户云端画像和长期回放。
 
 ## 3. 总体架构目标
 
