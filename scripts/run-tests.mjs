@@ -36,6 +36,8 @@ const suites = {
     "scripts/tests/rag/variant-practice-agent-ui-cli.test.mjs",
     "scripts/tests/rag/variant-practice-product-view-model.test.mjs",
     "scripts/tests/rag/variant-practice-product-loader.test.mjs",
+    "scripts/tests/rag/rag-artifact-inventory-core.test.mjs",
+    "scripts/tests/rag/rag-artifact-organizer-cli.test.mjs",
     "scripts/tests/image-diagnosis/vision-extraction-parser.test.mjs",
     "scripts/tests/providers/anthropic-compatible-provider.test.mjs",
     "scripts/tests/providers/analysis-provider.test.mjs",
