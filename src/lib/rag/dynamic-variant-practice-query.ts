@@ -171,7 +171,8 @@ function canTriggerDynamicVariantPractice(
 
   return (
     request.evidence_level === "problem_only" &&
-    request.persistence_evidence === "user_confirmed"
+    (request.persistence_evidence === "uploaded_problem_only" ||
+      request.persistence_evidence === "user_confirmed")
   );
 }
 

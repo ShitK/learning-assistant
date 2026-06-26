@@ -211,8 +211,10 @@ interface DynamicVariantPracticeRequest {
 - 请求体只包含文本摘要和少量标签，不携带图片 base64 或本地文件内容；P2.7 不需要额外配置 body size limit。
 - 只有以下诊断可以触发动态 RAG：
   - `evidence_level="student_work_sufficient"` 且 `persistence_evidence="student_work"`。
+  - `evidence_level="problem_only"` 且 `persistence_evidence="uploaded_problem_only"`。
   - `evidence_level="problem_only"` 且 `persistence_evidence="user_confirmed"`。
-- `problem_only` 且 `persistence_evidence="uploaded_problem_only"` / `"none"` 的报告不触发动态 RAG，避免把题型风险当成学生具体错因。
+- `problem_only` 且 `persistence_evidence="uploaded_problem_only"` 可以触发动态 RAG，但只作为题型/知识点维度的只读练习推荐；不得把推荐结果当成学生具体错因或画像写入依据。
+- `problem_only` 且 `persistence_evidence="none"` 的报告不触发动态 RAG，避免把未确认草稿或无效证据用于推荐。
 
 ### 6.3 服务层
 
@@ -380,7 +382,8 @@ P2.7 的 RAG API 是只读服务：
 - `knowledge_points=["derivative_monotonicity", "function_domain"]` 可以触发导数推荐；`knowledge_points=["function_domain", "sequence_recursion"]` 返回 `null`。
 - 题干含“切线/斜率”时追加切线相关 target skills。
 - `evidence_level="student_work_sufficient"` 且 `persistence_evidence="student_work"` 可以触发。
-- `evidence_level="problem_only"` 且 `persistence_evidence="uploaded_problem_only"` / `"none"` 返回 `null`。
+- `evidence_level="problem_only"` 且 `persistence_evidence="uploaded_problem_only"` 可以触发题型/知识点维度的只读推荐。
+- `evidence_level="problem_only"` 且 `persistence_evidence="none"` 返回 `null`。
 - `evidence_level="problem_only"` 且 `persistence_evidence="user_confirmed"` 可以触发。
 - 未知 `knowledge_points` / `mistake_causes` 被忽略，不透传进 query。
 - `question_text` 按 800 个 Unicode 字符截断，不把超长输入送进 search。

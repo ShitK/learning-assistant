@@ -194,7 +194,8 @@ const baseRequest = {
     persistence_evidence: "uploaded_problem_only",
     profile_update_kind: "problem_type_focus",
   });
-  assert.equal(query, null);
+  assert.notEqual(query, null);
+  assert.equal(query.target_skills.includes("monotonicity"), true);
 }
 
 {
@@ -430,7 +431,8 @@ function canTriggerDynamicVariantPractice(
 
   return (
     request.evidence_level === "problem_only" &&
-    request.persistence_evidence === "user_confirmed"
+    (request.persistence_evidence === "uploaded_problem_only" ||
+      request.persistence_evidence === "user_confirmed")
   );
 }
 

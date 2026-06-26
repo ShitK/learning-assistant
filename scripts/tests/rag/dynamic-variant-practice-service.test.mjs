@@ -60,6 +60,22 @@ const fakeAgent = {
   const result = await handleDynamicVariantPracticeRequest(
     {
       ...baseRequest,
+      evidence_level: "problem_only",
+      persistence_evidence: "uploaded_problem_only",
+      profile_update_kind: "problem_type_focus",
+    },
+    { corpusFilePath: corpusPath, agent: fakeAgent },
+  );
+  assert.equal(result.status, 200);
+  assert.equal(result.body.variant_practice.items.length, 3);
+  assert.equal(capturedInput.query.target_skills.includes("monotonicity"), true);
+}
+
+{
+  capturedInput = null;
+  const result = await handleDynamicVariantPracticeRequest(
+    {
+      ...baseRequest,
       knowledge_points: ["sequence_recursion"],
       mistake_causes: ["classification_missing"],
     },
