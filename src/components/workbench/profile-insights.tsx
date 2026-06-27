@@ -150,7 +150,7 @@ export function ProfileInsights({
                       </p>
                     </div>
                     <span className="text-sm font-semibold text-[var(--charcoal)]">
-                      累计 {cause.nextCount} 次{formatSignedDelta(cause.delta)}
+                      {cause.countSummary}
                     </span>
                   </div>
                 </div>

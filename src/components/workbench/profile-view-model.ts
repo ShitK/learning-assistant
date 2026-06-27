@@ -45,6 +45,7 @@ export interface MistakeCauseInsight {
   previousCount: number;
   nextCount: number;
   delta: number;
+  countSummary: string;
   isHighFrequency: boolean;
   isNewInDiagnosis: boolean;
 }
@@ -182,20 +183,21 @@ function createKnowledgePriorityRow(input: {
     weaknessIndex,
     weaknessDelta,
     status,
-    summary: createKnowledgeSummary(weaknessDelta, status),
+    summary: createKnowledgeSummary(weaknessDelta, weaknessIndex, status),
   };
 }
 
 function createKnowledgeSummary(
   weaknessDelta: number,
+  weaknessIndex: number,
   status: WeaknessStatusView,
 ): string {
   if (weaknessDelta > 0) {
-    return "本次新增薄弱信号";
+    return `本次 +${weaknessDelta}，当前薄弱指数 ${weaknessIndex}`;
   }
 
   if (weaknessDelta < 0) {
-    return "薄弱信号有所缓和";
+    return `本次 ${weaknessDelta}，当前薄弱指数 ${weaknessIndex}`;
   }
 
   return status.label === "稳定" ? "当前较稳定" : "保持关注";
@@ -230,11 +232,27 @@ function createMistakeCauseInsights(input: {
         previousCount,
         nextCount,
         delta: nextCount - previousCount,
+        countSummary: createMistakeCauseCountSummary(
+          nextCount,
+          nextCount - previousCount,
+        ),
         isHighFrequency: nextCount >= HIGH_FREQUENCY_MISTAKE_CAUSE_THRESHOLD,
         isNewInDiagnosis: nextCount - previousCount > 0,
       };
     })
     .sort(compareMistakeCauseInsights);
+}
+
+function createMistakeCauseCountSummary(nextCount: number, delta: number): string {
+  if (delta > 0) {
+    return `本次 +${delta}，累计 ${nextCount} 次`;
+  }
+
+  if (delta < 0) {
+    return `本次 ${delta}，累计 ${nextCount} 次`;
+  }
+
+  return `累计 ${nextCount} 次`;
 }
 
 function createActionAdvice(

@@ -355,6 +355,10 @@ assert.equal(profileInsights.conclusionRows.length, 2);
 assert.equal(profileInsights.conclusionRows[0].id, "parameter_classification");
 assert.equal(profileInsights.conclusionRows[0].weaknessIndex, 62);
 assert.equal(profileInsights.conclusionRows[0].weaknessDelta, 8);
+assert.equal(
+  profileInsights.conclusionRows[0].summary,
+  "本次 +8，当前薄弱指数 62",
+);
 assert.equal(profileInsights.conclusionRows[0].status.label, "高优先级");
 assert.equal(profileInsights.priorityRows[0].id, "parameter_classification");
 assert.equal(profileInsights.highlightedMistakeCauses.length, 2);
@@ -369,6 +373,10 @@ assert.equal(
 assert.equal(
   profileInsights.highlightedMistakeCauses[0].isHighFrequency,
   true,
+);
+assert.equal(
+  profileInsights.highlightedMistakeCauses[0].countSummary,
+  "本次 +1，累计 5 次",
 );
 assert.equal(
   profileInsights.otherMistakeCauses.some(
