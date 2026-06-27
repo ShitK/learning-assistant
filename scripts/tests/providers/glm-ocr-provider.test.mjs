@@ -58,6 +58,34 @@ const baseConfig = {
 }
 
 {
+  const calls = [];
+  const provider = createGlmOcrVisionProvider({
+    ...baseConfig,
+    image_format: "data_url",
+    fetch_impl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return new Response(
+        JSON.stringify({
+          md_results:
+            "15. 已知函数 $f(x)=x^2$，求单调性。\n\n解：\n$f'(x)=2x$",
+        }),
+        { status: 200 },
+      );
+    },
+  });
+
+  const result = await provider.extractQuestionFromImage({
+    image_base64: "iVBORw0KGgo=",
+    mime_type: "image/png",
+    student_profile_summary: "demo profile",
+  });
+
+  assert.equal(result.ok, true);
+  const body = JSON.parse(calls[0].init.body);
+  assert.equal(body.file, "data:image/png;base64,iVBORw0KGgo=");
+}
+
+{
   const provider = createGlmOcrVisionProvider({
     ...baseConfig,
     fetch_impl: async () =>
@@ -141,6 +169,33 @@ const baseConfig = {
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "model_request_failed");
   assert.equal(result.error.provider_debug.failure_kind, "network_failed");
+}
+
+{
+  const provider = createGlmOcrVisionProvider({
+    ...baseConfig,
+    timeout_ms: 1,
+    fetch_impl: (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () =>
+          reject(init.signal.reason),
+        );
+      }),
+  });
+
+  const result = await provider.extractQuestionFromImage({
+    image_base64: "iVBORw0KGgo=",
+    mime_type: "image/png",
+    student_profile_summary: "demo profile",
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "model_timeout");
+  assert.deepEqual(result.error.provider_debug, {
+    provider_name: "glm_ocr",
+    provider_stage: "ocr",
+    failure_kind: "timeout",
+  });
 }
 
 {

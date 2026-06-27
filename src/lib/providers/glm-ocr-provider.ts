@@ -4,7 +4,7 @@ import type {
   VisionProviderConfig,
   VisionProviderError,
   VisionProviderResult,
-} from "@/lib/providers/anthropic-compatible-provider";
+} from "@/lib/providers/vision-provider-types";
 import { parseGlmOcrResponse } from "@/lib/providers/glm-ocr-response-parser";
 import type { ProviderFailureDebug, ProviderFailureKind } from "@/lib/shared/provider-error";
 import { mapGlmOcrContentToDraft } from "@/lib/vision-extraction/glm-ocr-draft-mapper";

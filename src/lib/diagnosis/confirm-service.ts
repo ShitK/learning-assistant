@@ -216,6 +216,8 @@ function parseConfirmImageDiagnosisRequest(
       extraction: finalExtraction,
       confirmation_action: confirmationAction.value,
       follow_up_answer: followUpAnswer.value,
+      // Analysis provider 只增强展示文本。确认 token/fingerprint 是否匹配
+      // 仍通过 is_confirmation_token_matched 单独控制画像持久化边界。
       can_use_analysis_provider: evidence.evidence_level !== "insufficient",
       is_confirmation_token_matched: isDraftFingerprintMatched,
     },

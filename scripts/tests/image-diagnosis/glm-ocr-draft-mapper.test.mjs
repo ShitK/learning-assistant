@@ -84,6 +84,23 @@ const { mapGlmOcrContentToDraft } = jiti(
 }
 
 {
+  const draft = mapGlmOcrContentToDraft({
+    markdown:
+      "15. 已知函数 f(x)=x^2，求单调性。\n$f'(x)=2x$\n所以 f(x) 在 (0,+∞) 递增",
+    layout_blocks: [],
+    warnings: [],
+  });
+
+  assert.equal(draft.question_text.includes("求单调性"), true);
+  assert.equal(draft.student_answer.includes("$f'(x)=2x$"), true);
+  assert.deepEqual(draft.student_solution_steps, [
+    "$f'(x)=2x$",
+    "所以 $f(x)$ 在 $(0,+∞)$ 递增",
+  ]);
+  assert.equal(draft.extraction_confidence, "medium");
+}
+
+{
   const longText = `15. 已知函数 $f(x)=x^2$，求单调性。\n\n解：\n${Array.from({ length: 12 }, (_, index) => `${index + 1}. 推导步骤 $x=${index}$`).join("\n")}`;
   const draft = mapGlmOcrContentToDraft({
     markdown: longText,
