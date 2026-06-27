@@ -998,7 +998,13 @@ model_invalid_output
 
 ### Vision Provider API Key Handling
 
-Vision provider API Key 只能放在服务端环境变量中，不允许前端直连。当前实现支持 `anthropic` 与 `openai` 两类协议：Anthropic-compatible provider 使用 Messages 格式；OpenAI-compatible provider 使用 `chat/completions` 和 `image_url` 格式，可接 GLM-4.6V-FlashX 等视觉模型。
+Vision provider API Key 只能放在服务端环境变量中，不允许前端直连。当前实现支持 `anthropic`、`openai` 与 `glm_ocr` 三类协议：
+
+- `anthropic`：Anthropic-compatible provider，使用 Messages 格式。
+- `openai`：OpenAI-compatible provider，使用 `/chat/completions` 和 `image_url` 格式，可接 GLM-4.6V-FlashX 等视觉模型。
+- `glm_ocr`：智谱 GLM-OCR 文档解析 provider，使用 `/api/paas/v4/layout_parsing`，只负责 OCR markdown/layout 抽取并映射为 `VisionExtractionDraft`。
+
+未设置 `VISION_PROVIDER_PROTOCOL` 时仍保持原有 `anthropic` 默认行为；`glm_ocr` 需要显式配置，不自动替换现有本地 demo 配置。
 
 ```text
 VISION_PROVIDER_PROTOCOL=openai
@@ -1010,6 +1016,21 @@ VISION_PROVIDER_IMAGE_FORMAT=base64
 VISION_PROVIDER_TIMEOUT_MS=60000
 MATHTRACE_CONFIRM_SECRET=<stable-local-secret>
 ```
+
+GLM-OCR 推荐本地配置：
+
+```text
+VISION_PROVIDER_PROTOCOL=glm_ocr
+VISION_PROVIDER_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+VISION_PROVIDER_MODEL=glm-ocr
+VISION_PROVIDER_API_KEY=<local-secret>
+VISION_PROVIDER_NAME=glm_ocr
+VISION_PROVIDER_IMAGE_FORMAT=base64
+VISION_PROVIDER_TIMEOUT_MS=60000
+MATHTRACE_CONFIRM_SECRET=<stable-local-secret>
+```
+
+`glm_ocr` 请求只发送 `model`、当前上传图片的 `file` 和安全 OCR 选项，不发送 `student_profile_summary`、学生画像、错题历史、`memory_delta`、chat messages 或 repair prompt。GLM-OCR 不生成标准解法、错因、画像增量或变式练习；标准解法仍由 `/api/confirm` 后的 text analysis provider 或本地规则基于用户确认文本生成，画像写入仍由证据策略决定。
 
 旧的 `MIMO_BASE_URL`、`MIMO_MODEL`、`MIMO_API_KEY` 仍作为本地兼容别名保留；新配置优先使用 `VISION_PROVIDER_*`。`MATHTRACE_CONFIRM_SECRET` 独立于 provider API Key，只用于确认 token 和草稿指纹，不参与模型调用。`provider_debug.provider_name` 默认使用 `anthropic_compatible_vision`，如需区分本地 provider，可显式设置 `VISION_PROVIDER_NAME`，但不得包含 API Key 或私密信息。OpenAI-compatible 图片字段默认使用 data URL；GLM-4.6V-FlashX 使用裸 base64，应配置 `VISION_PROVIDER_IMAGE_FORMAT=base64`。
 

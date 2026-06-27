@@ -1,6 +1,6 @@
 # 错因地图 MathTrace 技术路径文档
 
-更新日期：2026-06-17
+更新日期：2026-06-27
 适用范围：从黑客松 P0 Demo 扩展到可长期使用的高中数学错题诊断产品。
 
 ## 1. 文档目标
@@ -27,10 +27,10 @@
 - P1 前端具备图片上传入口、预览、客户端校验和压缩、识别结果编辑确认表单、可恢复错误态，以及未确认/低置信度/确认令牌不匹配不写入 localStorage 的保护。
 - P1.7/P1.8 已引入 Supabase Postgres 数据底座：确认后的诊断可写入 `students`、`diagnosis_runs`、`mistake_book_items` 和 `memory_events`，`student_profiles` 保存从 gated `memory_events` 投影出的当前画像快照，并支持只读错题本 MVP；未配置 Supabase 时 demo 主流程仍稳定运行。
 - P2.7 起，确认后的导数类上传题诊断可以通过只读 `POST /api/variant-practice` 请求服务端 RAG，从本地增强题库返回裁剪后的 3 道变式练习；失败或不支持时仍回退到诊断响应自带练习题。
+- P2.8 起，`VISION_PROVIDER_PROTOCOL=glm_ocr` 可显式切换到智谱 GLM-OCR 文档解析接口 `/layout_parsing`，先把上传图片解析成 OCR markdown/layout，再由本地 mapper 生成 `VisionExtractionDraft`；当前已完成 fake provider 本地验证，真实 GLM-OCR smoke 取决于本地 API Key 配置。
 
 当前还没有完成：
 
-- 非 Anthropic-compatible / OpenAI-compatible provider 的适配器实现。
 - 真正的 Agent 内部编排模块。
 - 用户登录、权限、老师端、班级端。
 - 动态生成变式练习。
@@ -167,13 +167,15 @@ runMathTraceAgent()
 
 ```text
 P0：不调用模型，只用内置样例。
-P1：多模态 provider 只负责图片识别和结构化抽取，当前通过 `VISION_PROVIDER_*` 配置切换 GLM-4.6V-FlashX、Kimi Code、MiMo 等兼容 provider。
+P1：多模态 provider 只负责图片识别和结构化抽取，当前通过 `VISION_PROVIDER_*` 配置切换 GLM-4.6V-FlashX、Kimi Code、MiMo 等兼容 provider，也可显式切换 `glm_ocr` 使用 GLM-OCR 文档解析接口。
 P1：确认后 text analysis provider 可增强报告表达，当前通过 `ANALYSIS_PROVIDER_*` 配置 DeepSeek `deepseek-v4-flash`。
 P2：模型 adapter 可负责结构化生成练习和计划；是否引入 Vercel AI SDK 需要单独评估。
 P3：根据复杂度评估 OpenAI Agents SDK 或 LangGraph。
 ```
 
-GLM、Kimi、MiMo 适合放在“题目识别模块”里，由服务端 adapter 包装成统一的 `VisionExtractionProvider`。当前实现支持 Anthropic-compatible 与 OpenAI-compatible 接口，并显式关闭 `thinking` 以确保返回可解析 text block；切换兼容 provider 时优先改本地 `VISION_PROVIDER_*` 配置，不改 route 和确定性 Pipeline。确认 token 使用独立 `MATHTRACE_CONFIRM_SECRET` 或本地 demo secret 签名，不再回退到 provider API Key，避免切模型时让已发出的确认草稿失效。
+GLM、Kimi、MiMo 适合放在“题目识别模块”里，由服务端 adapter 包装成统一的 `VisionExtractionProvider`。当前实现支持 Anthropic-compatible、OpenAI-compatible 与 GLM-OCR 三类路径：前两类面向通用 vision chat，`glm_ocr` 面向 OCR/layout 文档解析。切换 provider 时优先改本地 `VISION_PROVIDER_*` 配置，不改 route 和确定性 Pipeline。确认 token 使用独立 `MATHTRACE_CONFIRM_SECRET` 或本地 demo secret 签名，不再回退到 provider API Key，避免切模型时让已发出的确认草稿失效。
+
+GLM-OCR provider 只调用 `/api/paas/v4/layout_parsing`，请求体只包含 `model`、当前图片 `file` 和安全 OCR 选项，不携带 `student_profile_summary`、画像、错题历史、`memory_delta` 或 chat repair prompt。它读取 `md_results` / `layout_details` 后经本地 mapper 生成 `VisionExtractionDraft`，不生成标准解法、错因、画像增量或变式练习。在线上传诊断用 GLM-OCR；MinerU 继续保留为离线 PDF/题库入库链路。
 
 DeepSeek `deepseek-v4-flash` 当前放在“确认后文本分析增强模块”里，由 `ANALYSIS_PROVIDER_*` 配置。它只接收用户确认后的文本草稿，增强 `expected_diagnosis`、`step_analysis`、`solution_highlights` 和 `standard_solution`，不参与 `knowledge_mapping`、`mistake_causes`、`severity`、`memory_delta`、`student_profile`、练习和复习计划生成。`ANALYSIS_PROVIDER_BASE_URL` 支持 provider 根地址或完整 `/chat/completions` endpoint，但当前协议仍只支持 OpenAI-compatible。推荐链路是：
 
