@@ -44,7 +44,26 @@ const { mapGlmOcrContentToDraft } = jiti(
 
 {
   const draft = mapGlmOcrContentToDraft({
-    markdown: "15. 已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
+    markdown:
+      "15. 已知函数 $f(x)=x^3-3ax+1$，讨论单调性。\n\n解：\n$f'(x)=3x^2-3a$",
+    layout_blocks: [
+      { index: 1, label: "text", content: "15. 已知函数 $g(x)=\\ln x-a$，求零点。" },
+      { index: 2, label: "formula", content: "$g'(x)=\\frac{1}{x}$" },
+      { index: 3, label: "text", content: "所以 $g(x)$ 单调递增" },
+    ],
+    warnings: [],
+  });
+
+  assert.equal(draft.student_answer.includes("$f'(x)=3x^2-3a$"), true);
+  assert.equal(draft.student_answer.includes("$g'(x)=\\frac{1}{x}$"), false);
+  assert.deepEqual(draft.student_solution_steps, [
+    "$f'(x)=3x^2-3a$",
+  ]);
+}
+
+{
+  const draft = mapGlmOcrContentToDraft({
+    markdown: "",
     layout_blocks: [
       { index: 1, label: "text", content: "15. 已知函数 $f(x)=x^3-3ax+1$，讨论单调性。" },
       { index: 2, label: "formula", content: "$f'(x)=3x^2-3a$" },
@@ -58,7 +77,10 @@ const { mapGlmOcrContentToDraft } = jiti(
     "$f'(x)=3x^2-3a$",
     "令 $f'(x)=0$ 得 $x=\\sqrt a$",
   ]);
-  assert.equal(draft.warnings.includes("GLM-OCR 未返回 md_results，已使用 layout_details 文本拼接。"), true);
+  assert.equal(
+    draft.warnings.includes("GLM-OCR 未返回 md_results，已使用 layout_details 文本拼接。"),
+    true,
+  );
 }
 
 {

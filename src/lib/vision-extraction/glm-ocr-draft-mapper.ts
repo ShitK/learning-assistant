@@ -14,7 +14,7 @@ export function mapGlmOcrContentToDraft(
 ): VisionExtractionDraft {
   const warnings = [...content.warnings];
   const orderedLayoutText = getOrderedLayoutText(content);
-  const sourceText = orderedLayoutText || content.markdown;
+  const sourceText = content.markdown.trim() || orderedLayoutText;
   const split = splitQuestionAndAnswer(sourceText);
 
   if (!split.answerText) {
