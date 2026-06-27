@@ -10,6 +10,9 @@ const { POST: variantPracticeRoutePost } = jiti(
 );
 const { handleDiagnoseRequest } = jiti("./src/lib/diagnosis/diagnose-service.ts");
 const { handleConfirmRequest } = jiti("./src/lib/diagnosis/confirm-service.ts");
+const { createVisionProvider } = jiti(
+  "./src/lib/providers/anthropic-compatible-provider.ts",
+);
 const { demoStudentProfile, mistakeHistory } = jiti(
   "./src/data/mathtrace-demo.ts",
 );
@@ -118,6 +121,51 @@ assert.deepEqual(
 assert.equal("memory_delta" in extractionResult.body, false);
 assert.equal("student_profile" in extractionResult.body, false);
 assert.equal(typeof extractionResult.body.confirmation_token, "string");
+
+const glmOcrVisionProvider = createVisionProvider({
+  protocol: "glm_ocr",
+  base_url: "https://open.bigmodel.cn/api/paas/v4",
+  model: "glm-ocr",
+  api_key: "secret-key-for-test",
+  provider_name: "glm_ocr",
+  image_format: "base64",
+  timeout_ms: 1000,
+  fetch_impl: async () =>
+    new Response(
+      JSON.stringify({
+        id: "task_123456789",
+        model: "GLM-OCR",
+        md_results:
+          "15. 已知函数 $f(x)=\\ln x-ax+1$，讨论单调性。\n\n解：\n$f'(x)=1/x-a$",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ),
+});
+
+const glmOcrExtractionResult = await handleDiagnoseRequest(
+  {
+    ...samplePayload,
+    task_type: "image_diagnosis",
+    sample_question_id: null,
+    image_base64: "iVBORw0KGgo=",
+    image_mime_type: "image/png",
+  },
+  { vision_provider: glmOcrVisionProvider },
+);
+
+assert.equal(glmOcrExtractionResult.status, 200);
+assert.equal(glmOcrExtractionResult.body.stage, "extraction_review");
+assert.equal(isDiagnoseImageExtractionResponse(glmOcrExtractionResult.body), true);
+assert.equal(
+  glmOcrExtractionResult.body.recognized_question.question_text.includes("单调性"),
+  true,
+);
+assert.equal(
+  glmOcrExtractionResult.body.recognized_question.student_answer.includes("1/x-a"),
+  true,
+);
+assert.equal("memory_delta" in glmOcrExtractionResult.body, false);
+assert.equal("student_profile" in glmOcrExtractionResult.body, false);
 
 const confirmPayload = {
   student_id: "demo_student_001",
