@@ -42,6 +42,7 @@ const suites = {
     "scripts/tests/rag/rag-artifact-inventory-core.test.mjs",
     "scripts/tests/rag/rag-artifact-organizer-cli.test.mjs",
     "scripts/tests/image-diagnosis/vision-extraction-parser.test.mjs",
+    "scripts/tests/image-diagnosis/glm-ocr-draft-mapper.test.mjs",
     "scripts/tests/providers/anthropic-compatible-provider.test.mjs",
     "scripts/tests/providers/analysis-provider.test.mjs",
     "scripts/tests/providers/glm-ocr-response-parser.test.mjs",
