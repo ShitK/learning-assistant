@@ -512,6 +512,40 @@ assert.deepEqual(legacyEnvConfig.value, {
   timeout_ms: 15_000,
 });
 
+{
+  const defaultConfig = createVisionProviderConfigFromEnv({
+    VISION_PROVIDER_API_KEY: "secret-key-for-test",
+  });
+  assert.equal(defaultConfig.ok, true);
+  assert.equal(defaultConfig.value.protocol, "anthropic");
+}
+
+{
+  const glmOcrConfig = createVisionProviderConfigFromEnv({
+    VISION_PROVIDER_API_KEY: "secret-key-for-test",
+    VISION_PROVIDER_PROTOCOL: "glm_ocr",
+    VISION_PROVIDER_BASE_URL: "https://open.bigmodel.cn/api/paas/v4",
+    VISION_PROVIDER_MODEL: "glm-ocr",
+    VISION_PROVIDER_NAME: "glm_ocr",
+    VISION_PROVIDER_IMAGE_FORMAT: "base64",
+  });
+  assert.equal(glmOcrConfig.ok, true);
+  assert.equal(glmOcrConfig.value.protocol, "glm_ocr");
+  assert.equal(glmOcrConfig.value.base_url, "https://open.bigmodel.cn/api/paas/v4");
+  assert.equal(glmOcrConfig.value.model, "glm-ocr");
+  assert.equal(glmOcrConfig.value.provider_name, "glm_ocr");
+  assert.equal(glmOcrConfig.value.image_format, "base64");
+}
+
+{
+  const unknownProtocolConfig = createVisionProviderConfigFromEnv({
+    VISION_PROVIDER_API_KEY: "secret-key-for-test",
+    VISION_PROVIDER_PROTOCOL: "glm-ocr",
+  });
+  assert.equal(unknownProtocolConfig.ok, true);
+  assert.equal(unknownProtocolConfig.value.protocol, "anthropic");
+}
+
 const missingEnvConfig = createVisionProviderConfigFromEnv({
   MIMO_BASE_URL: "https://token-plan-cn.xiaomimimo.com/anthropic",
   MIMO_MODEL: "mimo-v2.5",

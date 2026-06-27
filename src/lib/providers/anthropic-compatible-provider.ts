@@ -3,6 +3,7 @@ import {
   parseVisionExtractionText,
 } from "@/lib/vision-extraction/vision-extraction-parser";
 import { isRecord } from "@/lib/shared/utils";
+import { createGlmOcrVisionProvider } from "@/lib/providers/glm-ocr-provider";
 import type {
   VisionExtractionDebugSummary,
   VisionExtractionDraft,
@@ -42,7 +43,7 @@ export interface VisionExtractionProvider {
   ): Promise<VisionProviderResult>;
 }
 
-export type VisionProviderProtocol = "anthropic" | "openai";
+export type VisionProviderProtocol = "anthropic" | "openai" | "glm_ocr";
 export type VisionProviderImageFormat = "data_url" | "base64";
 
 export interface VisionProviderConfig {
@@ -138,6 +139,10 @@ export function createAnthropicCompatibleVisionProvider(
 export function createVisionProvider(
   config: VisionProviderRuntimeConfig,
 ): VisionExtractionProvider {
+  if (config.protocol === "glm_ocr") {
+    return createGlmOcrVisionProvider(config);
+  }
+
   const fetchImpl = config.fetch_impl ?? fetch;
   const providerName = normalizeProviderName(config.provider_name);
 
@@ -496,9 +501,12 @@ function readFirstEnv(
 function readProviderProtocol(
   env: Record<string, string | undefined>,
 ): VisionProviderProtocol {
-  return env.VISION_PROVIDER_PROTOCOL?.trim() === "openai"
-    ? "openai"
-    : "anthropic";
+  const protocol = env.VISION_PROVIDER_PROTOCOL?.trim();
+  if (protocol === "glm_ocr") {
+    return "glm_ocr";
+  }
+
+  return protocol === "openai" ? "openai" : "anthropic";
 }
 
 function readProviderImageFormat(
