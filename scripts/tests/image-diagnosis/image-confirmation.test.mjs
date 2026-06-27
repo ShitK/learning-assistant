@@ -100,6 +100,63 @@ assert.equal(confirmResult.status, 200);
 assert.equal(confirmResult.body.source, "image");
 assert.equal(confirmResult.body.memory_delta.should_persist, true);
 
+const longStepProvider = {
+  async extractQuestionFromImage() {
+    return {
+      ok: true,
+      value: {
+        question_text: "已知函数 $f(x)=x^3-3ax+1$，讨论单调性。",
+        student_answer: "学生写了较长的分类讨论过程。",
+        student_solution_steps: Array.from(
+          { length: 12 },
+          (_, index) => `第 ${index + 1} 步：分类讨论。`,
+        ),
+        extraction_confidence: "medium",
+        warnings: [],
+      },
+    };
+  },
+};
+const longStepReviewResult = await handleDiagnoseRequest(
+  {
+    student_id: "demo_student_001",
+    task_type: "image_diagnosis",
+    sample_question_id: null,
+    image_base64: "iVBORw0KGgo=",
+    image_mime_type: "image/png",
+    student_profile: demoStudentProfile,
+    mistake_history: [],
+  },
+  { vision_provider: longStepProvider },
+);
+const longStepConfirmResult = await handleConfirmRequest({
+  student_id: "demo_student_001",
+  task_type: "confirmed_image_diagnosis",
+  confirmation_token: longStepReviewResult.body.confirmation_token,
+  confirmed_extraction: {
+    question_text: longStepReviewResult.body.recognized_question.question_text,
+    student_answer: longStepReviewResult.body.recognized_question.student_answer,
+    student_solution_steps:
+      longStepReviewResult.body.recognized_question.student_solution_steps,
+    extraction_confidence:
+      longStepReviewResult.body.recognized_question.extraction_confidence,
+    warnings: longStepReviewResult.body.warnings,
+  },
+  student_profile: demoStudentProfile,
+  mistake_history: [],
+});
+
+assert.equal(longStepReviewResult.body.recognized_question.student_solution_steps.length, 12);
+assert.equal(longStepConfirmResult.status, 200);
+assert.equal(longStepConfirmResult.body.memory_delta.should_persist, true);
+assert.equal(longStepConfirmResult.body.persistence_evidence, "student_work");
+assert.equal(
+  longStepConfirmResult.body.warnings.includes(
+    "确认草稿与识别令牌不匹配，本次只生成报告，不写入长期画像。",
+  ),
+  false,
+);
+
 const enhancedConfirmResult = await handleConfirmRequest(
   {
     student_id: "demo_student_001",
@@ -810,7 +867,7 @@ const longStepsResult = parseConfirmedExtractionDraft({
 });
 
 assert.equal(longStepsResult.ok, true);
-assert.equal(longStepsResult.value.student_solution_steps.length, 8);
+assert.equal(longStepsResult.value.student_solution_steps.length, 9);
 
 const longWarningsResult = parseConfirmedExtractionDraft({
   question_text: "题干",

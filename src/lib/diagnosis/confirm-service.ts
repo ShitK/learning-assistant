@@ -296,7 +296,7 @@ function parseProblemOnlyExtractionDraft(
     return { ok: false, message: "识别置信度不合法。" };
   }
 
-  const steps = parseEditableLines(value.student_solution_steps, 8);
+  const steps = parseEditableLines(value.student_solution_steps);
   if (!steps.ok) {
     return { ok: false, message: "学生解题步骤必须是字符串数组。" };
   }
@@ -323,7 +323,7 @@ function parseProblemOnlyExtractionDraft(
 
 function parseEditableLines(
   value: unknown,
-  maxCount: number,
+  maxCount = Number.MAX_SAFE_INTEGER,
 ): { ok: true; value: string[] } | { ok: false } {
   if (!Array.isArray(value)) {
     return { ok: false };

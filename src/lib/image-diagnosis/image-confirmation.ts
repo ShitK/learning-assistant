@@ -35,7 +35,7 @@ export function parseConfirmedExtractionDraft(
     return { ok: false, message: "识别置信度不合法。" };
   }
 
-  const steps = parseEditableLines(value.student_solution_steps, 8);
+  const steps = parseEditableLines(value.student_solution_steps);
   if (!steps.ok || steps.value.length === 0) {
     return { ok: false, message: "学生解题步骤至少需要 1 条。" };
   }
@@ -70,7 +70,7 @@ export function joinEditableStepsText(steps: string[]): string {
 
 function parseEditableLines(
   value: unknown,
-  maxCount: number,
+  maxCount = Number.MAX_SAFE_INTEGER,
 ): { ok: true; value: string[] } | { ok: false } {
   if (!Array.isArray(value)) {
     return { ok: false };
