@@ -90,8 +90,7 @@
 - 较复杂或有风险的任务应先创建 Git 分支，不直接在 main 上修改。
 - Codex 负责阅读上下文、明确假设、制定计划、实现代码、运行相关自测，并说明验证结果。
 - Claude Code 主要负责代码审查，重点关注 bug、回归风险、测试缺口、安全或数据丢失风险、无关改动。
-- Claude Code 审查后的建议优先写在 GitHub PR 评论中。
-- 如果当前任务没有 PR，则将审查意见写入 `docs/reviews/YYYY-MM-DD-任务名-review.md`。
+- Claude Code 审查后的建议写入 `docs/reviews/YYYY-MM-DD-任务名-review.md`。
 - Codex 根据审查意见逐项修复，修复后重新运行相关测试，并说明哪些问题已处理、哪些保留不处理以及原因。
 - Codex 在“实现完成 + 自测通过 + Claude Code 审查修复完成 + 再测通过”后，默认创建一个本地 Git commit 作为交付检查点；除非用户明确要求不提交。
 - 创建本地 commit 前必须先展示并核对 `git status --short` 和提交范围，只精确 stage 本任务相关文件；不得使用 `git add .` 这类容易混入无关文件的命令。
