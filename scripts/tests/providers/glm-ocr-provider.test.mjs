@@ -47,7 +47,7 @@ const baseConfig = {
 
   const body = JSON.parse(calls[0].init.body);
   assert.equal(body.model, "glm-ocr");
-  assert.equal(body.file, "iVBORw0KGgo=");
+  assert.equal(body.file, "data:image/png;base64,iVBORw0KGgo=");
   assert.equal(body.need_layout_visualization, false);
   assert.equal(body.return_crop_images, false);
   assert.equal("messages" in body, false);

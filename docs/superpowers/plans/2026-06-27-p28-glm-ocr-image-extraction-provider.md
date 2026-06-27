@@ -92,7 +92,7 @@ Append these assertions to `scripts/tests/providers/anthropic-compatible-provide
     VISION_PROVIDER_BASE_URL: "https://open.bigmodel.cn/api/paas/v4",
     VISION_PROVIDER_MODEL: "glm-ocr",
     VISION_PROVIDER_NAME: "glm_ocr",
-    VISION_PROVIDER_IMAGE_FORMAT: "base64",
+    VISION_PROVIDER_IMAGE_FORMAT: "data_url",
   });
   assert.equal(glmOcrConfig.ok, true);
   assert.equal(glmOcrConfig.value.protocol, "glm_ocr");
@@ -758,7 +758,7 @@ const baseConfig = {
   model: "glm-ocr",
   api_key: "secret-key-for-test",
   provider_name: "glm_ocr",
-  image_format: "base64",
+  image_format: "data_url",
   timeout_ms: 1000,
 };
 
@@ -795,7 +795,7 @@ const baseConfig = {
 
   const body = JSON.parse(calls[0].init.body);
   assert.equal(body.model, "glm-ocr");
-  assert.equal(body.file, "iVBORw0KGgo=");
+  assert.equal(body.file, "data:image/png;base64,iVBORw0KGgo=");
   assert.equal(body.need_layout_visualization, false);
   assert.equal(body.return_crop_images, false);
   assert.equal("messages" in body, false);
@@ -1203,7 +1203,7 @@ const glmOcrVisionProvider = createVisionProvider({
   model: "glm-ocr",
   api_key: "secret-key-for-test",
   provider_name: "glm_ocr",
-  image_format: "base64",
+  image_format: "data_url",
   timeout_ms: 1000,
   fetch_impl: async () =>
     new Response(
@@ -1300,7 +1300,7 @@ VISION_PROVIDER_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 VISION_PROVIDER_MODEL=glm-ocr
 VISION_PROVIDER_API_KEY=<local-secret>
 VISION_PROVIDER_NAME=glm_ocr
-VISION_PROVIDER_IMAGE_FORMAT=base64
+VISION_PROVIDER_IMAGE_FORMAT=data_url
 VISION_PROVIDER_TIMEOUT_MS=60000
 ```
 ```

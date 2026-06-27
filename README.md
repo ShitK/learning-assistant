@@ -26,7 +26,20 @@ VISION_PROVIDER_TIMEOUT_MS=60000
 MATHTRACE_CONFIRM_SECRET=<stable-local-secret>
 ```
 
-不要把真实 `VISION_PROVIDER_API_KEY` 写入前端代码、日志、文档或提交历史。`MATHTRACE_CONFIRM_SECRET` 用于图片识别确认 token 签名，应独立于任何模型 API Key；生产环境必须配置，本地未配置时会使用稳定 demo secret，避免切换模型 key 导致未确认草稿失效。未配置 vision provider 时，`sample_diagnosis` 仍可稳定演示，`image_diagnosis` 会返回可恢复错误。`VISION_PROVIDER_PROTOCOL` 支持 `anthropic` 和 `openai`；GLM-4.6V-FlashX 使用 OpenAI-compatible `chat/completions` 协议，并需要 `VISION_PROVIDER_IMAGE_FORMAT=base64`。旧的 `MIMO_*` 变量仍作为本地兼容别名保留，新配置请优先使用 `VISION_PROVIDER_*`。`VISION_PROVIDER_TIMEOUT_MS` 默认 15000，图片识别较慢时可在本地调到 60000。
+GLM-OCR 图片抽取推荐配置：
+
+```bash
+VISION_PROVIDER_PROTOCOL=glm_ocr
+VISION_PROVIDER_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+VISION_PROVIDER_MODEL=glm-ocr
+VISION_PROVIDER_API_KEY=<local-secret>
+VISION_PROVIDER_NAME=glm_ocr
+VISION_PROVIDER_IMAGE_FORMAT=data_url
+VISION_PROVIDER_TIMEOUT_MS=60000
+MATHTRACE_CONFIRM_SECRET=<stable-local-secret>
+```
+
+不要把真实 `VISION_PROVIDER_API_KEY` 写入前端代码、日志、文档或提交历史。`MATHTRACE_CONFIRM_SECRET` 用于图片识别确认 token 签名，应独立于任何模型 API Key；生产环境必须配置，本地未配置时会使用稳定 demo secret，避免切换模型 key 导致未确认草稿失效。未配置 vision provider 时，`sample_diagnosis` 仍可稳定演示，`image_diagnosis` 会返回可恢复错误。`VISION_PROVIDER_PROTOCOL` 支持 `anthropic`、`openai` 和 `glm_ocr`；GLM-4.6V-FlashX 使用 OpenAI-compatible `chat/completions` 协议，并需要 `VISION_PROVIDER_IMAGE_FORMAT=base64`；GLM-OCR 使用 `/layout_parsing` 协议，当前本地验证应使用 `VISION_PROVIDER_IMAGE_FORMAT=data_url`。旧的 `MIMO_*` 变量仍作为本地兼容别名保留，新配置请优先使用 `VISION_PROVIDER_*`。`VISION_PROVIDER_TIMEOUT_MS` 默认 15000，图片识别较慢时可在本地调到 60000。
 
 ## Local Analysis Provider Settings
 

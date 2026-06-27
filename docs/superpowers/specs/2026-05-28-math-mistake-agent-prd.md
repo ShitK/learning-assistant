@@ -1025,14 +1025,14 @@ VISION_PROVIDER_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 VISION_PROVIDER_MODEL=glm-ocr
 VISION_PROVIDER_API_KEY=<local-secret>
 VISION_PROVIDER_NAME=glm_ocr
-VISION_PROVIDER_IMAGE_FORMAT=base64
+VISION_PROVIDER_IMAGE_FORMAT=data_url
 VISION_PROVIDER_TIMEOUT_MS=60000
 MATHTRACE_CONFIRM_SECRET=<stable-local-secret>
 ```
 
 `glm_ocr` 请求只发送 `model`、当前上传图片的 `file` 和安全 OCR 选项，不发送 `student_profile_summary`、学生画像、错题历史、`memory_delta`、chat messages 或 repair prompt。GLM-OCR 不生成标准解法、错因、画像增量或变式练习；标准解法仍由 `/api/confirm` 后的 text analysis provider 或本地规则基于用户确认文本生成，画像写入仍由证据策略决定。
 
-旧的 `MIMO_BASE_URL`、`MIMO_MODEL`、`MIMO_API_KEY` 仍作为本地兼容别名保留；新配置优先使用 `VISION_PROVIDER_*`。`MATHTRACE_CONFIRM_SECRET` 独立于 provider API Key，只用于确认 token 和草稿指纹，不参与模型调用。`provider_debug.provider_name` 默认使用 `anthropic_compatible_vision`，如需区分本地 provider，可显式设置 `VISION_PROVIDER_NAME`，但不得包含 API Key 或私密信息。OpenAI-compatible 图片字段默认使用 data URL；GLM-4.6V-FlashX 使用裸 base64，应配置 `VISION_PROVIDER_IMAGE_FORMAT=base64`。
+旧的 `MIMO_BASE_URL`、`MIMO_MODEL`、`MIMO_API_KEY` 仍作为本地兼容别名保留；新配置优先使用 `VISION_PROVIDER_*`。`MATHTRACE_CONFIRM_SECRET` 独立于 provider API Key，只用于确认 token 和草稿指纹，不参与模型调用。`provider_debug.provider_name` 默认使用 `anthropic_compatible_vision`，如需区分本地 provider，可显式设置 `VISION_PROVIDER_NAME`，但不得包含 API Key 或私密信息。OpenAI-compatible 图片字段默认使用 data URL；GLM-4.6V-FlashX 使用裸 base64，应配置 `VISION_PROVIDER_IMAGE_FORMAT=base64`；GLM-OCR 本地验证使用带 MIME 前缀的 data URL。
 
 前端只调用本项目的 API Route。演示环境中如果没有配置 API Key，正式演示仍走 `sample_diagnosis`；`image_diagnosis` 返回可恢复错误并提示用户改用样例题。
 

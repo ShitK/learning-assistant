@@ -137,10 +137,7 @@ function buildGlmOcrRequestBody(
 ): Record<string, unknown> {
   return {
     model: config.model,
-    file:
-      config.image_format === "base64"
-        ? input.image_base64
-        : `data:${input.mime_type};base64,${input.image_base64}`,
+    file: `data:${input.mime_type};base64,${input.image_base64}`,
     return_crop_images: false,
     need_layout_visualization: false,
   };

@@ -108,6 +108,6 @@ const { mapGlmOcrContentToDraft } = jiti(
     warnings: [],
   });
 
-  assert.equal(draft.student_solution_steps.length, 8);
-  assert.equal(draft.warnings.includes("GLM-OCR 识别的学生步骤超过 8 条，已截取前 8 条。"), true);
+  assert.equal(draft.student_solution_steps.length, 12);
+  assert.equal(draft.warnings.includes("GLM-OCR 识别的学生步骤超过 8 条，已截取前 8 条。"), false);
 }

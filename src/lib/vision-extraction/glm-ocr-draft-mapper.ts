@@ -7,7 +7,6 @@ type GlmOcrParsedContent =
 const MISSING_STUDENT_ANSWER = "未识别到学生答案";
 const MISSING_STUDENT_ANSWER_WARNING =
   "未识别到清晰学生作答区域，请确认图片中包含学生答案或解题痕迹。";
-const MAX_STEPS = 8;
 
 export function mapGlmOcrContentToDraft(
   content: GlmOcrParsedContent,
@@ -28,18 +27,14 @@ export function mapGlmOcrContentToDraft(
   }
 
   const steps = splitStudentSteps(split.answerText);
-  const truncatedSteps = steps.slice(0, MAX_STEPS);
-  if (steps.length > MAX_STEPS) {
-    warnings.push("GLM-OCR 识别的学生步骤超过 8 条，已截取前 8 条。");
-  }
 
   return {
     question_text: normalizeExtractedMathText(split.questionText),
     student_answer: normalizeExtractedMathText(split.answerText),
-    student_solution_steps: truncatedSteps.map((step) =>
+    student_solution_steps: steps.map((step) =>
       normalizeExtractedMathText(step),
     ),
-    extraction_confidence: truncatedSteps.length > 0 ? "medium" : "low",
+    extraction_confidence: steps.length > 0 ? "medium" : "low",
     warnings,
   };
 }
