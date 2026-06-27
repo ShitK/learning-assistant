@@ -133,8 +133,12 @@ VISION_PROVIDER_TIMEOUT_MS=60000
 
 说明：
 
+- 第一版 `glm_ocr` 作为 `VISION_PROVIDER_PROTOCOL` 的可选值，与现有 `anthropic` / `openai` 并列；未设置 `VISION_PROVIDER_PROTOCOL` 时继续保持当前默认 `anthropic`，避免破坏已有本地 demo 和 legacy `MIMO_*` 配置。
+- P2.8 不下线 chat vision provider。是否把 GLM-OCR 切为默认，需要在实现完成后基于真实上传题 smoke 再决定。
 - `VISION_PROVIDER_PROTOCOL=glm_ocr` 明确区分 GLM-OCR 与 `openai` chat/completions。
-- `VISION_PROVIDER_MODEL` 的具体值以智谱官方文档当前要求为准；实现前必须核对官方模型名和请求字段。
+- `VISION_PROVIDER_PROTOCOL` 使用下划线 `glm_ocr` 作为项目内部协议标识；`VISION_PROVIDER_MODEL` 使用官方模型名 `glm-ocr`，请求体原样传入。
+- `VISION_PROVIDER_MODEL` 的具体值以智谱官方文档当前要求为准；实现前必须核对官方模型名、endpoint 和请求字段。
+- 前端现有图片压缩策略继续生效；GLM-OCR provider 在服务端可额外校验 base64 解码后图片大小不超过官方单图限制，超限时返回可恢复错误，不调用 provider。
 - 不复用 `ANALYSIS_PROVIDER_*`；OCR 抽取和标准解法生成继续分离。
 - 不读取 service role key、不访问数据库。
 
@@ -143,10 +147,19 @@ VISION_PROVIDER_TIMEOUT_MS=60000
 实现时需要在 `src/lib/providers/**` 中新增或扩展 provider 分支：
 
 - 请求 endpoint 使用智谱文档解析接口，而不是 `/chat/completions`。
-- 输入只发送当前上传图片的 base64、mime type 和必要参数。
-- 不发送学生完整画像、错题历史、service role key 或图片以外的敏感内容。
-- 响应只读取官方返回中的 OCR markdown / layout 结果。
+- 请求体只包含官方文档要求的必要字段：`model`、承载图片 base64 或 URL 的 `file` 字段，以及必要的解析选项；`mime_type` 只用于构造官方要求的图片输入格式或本地校验，不额外写入调试日志。
+- 不发送 `student_profile_summary`、学生完整画像、错题历史、service role key 或图片以外的敏感内容；GLM-OCR 是 OCR/layout 接口，不依赖画像上下文。
+- 响应只读取官方返回中的 OCR markdown / layout 结果，并通过运行时校验收口。
 - 不保存原始 provider 响应。
+
+响应字段校验策略：
+
+| 字段 | 是否必填 | 用途 | 缺失/异常处理 |
+|---|---|---|---|
+| `md_results` | 主要字段 | 读取 OCR markdown 文本，作为 mapper 的主输入 | 为空时尝试从 `layout_details` 中可识别文本字段拼接，并加入 warning；两者都无文本时返回 `empty_text_content` |
+| `layout_details` | 可选 | 辅助判断版面元素顺序、手写/印刷区域、公式/表格/段落类型 | 缺失时仅依赖 `md_results`；不把缺失本身视为失败 |
+| `error` | 错误响应字段 | 读取官方错误码/信息用于本地分类 | 映射为 recoverable `model_request_failed`，只保留安全 `provider_debug` |
+| `usage` / `data_info` / `layout_visualization` | 可忽略 | 可用于 provider 侧统计或可视化，但 P2.8 不消费 | 不进入 API 响应，不写日志，不影响草稿生成 |
 
 输出统一为：
 
@@ -164,9 +177,15 @@ interface VisionExtractionDraft {
 
 第一版映射采用保守规则：
 
-- `question_text`：从 OCR markdown 中提取题号、题干、条件、问题小问；无法稳定切分时保留完整 OCR 文本前段，并加 warning。
-- `student_answer`：如果识别到手写区域、作答标记或题干后明显的解答内容，则填入；否则填 `"未识别到学生答案"`。
-- `student_solution_steps`：从学生作答区域按换行/步骤符号切分，最多保留 8 条。
+- 文本顺序优先使用 `layout_details` 的版面顺序；没有可用 layout 时使用 `md_results` 原始顺序。
+- 题干起点优先按题号、大题号或小问标记定位，例如 `15.`、`（1）`、`(1)`、`已知`、`求`、`证明`。
+- 作答区域起点按以下优先级判断：
+  1. `layout_details` 标记为手写、answer、solution、note 等作答类区域。
+  2. markdown 中出现 `解：`、`证明：`、`答：`、`学生答案`、`学生作答` 等显式标记。
+  3. 题干结束后连续多行公式、推导符号或明显不是题目条件的文本。
+- `question_text`：保留题号、题干、条件和所有小问；如果无法稳定定位作答区域，则保留 OCR 文本中最像题干的前段或全文，并加 `question_answer_split_uncertain` warning。
+- `student_answer`：只有定位到作答区域时才填入作答文本；否则填 `"未识别到学生答案"`。
+- `student_solution_steps`：从作答区域按换行、分号、步骤编号或公式推导行切分，过滤空行，最多保留 8 条。
 - `extraction_confidence`：
   - 题干和作答步骤都较完整：`medium` 或 `high`。
   - 只识别到题干：`low`。
@@ -174,6 +193,41 @@ interface VisionExtractionDraft {
 - `warnings`：记录需要用户确认的点，例如题干可能截断、未识别到学生答案、公式可能不完整、版面顺序不确定。
 
 第一版不追求自动完美分离题干和学生步骤。确认表单仍是正式边界，用户可以编辑。
+
+示例：
+
+GLM-OCR markdown：
+
+```md
+15.（本小题满分13分）已知函数 $f(x)=\frac{1}{2}x^2-a\ln x+2a$，其中 $a\in\mathbb{R}$。
+（1）讨论函数 $f(x)$ 的单调性；（2）若函数 $f(x)$ 有两个零点，求 $a$ 的取值范围。
+
+解：
+$f'(x)=x-\frac{a}{x}=\frac{x^2-a}{x}, x\in(0,+\infty)$
+```
+
+期望映射：
+
+```json
+{
+  "question_text": "15.（本小题满分13分）已知函数 $f(x)=\\frac{1}{2}x^2-a\\ln x+2a$，其中 $a\\in\\mathbb{R}$。（1）讨论函数 $f(x)$ 的单调性；（2）若函数 $f(x)$ 有两个零点，求 $a$ 的取值范围。",
+  "student_answer": "$f'(x)=x-\\frac{a}{x}=\\frac{x^2-a}{x}, x\\in(0,+\\infty)$",
+  "student_solution_steps": ["$f'(x)=x-\\frac{a}{x}=\\frac{x^2-a}{x}, x\\in(0,+\\infty)$"],
+  "extraction_confidence": "medium",
+  "warnings": []
+}
+```
+
+如果没有 `解：`、手写区域或其他作答信号，则同一段文本应映射为：
+
+```json
+{
+  "student_answer": "未识别到学生答案",
+  "student_solution_steps": [],
+  "extraction_confidence": "low",
+  "warnings": ["未识别到清晰学生作答区域，请确认图片中包含学生答案或解题痕迹。"]
+}
+```
 
 ## 9. Error Handling
 
@@ -196,6 +250,7 @@ P2.8 可以把 GLM-OCR 的 `provider_stage` 标为 `"ocr"`，方便区分 chat v
 - 非 JSON：返回 recoverable `model_request_failed` + `invalid_json`。
 - 响应中没有可用 OCR markdown/layout：返回 recoverable `model_invalid_output` + `empty_text_content`。
 - OCR markdown 有内容但映射不完整：尽量返回低置信度 `VisionExtractionDraft`，让用户在确认表单修正。
+- GLM-OCR 不复用 chat vision 的模型级 repair retry：不把上一次错误输出拼进 prompt，也不发送 `student_profile_summary`。可选重试只限网络错误或 timeout 的一次性有限重试；HTTP 4xx、OCR 空结果和 mapper 解析失败不做模型级重试。
 
 不得在错误响应中包含 API Key、图片 base64、原始 provider response、完整题干、学生答案或学生画像。
 
@@ -217,8 +272,10 @@ P2.7 RAG 仍在诊断完成后根据 `question_text`、`knowledge_points`、`mis
 - 请求 URL 使用文档解析 endpoint，而不是 `/chat/completions`。
 - 请求体不包含 API Key、student_profile、mistake_history、memory_delta。
 - 能从合成 GLM-OCR 响应中提取 OCR markdown 并生成 `VisionExtractionDraft`。
+- `md_results` 为空但 `layout_details` 有可用文本时可以降级拼接；两者都为空时返回 `empty_text_content`。
 - OCR 响应为空时返回 `empty_text_content`，且不泄露原始响应。
 - HTTP error、invalid JSON、timeout、network failure 都保持现有 recoverable 语义。
+- GLM-OCR 请求不携带 `student_profile_summary`，不走 chat vision 的 repair prompt。
 
 ### Mapper tests
 
@@ -227,6 +284,8 @@ P2.7 RAG 仍在诊断完成后根据 `question_text`、`knowledge_points`、`mis
 - 题干 + 学生步骤都存在时生成 `student_work_sufficient` 所需草稿。
 - 只有题干时生成 `student_answer="未识别到学生答案"`、`extraction_confidence="low"` 和 warning。
 - 多行公式和小问不会被粗暴删除。
+- GLM-OCR markdown 中的行内公式/块级公式能正确保留为 LaTeX 包裹文本，便于前端 KaTeX 渲染。
+- 裸数字、参数范围符号和中文小问在 mapper 后仍保持可读，不引入非法 LaTeX。
 - 超长 OCR 文本会被截断或保守处理，不把超长内容直接送入 UI。
 
 ### Integration/smoke
@@ -255,8 +314,8 @@ P2.7 RAG 仍在诊断完成后根据 `question_text`、`knowledge_points`、`mis
 ## 14. 推荐实施顺序
 
 1. 写 `glm_ocr` provider config 和请求/响应单元测试。
-2. 实现 GLM-OCR response -> OCR text extraction。
-3. 实现 OCR text -> `VisionExtractionDraft` 的保守 mapper。
+2. 实现 GLM-OCR response -> OCR markdown 提取，并写提取逻辑单元测试。
+3. 实现 OCR markdown -> `VisionExtractionDraft` 的保守 mapper，并写 mapper 单元测试，覆盖题干+步骤、仅题干、公式、超长文本。
 4. 接入 `createVisionProvider()` protocol 分支。
 5. 跑 fake provider 的 API smoke。
 6. 本地用一张真实上传题做可选 smoke，确认不打印敏感内容。
