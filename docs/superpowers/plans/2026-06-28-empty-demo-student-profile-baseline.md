@@ -344,7 +344,10 @@ assert.equal(profileInsights.conclusionRows[0].id, "parameter_classification");
 assert.equal(profileInsights.conclusionRows[0].nextMasteryScore, 62);
 assert.equal(profileInsights.conclusionRows[0].weaknessIndex, 38);
 assert.equal(profileInsights.conclusionRows[0].weaknessDelta, 8);
-assert.equal(profileInsights.conclusionRows[0].summary, "本次新增薄弱信号");
+assert.equal(
+  profileInsights.conclusionRows[0].summary,
+  "本次 +8，当前薄弱指数 38",
+);
 assert.equal(
   profileInsights.priorityRows.some((row) => row.id === "sequence_recursion"),
   false,
