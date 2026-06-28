@@ -425,7 +425,7 @@ assert.equal(skipFollowUpResult.body.memory_delta.should_persist, true);
 assert.equal(
   skipFollowUpResult.body.student_profile.frequent_mistake_causes
     .classification_missing,
-  4,
+  undefined,
 );
 
 let problemOnlyAnalysisCallCount = 0;
@@ -634,7 +634,7 @@ assert.equal(submittedFollowUpResult.body.memory_delta.should_persist, false);
 assert.equal(
   submittedFollowUpResult.body.student_profile.frequent_mistake_causes
     .classification_missing,
-  4,
+  undefined,
 );
 
 let submittedAnalysisCallCount = 0;
@@ -718,7 +718,7 @@ assert.equal(confirmedFollowUpResult.body.memory_delta.should_persist, true);
 assert.equal(
   confirmedFollowUpResult.body.student_profile.frequent_mistake_causes
     .classification_missing,
-  5,
+  1,
 );
 
 const lowConfidenceProvider = {

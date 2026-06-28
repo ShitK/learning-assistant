@@ -112,10 +112,64 @@ assert.deepEqual(
 );
 assert.deepEqual(projectStudentProfileFromEvents([]), {
   status: "projected",
-  profile: demoStudentProfile,
+  profile: {
+    ...demoStudentProfile,
+    mastery_scores: {},
+    frequent_mistake_causes: {},
+    weak_modules: [],
+    review_priority: [],
+    recent_trend: "",
+    gaokao_focus: [],
+  },
   event_count: 0,
   last_memory_event_id: null,
 });
+
+{
+  const singleEventProjection = projectStudentProfileFromEvents([
+    {
+      id: "00000000-0000-4000-8000-000000000101",
+      created_at: "2026-06-28T09:00:00+08:00",
+      memory_delta: memoryDelta({
+        knowledge_mastery_changes: {
+          parameter_classification: -5,
+        },
+        mistake_cause_changes: {
+          classification_missing: 1,
+        },
+        review_priority_changes: ["parameter_classification"],
+      }),
+    },
+  ]);
+
+  assert.equal(singleEventProjection.status, "projected");
+  assert.deepEqual(singleEventProjection.profile.mastery_scores, {
+    parameter_classification: 65,
+  });
+  assert.deepEqual(singleEventProjection.profile.frequent_mistake_causes, {
+    classification_missing: 1,
+  });
+  assert.deepEqual(singleEventProjection.profile.review_priority, [
+    "parameter_classification",
+  ]);
+  assert.deepEqual(singleEventProjection.profile.weak_modules, []);
+  assert.equal(singleEventProjection.profile.recent_trend, "");
+  assert.deepEqual(singleEventProjection.profile.gaokao_focus, []);
+  assert.equal(
+    Object.hasOwn(
+      singleEventProjection.profile.mastery_scores,
+      "function_domain",
+    ),
+    false,
+  );
+  assert.equal(
+    Object.hasOwn(
+      singleEventProjection.profile.frequent_mistake_causes,
+      "domain_missing",
+    ),
+    false,
+  );
+}
 
 {
   const result = projectStudentProfileFromEvents([
@@ -148,9 +202,10 @@ assert.deepEqual(projectStudentProfileFromEvents([]), {
     result.profile.mastery_scores.function_monotonicity,
     (demoStudentProfile.mastery_scores.function_monotonicity ?? 70) - 3,
   );
+  // Unknown knowledge starts from the shared neutral score before applying delta.
   assert.equal(
     result.profile.mastery_scores.parameter_classification,
-    demoStudentProfile.mastery_scores.parameter_classification - 5,
+    (demoStudentProfile.mastery_scores.parameter_classification ?? 70) - 5,
   );
 }
 
@@ -185,9 +240,10 @@ assert.deepEqual(projectStudentProfileFromEvents([]), {
     result.profile.mastery_scores.function_monotonicity,
     (demoStudentProfile.mastery_scores.function_monotonicity ?? 70) - 3,
   );
+  // Unknown knowledge starts from the shared neutral score before applying delta.
   assert.equal(
     result.profile.mastery_scores.parameter_classification,
-    demoStudentProfile.mastery_scores.parameter_classification - 5,
+    (demoStudentProfile.mastery_scores.parameter_classification ?? 70) - 5,
   );
 }
 assert.deepEqual(

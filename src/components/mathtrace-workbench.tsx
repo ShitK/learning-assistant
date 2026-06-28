@@ -558,6 +558,7 @@ export function MathTraceWorkbench({
     cloudProfileRefreshRequestIdRef.current += 1;
     studentProfileEvidenceRefreshRequestIdRef.current += 1;
     setStudentProfileEvidence(null);
+    // 本地重置只清理浏览器状态；不删除云端画像事件或当前画像快照。
     clearStoredStudentProfile(window.localStorage);
     setSessionStudentProfile(demoStudentProfile);
     setProfilePreview({

@@ -93,12 +93,12 @@ assert.equal(pipelineResponse.fallback_used, false);
 assert.equal(pipelineResponse.warnings.length, 0);
 assert.equal(
   pipelineResponse.student_profile.mastery_scores.parameter_classification,
-  38,
+  62,
 );
 assert.equal(
   pipelineResponse.student_profile.frequent_mistake_causes
     .classification_missing,
-  5,
+  1,
 );
 assert.equal(pipelineResponse.sample_diagnosis.id, sample.id);
 
@@ -363,7 +363,7 @@ const fallbackProfileResponse = runMathTraceAgent(
 assert.equal(
   fallbackProfileResponse.student_profile.mastery_scores
     .parameter_classification,
-  38,
+  62,
 );
 
 const nullProfileResponse = runMathTraceAgent(
@@ -374,7 +374,7 @@ const nullProfileResponse = runMathTraceAgent(
 
 assert.equal(
   nullProfileResponse.student_profile.mastery_scores.parameter_classification,
-  38,
+  62,
 );
 
 const boundaryProfileResponse = runMathTraceAgent(

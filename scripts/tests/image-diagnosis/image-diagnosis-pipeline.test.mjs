@@ -50,7 +50,7 @@ assert.deepEqual(response.mistake_diagnosis.mistake_causes, [
 assert.equal(response.memory_delta.should_persist, true);
 assert.equal(
   response.student_profile.frequent_mistake_causes.classification_missing,
-  5,
+  1,
 );
 assert.equal(response.practice_questions.length, 3);
 assert.equal(response.review_plan.seven_days.length, 7);
@@ -138,7 +138,7 @@ assert.equal(problemOnlyResponse.memory_delta.should_persist, true);
 assert.equal(
   problemOnlyResponse.student_profile.frequent_mistake_causes
     .classification_missing,
-  4,
+  undefined,
 );
 
 const pendingProblemOnlyResponse = runImageMathTraceAgent({
@@ -252,7 +252,7 @@ assert.equal(lowConfidenceResponse.warnings.includes("图片较模糊，需要�
 assert.equal(
   lowConfidenceResponse.student_profile.frequent_mistake_causes
     .classification_missing,
-  4,
+  undefined,
 );
 
 const unconfirmedResponse = runImageMathTraceAgent({
@@ -265,7 +265,7 @@ assert.equal(unconfirmedResponse.memory_delta.should_persist, false);
 assert.equal(
   unconfirmedResponse.student_profile.frequent_mistake_causes
     .classification_missing,
-  4,
+  undefined,
 );
 
 console.log("image diagnosis pipeline test passed");

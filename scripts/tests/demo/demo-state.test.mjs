@@ -37,9 +37,18 @@ assert.equal(
   "mathtrace.demoStudentProfile.v1",
 );
 
+assert.deepEqual(demoStudentProfile.mastery_scores, {});
+assert.deepEqual(demoStudentProfile.frequent_mistake_causes, {});
+assert.deepEqual(demoStudentProfile.weak_modules, []);
+assert.deepEqual(demoStudentProfile.review_priority, []);
+assert.equal(demoStudentProfile.recent_trend, "");
+assert.deepEqual(demoStudentProfile.gaokao_focus, []);
+
 assert.deepEqual(parseStoredStudentProfile(null), demoStudentProfile);
 assert.deepEqual(parseStoredStudentProfile(""), demoStudentProfile);
 assert.deepEqual(parseStoredStudentProfile("{"), demoStudentProfile);
+assert.deepEqual(parseStoredStudentProfile("{").mastery_scores, {});
+assert.deepEqual(parseStoredStudentProfile("{").frequent_mistake_causes, {});
 assert.deepEqual(
   parseStoredStudentProfile(JSON.stringify({ student_id: 123 })),
   demoStudentProfile,
@@ -147,6 +156,8 @@ assert.deepEqual(readStoredStudentProfile(storage), demoStudentProfile);
 writeStoredStudentProfile(storage, updatedProfile);
 clearStoredStudentProfile(storage);
 assert.deepEqual(readStoredStudentProfile(storage), demoStudentProfile);
+assert.deepEqual(readStoredStudentProfile(storage).mastery_scores, {});
+assert.deepEqual(readStoredStudentProfile(storage).frequent_mistake_causes, {});
 
 const throwingStorage = {
   getItem() {

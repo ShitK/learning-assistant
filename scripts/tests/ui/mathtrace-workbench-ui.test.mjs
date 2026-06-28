@@ -353,36 +353,46 @@ const profileInsights = createProfileInsightsViewModel({
 assert.equal(profileInsights.title, "画像变化");
 assert.equal(profileInsights.conclusionRows.length, 2);
 assert.equal(profileInsights.conclusionRows[0].id, "parameter_classification");
-assert.equal(profileInsights.conclusionRows[0].weaknessIndex, 62);
+assert.equal(profileInsights.conclusionRows[0].nextMasteryScore, 62);
+assert.equal(profileInsights.conclusionRows[0].weaknessIndex, 38);
 assert.equal(profileInsights.conclusionRows[0].weaknessDelta, 8);
 assert.equal(
   profileInsights.conclusionRows[0].summary,
-  "本次 +8，当前薄弱指数 62",
+  "本次 +8，当前薄弱指数 38",
 );
-assert.equal(profileInsights.conclusionRows[0].status.label, "高优先级");
+assert.equal(profileInsights.conclusionRows[0].status.label, "基本稳定");
 assert.equal(profileInsights.priorityRows[0].id, "parameter_classification");
-assert.equal(profileInsights.highlightedMistakeCauses.length, 2);
 assert.equal(
-  profileInsights.highlightedMistakeCauses[0].id,
+  profileInsights.priorityRows.some((row) => row.id === "sequence_recursion"),
+  false,
+);
+assert.equal(profileInsights.highlightedMistakeCauses.length, 2);
+const classificationMissingInsight =
+  profileInsights.highlightedMistakeCauses.find(
+    (cause) => cause.id === "classification_missing",
+  );
+assert.ok(classificationMissingInsight);
+assert.equal(
+  classificationMissingInsight.id,
   "classification_missing",
 );
 assert.equal(
-  profileInsights.highlightedMistakeCauses[0].isNewInDiagnosis,
+  classificationMissingInsight.isNewInDiagnosis,
   true,
 );
 assert.equal(
-  profileInsights.highlightedMistakeCauses[0].isHighFrequency,
-  true,
+  classificationMissingInsight.isHighFrequency,
+  false,
 );
 assert.equal(
-  profileInsights.highlightedMistakeCauses[0].countSummary,
-  "本次 +1，累计 5 次",
+  classificationMissingInsight.countSummary,
+  "本次 +1，累计 1 次",
 );
 assert.equal(
   profileInsights.otherMistakeCauses.some(
     (cause) => cause.id === "calculation_error",
   ),
-  true,
+  false,
 );
 assert.match(profileInsights.actionAdvice, /优先复习参数分类讨论/);
 assert.match(
@@ -706,6 +716,11 @@ assert.match(
   source,
   /function handleResetProfile\(\): void \{[\s\S]*cloudProfileRefreshRequestIdRef\.current \+= 1;[\s\S]*clearStoredStudentProfile\(window\.localStorage\);/,
   "重置画像应作废旧的云端刷新请求，避免旧响应覆盖 demo profile。",
+);
+assert.equal(
+  source.includes("deleteStudentProfile"),
+  false,
+  "重置画像不应删除云端 student_profiles 或 memory_events。",
 );
 assert.match(
   source,
