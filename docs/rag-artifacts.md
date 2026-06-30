@@ -10,6 +10,7 @@
 - 可再生成的中间产物可以归档或重建，但要先 dry-run。
 - 产品页当前只读取 `artifacts/rag/variant-practice-agent/recommendations.json`，缺失时会回退到预写练习题。
 - P2.7 动态变式练习 API 运行时读取 `artifacts/rag/enriched-practice-corpus/enriched_practice_corpus.json`，只消费已通过标签审核的题；产品页默认样例题仍可读取 `artifacts/rag/variant-practice-agent/recommendations.json`。
+- P2.9 的 pgvector 同步源仍是本地 `artifacts/rag/enriched-practice-corpus/enriched_practice_corpus.json`。该 artifact 不提交 Git；`scripts/rag/sync-variant-practice-pgvector.mjs --apply` 只把审核通过、非视觉依赖的题同步到 Supabase `variant_practice_corpus_items`。运行时 pgvector 不可用时，`/api/variant-practice` 仍读取本地 enriched corpus fallback。
 
 ## 文件夹说明
 

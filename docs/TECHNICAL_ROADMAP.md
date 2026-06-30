@@ -28,13 +28,14 @@
 - P1.7/P1.8 已引入 Supabase Postgres 数据底座：确认后的诊断可写入 `students`、`diagnosis_runs`、`mistake_book_items` 和 `memory_events`，`student_profiles` 保存从 gated `memory_events` 投影出的当前画像快照，并支持只读错题本 MVP；未配置 Supabase 时 demo 主流程仍稳定运行。
 - P2.7 起，确认后的导数类上传题诊断可以通过只读 `POST /api/variant-practice` 请求服务端 RAG，从本地增强题库返回裁剪后的 3 道变式练习；失败或不支持时仍回退到诊断响应自带练习题。
 - P2.8 起，`VISION_PROVIDER_PROTOCOL=glm_ocr` 可显式切换到智谱 GLM-OCR 文档解析接口 `/layout_parsing`，先把上传图片解析成 OCR markdown/layout，再由本地 mapper 生成 `VisionExtractionDraft`；当前已完成 fake provider 本地验证，真实 GLM-OCR smoke 取决于本地 API Key 配置。
+- P2.9 起，动态变式练习检索可以优先使用 Supabase Postgres + pgvector：本地 CLI 将审核通过的增强题库同步到 service-role-only `variant_practice_corpus_items`，运行时 `/api/variant-practice` 用 query embedding 召回候选题；未配置或失败时仍回退 P2.7 本地 JSON corpus。该 pgvector 层只服务练习题候选召回，不是学生画像事实层。
 
 当前还没有完成：
 
 - 真正的 Agent 内部编排模块。
 - 用户登录、权限、老师端、班级端。
 - 动态生成变式练习。
-- 真实登录、RLS 用户策略、老师端、多专题线上 RAG、pgvector/Milvus、多用户云端画像和长期回放。
+- 真实登录、RLS 用户策略、老师端、多专题线上 RAG/Milvus、多用户云端画像和长期回放。
 
 ## 3. 总体架构目标
 

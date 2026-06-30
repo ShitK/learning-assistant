@@ -75,6 +75,29 @@ SUPABASE_SERVICE_ROLE_KEY=<local-service-role-secret>
 
 未配置 Supabase 时，demo 仍可运行：诊断主流程不因数据库缺失失败，错题本接口返回稳定空列表。P1.7 不保存完整图片 base64；localStorage 暂时继续用于 demo 学生画像恢复，不迁移完整画像到数据库。
 
+### Local RAG Embedding Provider Settings
+
+P2.9 动态变式练习可优先使用 Supabase Postgres + pgvector 召回候选题。本地如需启用 pgvector 路径或运行同步 CLI，需额外配置：
+
+```bash
+RAG_EMBEDDING_PROVIDER_PROTOCOL=openai
+RAG_EMBEDDING_PROVIDER_BASE_URL=https://api.openai.com/v1
+RAG_EMBEDDING_PROVIDER_MODEL=text-embedding-3-small
+RAG_EMBEDDING_PROVIDER_API_KEY=<local-secret>
+RAG_EMBEDDING_PROVIDER_NAME=rag_embedding_provider
+RAG_EMBEDDING_PROVIDER_TIMEOUT_MS=30000
+RAG_PGVECTOR_QUERY_TIMEOUT_MS=10000
+```
+
+未配置 Supabase 或 RAG embedding provider 时，`POST /api/variant-practice` 会回退到 P2.7 本地 enriched corpus fallback；前端仍不读取 Supabase、本地 artifact 或 service role key。
+
+同步命令：
+
+```bash
+node scripts/rag/sync-variant-practice-pgvector.mjs --dry-run
+node --env-file=.env.local scripts/rag/sync-variant-practice-pgvector.mjs --apply
+```
+
 ## Local Smoke Tests
 
 样例题诊断不依赖外部模型：
