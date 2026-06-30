@@ -55,12 +55,12 @@ const fakeClient = {
       },
       update(payload) {
         calls.push({ kind: "update", payload });
-        return {
+        return Object.assign(Promise.resolve({ error: null }), {
           not(column, operator, value) {
             calls.push({ kind: "not", column, operator, value });
             return Promise.resolve({ error: null });
           },
-        };
+        });
       },
     };
   },
@@ -135,7 +135,19 @@ assert.deepEqual(updateCall.payload, { is_active: false });
 const notCall = calls.find((call) => call.kind === "not");
 assert.equal(notCall.column, "id");
 assert.equal(notCall.operator, "in");
-assert.deepEqual(notCall.value, ["practice-1"]);
+assert.equal(notCall.value, '("practice-1")');
+
+calls.length = 0;
+await repository.deactivateMissingItems(['practice,"quoted"', "practice\\slash"]);
+const escapedNotCall = calls.find((call) => call.kind === "not");
+assert.equal(
+  escapedNotCall.value,
+  '("practice,\\"quoted\\"","practice\\\\slash")',
+);
+
+calls.length = 0;
+await repository.deactivateMissingItems([]);
+assert.equal(calls.some((call) => call.kind === "not"), false);
 
 const matches = await repository.matchItems({
   query_embedding: Array.from({ length: 1536 }, () => 0.01),

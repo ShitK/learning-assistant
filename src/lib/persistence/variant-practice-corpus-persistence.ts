@@ -74,9 +74,9 @@ export interface SupabaseVariantPracticeCorpusClient {
       not(
         column: string,
         operator: "in",
-        value: string[],
+        value: string,
       ): PromiseLike<{ error: unknown }>;
-    };
+    } & PromiseLike<{ error: unknown }>;
   };
   rpc(
     name: "match_variant_practice_corpus_items",
@@ -146,10 +146,14 @@ export function createSupabaseVariantPracticeCorpusRepository(
       }
     },
     async deactivateMissingItems(activeIds: string[]): Promise<void> {
-      const { error } = await client
+      const update = client
         .from("variant_practice_corpus_items")
-        .update({ is_active: false })
-        .not("id", "in", activeIds);
+        .update({ is_active: false });
+
+      const { error } =
+        activeIds.length === 0
+          ? await update
+          : await update.not("id", "in", toPostgrestTextInList(activeIds));
 
       if (error) {
         throw error;
@@ -240,6 +244,14 @@ function toEmbeddingHashEntry(row: unknown): [string, string] {
     (row as { id: string }).id,
     (row as { embedding_hash: string }).embedding_hash,
   ];
+}
+
+function toPostgrestTextInList(values: string[]): string {
+  return `(${values.map(toPostgrestQuotedText).join(",")})`;
+}
+
+function toPostgrestQuotedText(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
 
 function toVariantPracticeCorpusDbItem(row: unknown): VariantPracticeCorpusDbItem {
