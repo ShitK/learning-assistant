@@ -1,6 +1,4 @@
 // server-only: this file reads ignored local RAG artifacts and imports server-side Agent code.
-import { readFile } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
 import { recommendVariantPractice } from "../../../../scripts/rag/variant-practice-agent-core.mjs";
 import {
   createDiagnoseError,
@@ -15,6 +13,12 @@ import {
   createVariantPracticeProductViewModel,
   type ProductVariantPractice,
 } from "@/lib/rag/variant-practice-product-view-model";
+import {
+  readLocalDynamicPracticeCorpus,
+  readPgvectorDynamicPracticeCorpus,
+  type DynamicPracticeCorpus,
+  type DynamicPracticeCorpusItem,
+} from "@/lib/server/rag/variant-practice-corpus-source";
 
 export interface DynamicVariantPracticeSuccessResponse {
   variant_practice: ProductVariantPractice | null;
@@ -42,35 +46,10 @@ export interface DynamicVariantPracticeServiceDeps {
   corpusFilePath?: string;
   agent?: VariantPracticeAgent;
   searchLimit?: number;
+  pgvectorCorpusSource?: typeof readPgvectorDynamicPracticeCorpus;
+  localCorpusSource?: typeof readLocalDynamicPracticeCorpus;
 }
 
-interface DynamicPracticeCorpus {
-  corpus_version: "enriched-practice-corpus-v0";
-  items: DynamicPracticeCorpusItem[];
-  item_count?: number;
-  [key: string]: unknown;
-}
-
-interface DynamicPracticeCorpusItem {
-  id: string;
-  source_candidate_id: string;
-  question_text: string;
-  search_text: string;
-  knowledge_points: string[];
-  section_title?: string | null;
-  target_skills?: string[];
-  method_tags?: string[];
-  feature_flags?: string[];
-  source_ref?: unknown;
-  tag_review_meta?: {
-    review_status?: unknown;
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
-}
-
-const defaultCorpusPath =
-  "artifacts/rag/enriched-practice-corpus/enriched_practice_corpus.json";
 const defaultVariantPracticeAgent: VariantPracticeAgent = {
   recommendVariantPractice,
 };
@@ -92,53 +71,54 @@ export async function handleDynamicVariantPracticeRequest(
     return success(null);
   }
 
-  const corpus = await readDynamicPracticeCorpus(
-    deps.corpusFilePath ?? defaultCorpusPath,
-  );
-  if (!corpus) {
-    return success(null);
+  const pgvectorCorpusSource =
+    deps.pgvectorCorpusSource ?? readPgvectorDynamicPracticeCorpus;
+  const localCorpusSource =
+    deps.localCorpusSource ?? readLocalDynamicPracticeCorpus;
+
+  const pgvectorCorpus = await pgvectorCorpusSource(query);
+  const pgvectorResult = pgvectorCorpus
+    ? await buildVariantPracticeFromCorpus(pgvectorCorpus, query, deps)
+    : null;
+  if (pgvectorResult) {
+    return success(pgvectorResult);
   }
 
-  const prepared = prepareCorpusAndQuery(corpus, query);
-  if (!prepared) {
-    return success(null);
-  }
+  const localCorpus = await localCorpusSource(deps.corpusFilePath);
+  const localResult = localCorpus
+    ? await buildVariantPracticeFromCorpus(localCorpus, query, deps)
+    : null;
 
-  const agent = deps.agent ?? (await loadDefaultVariantPracticeAgent());
-  if (!agent) {
-    return success(null);
-  }
-
-  let artifact: unknown;
-  try {
-    artifact = agent.recommendVariantPractice({
-      corpus: prepared.corpus,
-      query: prepared.query,
-      searchLimit: deps.searchLimit ?? 12,
-    });
-  } catch {
-    return success(null);
-  }
-
-  const viewModel = createVariantPracticeProductViewModel(artifact);
-
-  return success(viewModel && viewModel.items.length === 3 ? viewModel : null);
+  return success(localResult);
 }
 
 export async function loadDefaultVariantPracticeAgent(): Promise<VariantPracticeAgent | null> {
   return defaultVariantPracticeAgent;
 }
 
-async function readDynamicPracticeCorpus(
-  filePath: string,
-): Promise<DynamicPracticeCorpus | null> {
+async function buildVariantPracticeFromCorpus(
+  corpus: DynamicPracticeCorpus,
+  query: DynamicPracticeQuery,
+  deps: DynamicVariantPracticeServiceDeps,
+): Promise<ProductVariantPractice | null> {
+  const prepared = prepareCorpusAndQuery(corpus, query);
+  if (!prepared) {
+    return null;
+  }
+
+  const agent = deps.agent ?? (await loadDefaultVariantPracticeAgent());
+  if (!agent) {
+    return null;
+  }
+
   try {
-    const absoluteFilePath = isAbsolute(filePath)
-      ? filePath
-      : join(/* turbopackIgnore: true */ process.cwd(), filePath);
-    const rawText = await readFile(absoluteFilePath, "utf8");
-    const parsed: unknown = JSON.parse(rawText);
-    return isDynamicPracticeCorpus(parsed) ? parsed : null;
+    const artifact = agent.recommendVariantPractice({
+      corpus: prepared.corpus,
+      query: prepared.query,
+      searchLimit: deps.searchLimit ?? 12,
+    });
+    const viewModel = createVariantPracticeProductViewModel(artifact);
+    return viewModel && viewModel.items.length === 3 ? viewModel : null;
   } catch {
     return null;
   }
@@ -171,46 +151,6 @@ function prepareCorpusAndQuery(
     },
     query: effectiveQuery,
   };
-}
-
-function isDynamicPracticeCorpus(value: unknown): value is DynamicPracticeCorpus {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-
-  const corpus = value as { corpus_version?: unknown; items?: unknown };
-  return (
-    corpus.corpus_version === "enriched-practice-corpus-v0" &&
-    Array.isArray(corpus.items) &&
-    corpus.items.every(isDynamicPracticeCorpusItem)
-  );
-}
-
-function isDynamicPracticeCorpusItem(
-  value: unknown,
-): value is DynamicPracticeCorpusItem {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-
-  const item = value as {
-    id?: unknown;
-    source_candidate_id?: unknown;
-    question_text?: unknown;
-    search_text?: unknown;
-    knowledge_points?: unknown;
-  };
-
-  return (
-    typeof item.id === "string" &&
-    typeof item.source_candidate_id === "string" &&
-    typeof item.question_text === "string" &&
-    item.question_text.trim().length > 0 &&
-    typeof item.search_text === "string" &&
-    item.search_text.trim().length > 0 &&
-    Array.isArray(item.knowledge_points) &&
-    item.knowledge_points.every((point) => typeof point === "string")
-  );
 }
 
 function isApprovedDynamicPracticeItem(item: DynamicPracticeCorpusItem): boolean {

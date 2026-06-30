@@ -184,6 +184,69 @@ const fakeAgent = {
   );
 }
 
+{
+  let sourceOrder = [];
+  const pgvectorOnlyAgent = {
+    recommendVariantPractice(input) {
+      return buildAgentArtifact(input.query.id, input.corpus.items);
+    },
+  };
+  const result = await handleDynamicVariantPracticeRequest(baseRequest, {
+    agent: pgvectorOnlyAgent,
+    pgvectorCorpusSource: async () => {
+      sourceOrder.push("pgvector");
+      return buildCorpus();
+    },
+    localCorpusSource: async () => {
+      sourceOrder.push("local");
+      return buildCorpus();
+    },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.variant_practice.items.length, 3);
+  const responseJson = JSON.stringify(result.body);
+  assert.equal(responseJson.includes("cosine_distance"), false);
+  assert.equal(responseJson.includes("metadata_score"), false);
+  assert.equal(responseJson.includes("embedding_hash"), false);
+  assert.deepEqual(sourceOrder, ["pgvector"]);
+}
+
+{
+  let sourceOrder = [];
+  const twoItemAgent = {
+    recommendVariantPractice(input) {
+      const artifact = buildAgentArtifact(input.query.id, input.corpus.items);
+      return input.corpus.items[0].id.startsWith("pgvector")
+        ? { ...artifact, recommendations: artifact.recommendations.slice(0, 2) }
+        : artifact;
+    },
+  };
+  const result = await handleDynamicVariantPracticeRequest(baseRequest, {
+    agent: twoItemAgent,
+    pgvectorCorpusSource: async () => {
+      sourceOrder.push("pgvector");
+      return {
+        ...buildCorpus(),
+        items: buildCorpus().items.map((item) => ({
+          ...item,
+          id: `pgvector-${item.id}`,
+        })),
+      };
+    },
+    localCorpusSource: async () => {
+      sourceOrder.push("local");
+      return buildCorpus();
+    },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.variant_practice.items.length, 3);
+  const responseJson = JSON.stringify(result.body);
+  assert.equal(responseJson.includes("cosine_distance"), false);
+  assert.equal(responseJson.includes("metadata_score"), false);
+  assert.equal(responseJson.includes("embedding_hash"), false);
+  assert.deepEqual(sourceOrder, ["pgvector", "local"]);
+}
+
 console.log("dynamic variant practice service tests passed");
 
 function buildCorpus() {
