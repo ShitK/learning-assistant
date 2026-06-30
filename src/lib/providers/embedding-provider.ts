@@ -120,6 +120,7 @@ export function createEmbeddingProvider(
           body: JSON.stringify({
             model: config.model,
             input: input.text,
+            dimensions: config.dimensions,
           }),
           signal: controller.signal,
         });

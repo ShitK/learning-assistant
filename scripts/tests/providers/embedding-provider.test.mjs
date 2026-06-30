@@ -83,6 +83,7 @@ assert.equal(requests[0].headers.Authorization, "Bearer local-secret");
 assert.deepEqual(requests[0].body, {
   model: "text-embedding-3-small",
   input: "导数 单调性 变式练习",
+  dimensions: 1536,
 });
 
 const badDimensionProvider = createEmbeddingProvider({
