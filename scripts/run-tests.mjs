@@ -37,6 +37,7 @@ const suites = {
     "scripts/tests/rag/variant-practice-product-view-model.test.mjs",
     "scripts/tests/rag/variant-practice-product-loader.test.mjs",
     "scripts/tests/rag/dynamic-variant-practice-query.test.mjs",
+    "scripts/tests/rag/variant-practice-embedding-text.test.mjs",
     "scripts/tests/rag/dynamic-variant-practice-service.test.mjs",
     "scripts/tests/rag/dynamic-variant-practice-client.test.mjs",
     "scripts/tests/rag/rag-artifact-inventory-core.test.mjs",
