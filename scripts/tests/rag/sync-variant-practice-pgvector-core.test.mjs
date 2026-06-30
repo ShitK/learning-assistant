@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { createProjectJiti } from "../../test-support/project-jiti.mjs";
 import {
   buildVariantPracticePgvectorRow,
   planVariantPracticePgvectorSync,
   selectSyncableVariantPracticeItems,
 } from "../../rag/sync-variant-practice-pgvector-core.mjs";
+
+const jiti = createProjectJiti();
+const {
+  buildVariantPracticeEmbeddingHashInput,
+  buildVariantPracticeItemEmbeddingText,
+} = jiti("./src/lib/rag/variant-practice-embedding-text.ts");
 
 const corpus = {
   corpus_version: "enriched-practice-corpus-v0",
@@ -81,6 +88,68 @@ assert.equal(summary.deactivated_reference_count, 1);
 assert.equal(embeddingCalls.length, 1);
 assert.equal(upserted.length, 1);
 assert.deepEqual(deactivated, ["practice-approved"]);
+
+const unchangedHashItem = {
+  ...buildItem("approved", "approved", []),
+  section_title: "考点 3 函数零点",
+  source_ref: { pdf_page_index: 9 },
+  tag_review_meta: { review_status: "approved", reviewer: "task-6" },
+};
+const unchangedHashEmbeddingText =
+  buildVariantPracticeItemEmbeddingText(unchangedHashItem);
+const unchangedHash = createHash("sha256")
+  .update(
+    buildVariantPracticeEmbeddingHashInput({
+      embedding_model: "text-embedding-3-small",
+      dimensions: 1536,
+      embedding_text: unchangedHashEmbeddingText,
+    }),
+  )
+  .digest("hex");
+const unchangedHashUpserted = [];
+const unchangedHashSummary = await planVariantPracticePgvectorSync({
+  corpus: {
+    corpus_version: "enriched-practice-corpus-v0",
+    items: [unchangedHashItem],
+  },
+  embeddingModel: "text-embedding-3-small",
+  dimensions: 1536,
+  existingHashes: new Map([["practice-approved", unchangedHash]]),
+  dryRun: false,
+  embeddingProvider: {
+    async embedText(input) {
+      assert.equal(input.text, unchangedHashEmbeddingText);
+      return {
+        ok: true,
+        value: {
+          embedding: Array.from({ length: 1536 }, () => 0.02),
+          model: "text-embedding-3-small",
+          provider_name: "fake",
+          dimensions: 1536,
+        },
+      };
+    },
+  },
+  repository: {
+    async upsertItems(items) {
+      unchangedHashUpserted.push(...items);
+    },
+    async deactivateMissingItems() {},
+  },
+});
+
+assert.equal(unchangedHashSummary.selected_count, 1);
+assert.equal(unchangedHashSummary.skipped_count, 0);
+assert.equal(unchangedHashSummary.embedded_count, 1);
+assert.equal(unchangedHashSummary.upserted_count, 1);
+assert.equal(unchangedHashUpserted.length, 1);
+assert.equal(unchangedHashUpserted[0].embedding_hash, unchangedHash);
+assert.equal(unchangedHashUpserted[0].section_title, "考点 3 函数零点");
+assert.deepEqual(unchangedHashUpserted[0].source_ref, { pdf_page_index: 9 });
+assert.deepEqual(unchangedHashUpserted[0].tag_review_meta, {
+  review_status: "approved",
+  reviewer: "task-6",
+});
 
 const dryRunSummary = await planVariantPracticePgvectorSync({
   corpus,

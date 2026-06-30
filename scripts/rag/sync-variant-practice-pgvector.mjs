@@ -8,9 +8,6 @@ const {
   createEmbeddingProvider,
   createEmbeddingProviderConfigFromEnv,
 } = jiti("./src/lib/providers/embedding-provider.ts");
-const {
-  createDefaultVariantPracticeCorpusRepository,
-} = jiti("./src/lib/persistence/variant-practice-corpus-persistence.ts");
 
 const args = new Set(process.argv.slice(2));
 const dryRun = !args.has("--apply");
@@ -30,12 +27,6 @@ try {
   );
   process.exit(1);
 }
-const repository = createDefaultVariantPracticeCorpusRepository();
-
-if (!repository.is_database_configured && !dryRun) {
-  console.error("Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
-  process.exit(1);
-}
 
 let embeddingProvider = {
   async embedText() {
@@ -44,8 +35,18 @@ let embeddingProvider = {
 };
 let embeddingModel = process.env.RAG_EMBEDDING_PROVIDER_MODEL || "text-embedding-3-small";
 let dimensions = 1536;
+let repository = createDryRunRepository();
 
 if (!dryRun) {
+  const {
+    createDefaultVariantPracticeCorpusRepository,
+  } = jiti("./src/lib/persistence/variant-practice-corpus-persistence.ts");
+  repository = createDefaultVariantPracticeCorpusRepository();
+  if (!repository.is_database_configured) {
+    console.error("Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+    process.exit(1);
+  }
+
   const config = createEmbeddingProviderConfigFromEnv(process.env);
   if (!config.ok) {
     console.error(config.error.message);
@@ -71,3 +72,18 @@ const summary = await planVariantPracticePgvectorSync({
 });
 
 console.log(JSON.stringify({ mode: dryRun ? "dry-run" : "apply", ...summary }, null, 2));
+
+function createDryRunRepository() {
+  return {
+    is_database_configured: false,
+    async listEmbeddingHashes() {
+      return new Map();
+    },
+    async upsertItems() {
+      throw new Error("dry-run must not upsert");
+    },
+    async deactivateMissingItems() {
+      throw new Error("dry-run must not deactivate");
+    },
+  };
+}
