@@ -257,7 +257,7 @@ supabase/migrations/20260630000000_p29_pgvector_variant_practice.sql
 建议表：
 
 ```sql
-create extension if not exists vector;
+create extension if not exists vector with schema extensions;
 
 create table if not exists public.variant_practice_corpus_items (
   id text primary key,
@@ -268,7 +268,7 @@ create table if not exists public.variant_practice_corpus_items (
   embedding_text text not null,
   embedding_hash text not null,
   embedding_model text not null,
-  embedding vector(1536) not null,
+  embedding extensions.vector(1536) not null,
   knowledge_points text[] not null,
   section_title text,
   difficulty text,
@@ -314,14 +314,15 @@ create index if not exists variant_practice_corpus_items_method_tags_idx
   on public.variant_practice_corpus_items using gin(method_tags);
 
 create index if not exists variant_practice_corpus_items_embedding_hnsw_idx
-  on public.variant_practice_corpus_items using hnsw (embedding vector_cosine_ops);
+  on public.variant_practice_corpus_items using hnsw (embedding extensions.vector_cosine_ops);
 
 alter table public.variant_practice_corpus_items enable row level security;
 
+revoke all on public.variant_practice_corpus_items from public, anon, authenticated;
 grant select, insert, update on public.variant_practice_corpus_items to service_role;
 ```
 
-不授予 `anon` 或 `authenticated` 权限。P2.9 仍然只允许服务端 service role 访问。
+不授予 `anon` 或 `authenticated` 权限。P2.9 仍然只允许服务端 service role 访问。`vector` extension 显式安装在 Supabase 常用的 `extensions` schema，表、索引和 RPC 的 vector 类型也显式引用 `extensions.vector`，避免真实 Supabase 项目中因为 extension schema 或 `search_path` 不一致导致 migration apply 失败。
 
 ### 7.1 为什么先用单表
 
@@ -349,7 +350,7 @@ grant select, insert, update on public.variant_practice_corpus_items to service_
 
 ```sql
 create or replace function public.match_variant_practice_corpus_items(
-  p_query_embedding vector(1536),
+  p_query_embedding extensions.vector(1536),
   p_match_count integer,
   p_knowledge_points text[],
   p_target_skills text[],
@@ -368,12 +369,12 @@ returns table (
   feature_flags text[],
   source_ref jsonb,
   tag_review_meta jsonb,
-  vector_distance double precision,
+  cosine_distance double precision,
   metadata_score integer
 )
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select
     item.id,
@@ -388,7 +389,7 @@ as $$
     item.feature_flags,
     item.source_ref,
     item.tag_review_meta,
-    item.embedding <=> p_query_embedding as vector_distance,
+    item.embedding <=> p_query_embedding as cosine_distance,
     (
       case when p_section_title is not null and item.section_title = p_section_title then 5 else 0 end
       + case when item.knowledge_points && coalesce(p_knowledge_points, '{}') then 8 else 0 end
@@ -412,7 +413,7 @@ as $$
 $$;
 
 revoke execute on function public.match_variant_practice_corpus_items(
-  vector(1536),
+  extensions.vector(1536),
   integer,
   text[],
   text[],
@@ -420,7 +421,7 @@ revoke execute on function public.match_variant_practice_corpus_items(
 ) from public;
 
 grant execute on function public.match_variant_practice_corpus_items(
-  vector(1536),
+  extensions.vector(1536),
   integer,
   text[],
   text[],
@@ -434,7 +435,7 @@ grant execute on function public.match_variant_practice_corpus_items(
 - `p_match_count` 被限制在 1 到 24，避免一次请求拉过多题目。
 - 先用 `knowledge_points` 做硬过滤，避免非导数 query 误召回导数 corpus。
 - section/title/skills 只参与排序，不作为硬过滤，保留向量召回的迁移空间。
-- 返回的 `vector_distance` / `metadata_score` 只给服务端内部调试和测试使用，不进入 `ProductVariantPractice`。
+- 返回的 `cosine_distance` / `metadata_score` 只给服务端内部调试和测试使用，不进入 `ProductVariantPractice`。`<=>` 在 pgvector 的 cosine opclass 下表示 cosine distance，数值越小越相似；不要把它解释为 L2 distance。
 
 ## 9. Embedding 文本策略
 
@@ -448,7 +449,7 @@ src/lib/rag/variant-practice-embedding-text.ts
 
 - 从 corpus item 构造 `embedding_text`。
 - 从 `DynamicPracticeQuery` 构造 query embedding text。
-- 计算 `embedding_hash`，用于同步 CLI 跳过未变化题。
+- 构造 hash input 字符串，用于同步 CLI 计算 `embedding_hash` 并跳过未变化题。
 - 纯函数、browser-safe、无 DB、无 provider、无 `fs`。
 
 ### 9.1 Corpus item embedding text
@@ -502,13 +503,21 @@ src/lib/rag/variant-practice-embedding-text.ts
 
 ### 9.3 Hash
 
-`embedding_hash` 使用：
+`variant-practice-embedding-text.ts` 只返回 hash input，不直接计算 sha256，避免 browser-safe 纯函数模块依赖 `node:crypto`。同步 CLI 在 Node 环境中用 `node:crypto` 计算 `embedding_hash`。
+
+hash input 固定为：
 
 ```text
-sha256(`${embedding_model}\n1536\n${embedding_text}`)
+${embedding_model}\n1536\n${embedding_text}
 ```
 
-只要 embedding model、维度或文本变化，CLI 就重新生成 embedding 并 upsert。
+CLI 中的 `embedding_hash` 使用：
+
+```text
+sha256(hash_input)
+```
+
+只要 embedding model、维度或文本变化，CLI 就重新生成 embedding 并 upsert。hash 计算不进入浏览器 bundle，也不进入 Client Component。
 
 ## 10. 本地同步 CLI
 
@@ -527,6 +536,7 @@ scripts/rag/sync-variant-practice-pgvector.mjs
 - 对 hash 未变化的题跳过 embedding provider 调用。
 - 对新增或变化题调用 embedding provider。
 - 使用 service role upsert 到 `variant_practice_corpus_items`。
+- upsert 时必须设置 `is_active=true, updated_at=now(), last_synced_at=now()`，确保曾被停用、后来又重新进入 corpus 的题可以恢复召回。
 - 将本次 corpus 中不存在的旧行标记为 `is_active=false`。
 - 输出同步摘要，不打印完整题干、embedding 数组、API key 或 provider 原始响应。
 
@@ -554,12 +564,13 @@ node scripts/rag/sync-variant-practice-pgvector.mjs --apply
 | pgvector table / RPC 未应用 | 使用本地 JSON fallback | 同上 |
 | embedding provider 未配置 | 使用本地 JSON fallback | 同上 |
 | embedding provider 超时或失败 | 使用本地 JSON fallback | 同上 |
+| pgvector RPC 调用超时 | 使用本地 JSON fallback | 同上 |
 | pgvector 返回 0 个候选 | 使用本地 JSON fallback | 同上 |
 | pgvector 候选经 Agent 后不足 3 道 | 使用本地 JSON fallback | 同上 |
 | 本地 JSON artifact 缺失或坏 JSON | 200 `{ variant_practice: null }` | 保持原练习题 |
 | pgvector 或本地路径生成 3 道 product items | 200 `{ variant_practice }` | 展示 3 道练习 |
 
-服务端可以在测试注入的 debug hook 中区分 `pgvector` / `local_json` 来源，但正式响应不返回 retrieval source、vector distance、metadata score、item id 或 source ref。
+服务端可以在测试注入的 debug hook 中区分 `pgvector` / `local_json` 来源，但正式响应不返回 retrieval source、cosine distance、metadata score、item id 或 source ref。`variant-practice-corpus-persistence.ts` 的 RPC 调用层必须设置短超时，建议默认 10 秒、允许通过 `RAG_PGVECTOR_QUERY_TIMEOUT_MS` 在 2-15 秒内调整；超时视为 pgvector 路径失败，继续走本地 JSON fallback。
 
 ## 12. 模块和文件边界
 
@@ -660,8 +671,9 @@ variant_practice_corpus_items
 覆盖：
 
 - migration 创建 `vector` extension。
+- `vector` extension 显式安装在 `extensions` schema。
 - 创建 `variant_practice_corpus_items`。
-- `embedding vector(1536)` 存在。
+- `embedding extensions.vector(1536)` 存在。
 - 创建 HNSW vector index。
 - 创建 GIN metadata indexes。
 - 启用 RLS。
@@ -676,7 +688,8 @@ variant_practice_corpus_items
 - corpus item embedding text 包含题干、检索文本、知识点、章节、目标能力和方法标签。
 - embedding text 不包含 `source_ref`、review meta、PDF 路径或审核字段。
 - query embedding text 使用 P2.7 query 字段，不读取学生画像。
-- hash 在 model、维度或文本变化时变化。
+- hash input 在 model、维度或文本变化时变化。
+- `variant-practice-embedding-text.ts` 不 import `node:crypto`，实际 sha256 只在同步 CLI 中计算。
 
 ### 15.3 Embedding provider tests
 
@@ -696,6 +709,7 @@ variant_practice_corpus_items
 - `needs_visual` item 不同步。
 - hash 未变化时跳过 embedding provider。
 - 新增/变化题会 upsert。
+- 曾停用行重新出现时，upsert 会将 `is_active` 恢复为 `true`。
 - 当前 corpus 缺失的旧 active row 会被 deactivated。
 - dry-run 不调用 embedding provider、不写数据库。
 - 输出摘要不含完整题干和 embedding 数组。
@@ -709,8 +723,9 @@ variant_practice_corpus_items
 - pgvector repository 返回候选时，service 优先用 pgvector candidate corpus。
 - pgvector 候选经 Agent 后不足 3 道时，service 回退本地 JSON。
 - pgvector repository 抛错时，service 回退本地 JSON。
+- pgvector RPC 调用挂起或超时时，service 回退本地 JSON。
 - pgvector path 和 local fallback 输出都必须经过 `createVariantPracticeProductViewModel`。
-- 正式响应不包含 `vector_distance`、`metadata_score`、`embedding_hash`、`item_id`、`source_candidate_id` 或 source ref。
+- 正式响应不包含 `cosine_distance`、`metadata_score`、`embedding_hash`、`item_id`、`source_candidate_id` 或 source ref。
 - `POST /api/variant-practice` 的 400/200 行为与 P2.7 保持一致。
 
 ### 15.6 回归测试
