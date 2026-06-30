@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Current branch: `codex/p29-pgvector-variant-practice-spec`.
+- Current branch: `codex/p29-pgvector-variant-practice-impl`.
 - Fixed demo student: `demo_student_001`.
 - Do not implement login, real multi-user, teacher/parent/admin flows, user-facing RLS policies, multi-tenant isolation, non-derivative topics, PDF online ingestion, image storage, exercise answer grading, LLM rerank, reason polish, or dynamic question generation.
 - `POST /api/variant-practice` external response contract stays `{ variant_practice: ProductVariantPractice | null }`.
