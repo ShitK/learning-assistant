@@ -46,6 +46,7 @@ const suites = {
     "scripts/tests/image-diagnosis/glm-ocr-draft-mapper.test.mjs",
     "scripts/tests/providers/anthropic-compatible-provider.test.mjs",
     "scripts/tests/providers/analysis-provider.test.mjs",
+    "scripts/tests/providers/embedding-provider.test.mjs",
     "scripts/tests/providers/glm-ocr-response-parser.test.mjs",
     "scripts/tests/providers/glm-ocr-provider.test.mjs",
     "scripts/tests/diagnosis/diagnosis-evidence.test.mjs",
