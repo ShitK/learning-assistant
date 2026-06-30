@@ -37,10 +37,11 @@ let embeddingModel = process.env.RAG_EMBEDDING_PROVIDER_MODEL || "text-embedding
 let dimensions = 1536;
 let repository = createDryRunRepository();
 
+const {
+  createDefaultVariantPracticeCorpusRepository,
+} = jiti("./src/lib/persistence/variant-practice-corpus-persistence.ts");
+
 if (!dryRun) {
-  const {
-    createDefaultVariantPracticeCorpusRepository,
-  } = jiti("./src/lib/persistence/variant-practice-corpus-persistence.ts");
   repository = createDefaultVariantPracticeCorpusRepository();
   if (!repository.is_database_configured) {
     console.error("Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
@@ -55,11 +56,14 @@ if (!dryRun) {
   embeddingProvider = createEmbeddingProvider(config.value);
   embeddingModel = config.value.model;
   dimensions = config.value.dimensions;
+} else {
+  const configuredRepository = createDefaultVariantPracticeCorpusRepository();
+  if (configuredRepository.is_database_configured) {
+    repository = configuredRepository;
+  }
 }
 
-const existingHashes = dryRun
-  ? new Map()
-  : await repository.listEmbeddingHashes();
+const existingHashes = await repository.listEmbeddingHashes();
 
 const summary = await planVariantPracticePgvectorSync({
   corpus,

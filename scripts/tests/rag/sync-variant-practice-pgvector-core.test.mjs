@@ -107,6 +107,7 @@ const unchangedHash = createHash("sha256")
   )
   .digest("hex");
 const unchangedHashUpserted = [];
+const unchangedHashEmbeddingCalls = [];
 const unchangedHashSummary = await planVariantPracticePgvectorSync({
   corpus: {
     corpus_version: "enriched-practice-corpus-v0",
@@ -118,16 +119,8 @@ const unchangedHashSummary = await planVariantPracticePgvectorSync({
   dryRun: false,
   embeddingProvider: {
     async embedText(input) {
-      assert.equal(input.text, unchangedHashEmbeddingText);
-      return {
-        ok: true,
-        value: {
-          embedding: Array.from({ length: 1536 }, () => 0.02),
-          model: "text-embedding-3-small",
-          provider_name: "fake",
-          dimensions: 1536,
-        },
-      };
+      unchangedHashEmbeddingCalls.push(input.text);
+      throw new Error("unchanged hash must not call embedding provider");
     },
   },
   repository: {
@@ -139,17 +132,11 @@ const unchangedHashSummary = await planVariantPracticePgvectorSync({
 });
 
 assert.equal(unchangedHashSummary.selected_count, 1);
-assert.equal(unchangedHashSummary.skipped_count, 0);
-assert.equal(unchangedHashSummary.embedded_count, 1);
-assert.equal(unchangedHashSummary.upserted_count, 1);
-assert.equal(unchangedHashUpserted.length, 1);
-assert.equal(unchangedHashUpserted[0].embedding_hash, unchangedHash);
-assert.equal(unchangedHashUpserted[0].section_title, "考点 3 函数零点");
-assert.deepEqual(unchangedHashUpserted[0].source_ref, { pdf_page_index: 9 });
-assert.deepEqual(unchangedHashUpserted[0].tag_review_meta, {
-  review_status: "approved",
-  reviewer: "task-6",
-});
+assert.equal(unchangedHashSummary.skipped_count, 1);
+assert.equal(unchangedHashSummary.embedded_count, 0);
+assert.equal(unchangedHashSummary.upserted_count, 0);
+assert.equal(unchangedHashEmbeddingCalls.length, 0);
+assert.equal(unchangedHashUpserted.length, 0);
 
 const dryRunSummary = await planVariantPracticePgvectorSync({
   corpus,

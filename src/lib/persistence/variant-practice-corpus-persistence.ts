@@ -65,7 +65,12 @@ export interface SupabaseVariantPracticeCorpusClient {
   from(table: "variant_practice_corpus_items"): {
     select(
       columns: string,
-    ): PromiseLike<{ data: unknown; error: unknown }>;
+    ): {
+      eq(
+        column: "is_active",
+        value: true,
+      ): PromiseLike<{ data: unknown; error: unknown }>;
+    } & PromiseLike<{ data: unknown; error: unknown }>;
     upsert(
       payload: Record<string, unknown>[],
       options: { onConflict: string },
@@ -113,7 +118,8 @@ export function createSupabaseVariantPracticeCorpusRepository(
     async listEmbeddingHashes(): Promise<Map<string, string>> {
       const { data, error } = await client
         .from("variant_practice_corpus_items")
-        .select("id, embedding_hash");
+        .select("id, embedding_hash")
+        .eq("is_active", true);
 
       if (error) {
         throw error;
@@ -150,6 +156,7 @@ export function createSupabaseVariantPracticeCorpusRepository(
         .from("variant_practice_corpus_items")
         .update({ is_active: false });
 
+      // 空 corpus 表示当前同步集没有任何 active 题，按设计停用全部旧行。
       const { error } =
         activeIds.length === 0
           ? await update

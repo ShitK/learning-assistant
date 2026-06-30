@@ -41,12 +41,16 @@ const fakeClient = {
     return {
       select(columns) {
         calls.push({ kind: "select", columns });
-        return Promise.resolve({
-          data: [
-            { id: "practice-1", embedding_hash: "hash-1", is_active: true },
-            { id: "practice-2", embedding_hash: "hash-2", is_active: false },
-          ],
-          error: null,
+        return Object.assign(Promise.resolve({ data: [], error: null }), {
+          eq(column, value) {
+            calls.push({ kind: "eq", column, value });
+            return Promise.resolve({
+              data: [
+                { id: "practice-1", embedding_hash: "hash-1", is_active: true },
+              ],
+              error: null,
+            });
+          },
         });
       },
       upsert(payload, options) {
@@ -95,10 +99,13 @@ assert.equal(repository.is_database_configured, true);
 
 const hashes = await repository.listEmbeddingHashes();
 assert.equal(hashes.get("practice-1"), "hash-1");
-assert.equal(hashes.get("practice-2"), "hash-2");
+assert.equal(hashes.has("practice-2"), false);
 
 const selectCall = calls.find((call) => call.kind === "select");
 assert.equal(selectCall.columns, "id, embedding_hash");
+const eqCall = calls.find((call) => call.kind === "eq");
+assert.equal(eqCall.column, "is_active");
+assert.equal(eqCall.value, true);
 
 await repository.upsertItems([
   {

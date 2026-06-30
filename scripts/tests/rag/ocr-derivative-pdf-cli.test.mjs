@@ -5,8 +5,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 const scriptPath = "scripts/rag/ocr-derivative-pdf.mjs";
-const bundledPythonBinDir =
-  "/Users/kk/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin";
 
 {
   const result = runCli(["--help"]);
@@ -54,6 +52,7 @@ const bundledPythonBinDir =
   await mkdir(fakeBinDir, { recursive: true });
   await writeFile(inputPath, "%PDF-1.4\n");
   await createFakePoppler(fakeBinDir);
+  await createFakePython(fakeBinDir);
 
   const result = runCli(
     [
@@ -68,6 +67,7 @@ const bundledPythonBinDir =
     ],
     {
       CODEX_POPPLER_BIN: fakeBinDir,
+      PATH: `${fakeBinDir}:${process.env.PATH ?? ""}`,
     },
   );
 
@@ -97,10 +97,33 @@ function runCli(args, env = {}) {
     encoding: "utf8",
     env: {
       ...process.env,
-      PATH: `${bundledPythonBinDir}:${process.env.PATH ?? ""}`,
       ...env,
     },
   });
+}
+
+async function createFakePython(fakeBinDir) {
+  const pythonPath = join(fakeBinDir, "python3");
+  await writeFile(
+    pythonPath,
+    [
+      "#!/usr/bin/env node",
+      "const { copyFileSync, writeFileSync } = require('node:fs');",
+      "const code = process.argv[3] || '';",
+      "const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAoAAAAECAIAAABgYH6iAAAAD0lEQVR4nGP8z4ADMI4AAb0ABydW7WQAAAAASUVORK5CYII=', 'base64');",
+      "if (code.includes('from PIL import Image') && process.argv.length === 4) { process.exit(0); }",
+      "if (code.includes('json.dumps')) { console.log(JSON.stringify({ width: 10, height: 4 })); process.exit(0); }",
+      "if (code.includes('image.crop')) {",
+      "  const outputPath = process.argv[5];",
+      "  try { copyFileSync(process.argv[4], outputPath); } catch { writeFileSync(outputPath, png); }",
+      "  process.exit(0);",
+      "}",
+      "if (code.includes('image.save')) { writeFileSync(process.argv[4], png); process.exit(0); }",
+      "process.exit(1);",
+      "",
+    ].join("\n"),
+  );
+  await chmod(pythonPath, 0o755);
 }
 
 async function createFakePoppler(fakeBinDir) {

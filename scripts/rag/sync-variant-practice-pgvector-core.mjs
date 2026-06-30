@@ -76,10 +76,12 @@ export async function planVariantPracticePgvectorSync({
     });
     const embeddingHash = createHash("sha256").update(hashInput).digest("hex");
 
+    if (existingHashes.get(item.id) === embeddingHash) {
+      skippedCount += 1;
+      continue;
+    }
+
     if (dryRun) {
-      if (existingHashes.get(item.id) === embeddingHash) {
-        skippedCount += 1;
-      }
       continue;
     }
 
