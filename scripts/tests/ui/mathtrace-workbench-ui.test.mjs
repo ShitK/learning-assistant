@@ -358,7 +358,7 @@ assert.equal(profileInsights.conclusionRows[0].weaknessIndex, 38);
 assert.equal(profileInsights.conclusionRows[0].weaknessDelta, 8);
 assert.equal(
   profileInsights.conclusionRows[0].summary,
-  "本次 +8，当前薄弱指数 38",
+  "本次诊断后薄弱指数 38（诊断前 30，本次 +8）",
 );
 assert.equal(profileInsights.conclusionRows[0].status.label, "基本稳定");
 assert.equal(profileInsights.priorityRows[0].id, "parameter_classification");

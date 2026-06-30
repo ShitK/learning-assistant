@@ -183,21 +183,27 @@ function createKnowledgePriorityRow(input: {
     weaknessIndex,
     weaknessDelta,
     status,
-    summary: createKnowledgeSummary(weaknessDelta, weaknessIndex, status),
+    summary: createKnowledgeSummary(
+      weaknessDelta,
+      previousWeaknessIndex,
+      weaknessIndex,
+      status,
+    ),
   };
 }
 
 function createKnowledgeSummary(
   weaknessDelta: number,
+  previousWeaknessIndex: number,
   weaknessIndex: number,
   status: WeaknessStatusView,
 ): string {
   if (weaknessDelta > 0) {
-    return `本次 +${weaknessDelta}，当前薄弱指数 ${weaknessIndex}`;
+    return `本次诊断后薄弱指数 ${weaknessIndex}（诊断前 ${previousWeaknessIndex}，本次 +${weaknessDelta}）`;
   }
 
   if (weaknessDelta < 0) {
-    return `本次 ${weaknessDelta}，当前薄弱指数 ${weaknessIndex}`;
+    return `本次诊断后薄弱指数 ${weaknessIndex}（诊断前 ${previousWeaknessIndex}，本次 ${weaknessDelta}）`;
   }
 
   return status.label === "稳定" ? "当前较稳定" : "保持关注";
