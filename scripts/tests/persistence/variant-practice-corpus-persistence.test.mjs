@@ -81,7 +81,6 @@ const fakeClient = {
           feature_flags: [],
           source_ref: { pdf_page_index: 1 },
           tag_review_meta: { review_status: "approved" },
-          review_status: "approved",
           cosine_distance: 0.12,
           metadata_score: 20,
         },
@@ -155,6 +154,46 @@ assert.equal(matches[0].metadata_score, 20);
 const rpcCall = calls.find((call) => call.kind === "rpc");
 assert.equal(rpcCall.name, "match_variant_practice_corpus_items");
 assert.equal(rpcCall.params.p_match_count, 12);
+
+const invalidRowRepository = createSupabaseVariantPracticeCorpusRepository({
+  rpc() {
+    return Promise.resolve({
+      data: [
+        {
+          id: "practice-invalid",
+          source_candidate_id: "candidate-invalid",
+          question_text: "题干",
+          search_text: "检索文本",
+          knowledge_points: ["derivative"],
+          section_title: null,
+          difficulty: null,
+          target_skills: ["monotonicity"],
+          method_tags: ["monotonicity_by_derivative"],
+          feature_flags: [],
+          source_ref: {},
+          tag_review_meta: {},
+          cosine_distance: 0.2,
+        },
+      ],
+      error: null,
+    });
+  },
+  from() {
+    throw new Error("not used");
+  },
+});
+
+assert.deepEqual(
+  await invalidRowRepository.matchItems({
+    query_embedding: [0.1],
+    match_count: 12,
+    knowledge_points: ["derivative"],
+    target_skills: [],
+    section_title: null,
+    timeout_ms: 20,
+  }),
+  [],
+);
 
 const errorRepository = createSupabaseVariantPracticeCorpusRepository({
   rpc() {

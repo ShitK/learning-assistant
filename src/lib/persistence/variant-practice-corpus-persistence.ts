@@ -84,6 +84,11 @@ export interface SupabaseVariantPracticeCorpusClient {
   ): PromiseLike<{ data: unknown; error: unknown }>;
 }
 
+type VariantPracticeCorpusRpcRow = Omit<
+  VariantPracticeCorpusDbItem,
+  "review_status"
+>;
+
 const DEFAULT_QUERY_TIMEOUT_MS = 10_000;
 const MIN_QUERY_TIMEOUT_MS = 2_000;
 const MAX_QUERY_TIMEOUT_MS = 15_000;
@@ -242,7 +247,7 @@ function toVariantPracticeCorpusDbItem(row: unknown): VariantPracticeCorpusDbIte
     throw new Error("Expected variant practice match row.");
   }
 
-  const value = row as VariantPracticeCorpusDbItem;
+  const value = row as VariantPracticeCorpusRpcRow;
   if (
     typeof value.id !== "string" ||
     typeof value.source_candidate_id !== "string" ||
@@ -254,12 +259,14 @@ function toVariantPracticeCorpusDbItem(row: unknown): VariantPracticeCorpusDbIte
     !Array.isArray(value.target_skills) ||
     !Array.isArray(value.method_tags) ||
     !Array.isArray(value.feature_flags) ||
-    value.review_status !== "approved" ||
     typeof value.cosine_distance !== "number" ||
     typeof value.metadata_score !== "number"
   ) {
     throw new Error("Expected valid variant practice match row.");
   }
 
-  return value;
+  return {
+    ...value,
+    review_status: "approved",
+  };
 }
