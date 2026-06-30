@@ -69,7 +69,12 @@ export async function readPgvectorDynamicPracticeCorpus(
   }
 
   const embeddingText = buildDynamicPracticeQueryEmbeddingText(query);
-  const embeddingResult = await embeddingProvider.embedText({ text: embeddingText });
+  let embeddingResult: Awaited<ReturnType<EmbeddingProvider["embedText"]>>;
+  try {
+    embeddingResult = await embeddingProvider.embedText({ text: embeddingText });
+  } catch {
+    return null;
+  }
   if (!embeddingResult.ok) {
     return null;
   }

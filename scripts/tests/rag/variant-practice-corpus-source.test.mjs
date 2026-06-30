@@ -123,6 +123,24 @@ const pgvectorRows = [
   assert.equal(corpus, null);
 }
 
+{
+  const corpus = await readPgvectorDynamicPracticeCorpus(query, {
+    repository: {
+      is_database_configured: true,
+      async matchItems() {
+        throw new Error("should not match after thrown embedding failure");
+      },
+    },
+    embedding_provider: {
+      async embedText() {
+        throw new Error("embedding provider unavailable");
+      },
+    },
+    timeout_ms: 10,
+  });
+  assert.equal(corpus, null);
+}
+
 const tmpRoot = mkdtempSync(join(tmpdir(), "variant-practice-corpus-source-"));
 const corpusPath = join(tmpRoot, "enriched_practice_corpus.json");
 writeFileSync(

@@ -33,6 +33,7 @@ const validPayload = {
   assert.equal(responseJson.includes("metadata_score"), false);
   assert.equal(responseJson.includes("embedding_hash"), false);
   assert.equal(responseJson.includes("source_candidate_id"), false);
+  assert.equal(responseJson.includes("item_id"), false);
   assert.equal(responseJson.includes("source_ref"), false);
 }
 
