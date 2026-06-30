@@ -51,6 +51,7 @@ const suites = {
     "scripts/tests/persistence/diagnosis-persistence.test.mjs",
     "scripts/tests/persistence/student-profile-persistence.test.mjs",
     "scripts/tests/persistence/mistake-book-api.test.mjs",
+    "scripts/tests/persistence/variant-practice-pgvector-migration.test.mjs",
     "scripts/tests/math/math-text-parser.test.mjs",
     "scripts/tests/image-diagnosis/image-diagnosis-pipeline.test.mjs",
     "scripts/tests/image-diagnosis/image-confirmation.test.mjs",
