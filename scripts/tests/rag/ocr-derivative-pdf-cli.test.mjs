@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 const scriptPath = "scripts/rag/ocr-derivative-pdf.mjs";
+const bundledPythonBinDir =
+  "/Users/kk/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin";
 
 {
   const result = runCli(["--help"]);
@@ -95,6 +97,7 @@ function runCli(args, env = {}) {
     encoding: "utf8",
     env: {
       ...process.env,
+      PATH: `${bundledPythonBinDir}:${process.env.PATH ?? ""}`,
       ...env,
     },
   });
