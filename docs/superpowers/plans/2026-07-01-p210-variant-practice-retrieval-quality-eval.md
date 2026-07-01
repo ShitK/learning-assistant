@@ -79,6 +79,7 @@ assert.equal(new Set(ids).size, ids.length);
 assert.equal(ids.includes("sample_derivative_parameter_classification"), true);
 assert.equal(ids.includes("upload_derivative_monotonicity"), true);
 assert.equal(ids.includes("upload_problem_only_low_evidence"), true);
+assert.equal(ids.includes("upload_extrema_or_maximum"), true);
 assert.equal(ids.includes("unsupported_non_derivative"), true);
 
 for (const evalCase of variantPracticeEvalCases) {
@@ -195,6 +196,7 @@ export const variantPracticeEvalCases = [
       evidence_level: "student_work_sufficient",
       persistence_evidence: "student_work",
       profile_update_kind: "mistake_cause",
+      // 使用 derivative_monotonicity 作为导数入口，题干中的“切线斜率”文本触发 tangent_slope / derivative_geometric_meaning。
       question_text: "已知曲线 y=f(x) 在 x=1 处的切线斜率，求切线方程。",
       knowledge_points: ["derivative_monotonicity"],
       mistake_causes: ["formula_misuse"],
@@ -203,6 +205,27 @@ export const variantPracticeEvalCases = [
       min_items: 3,
       required_target_skills: ["tangent_slope", "derivative_geometric_meaning"],
       preferred_method_tags: ["tangent_slope", "derivative_geometric_meaning"],
+      forbidden_internal_fields: forbiddenInternalFields,
+    },
+  },
+  {
+    id: "upload_extrema_or_maximum",
+    title: "极值与最值上传题",
+    request: {
+      student_id: "demo_student_001",
+      request_source: "confirmed_image_diagnosis",
+      evidence_level: "student_work_sufficient",
+      persistence_evidence: "student_work",
+      profile_update_kind: "mistake_cause",
+      // 使用 derivative_monotonicity 作为导数入口，题干中的“极值与最值”文本触发 extrema target skill。
+      question_text: "已知函数 f(x)=x^3-3x，讨论函数单调性并求函数的极值与最值。",
+      knowledge_points: ["derivative_monotonicity"],
+      mistake_causes: ["critical_point_missing"],
+    },
+    expected: {
+      min_items: 3,
+      required_target_skills: ["extrema"],
+      preferred_method_tags: ["extrema"],
       forbidden_internal_fields: forbiddenInternalFields,
     },
   },
@@ -286,6 +309,7 @@ const validReport = {
       status: "pass",
       retrieval_source: "local_json",
       display_source: "variant_practice_api",
+      pgvector_attempted: false,
       candidate_count: 12,
       product_item_count: 3,
       metrics: {
@@ -396,6 +420,7 @@ function validateCase(value, index, errors) {
     `cases[${index}].display_source`,
     errors,
   );
+  requireBoolean(value.pgvector_attempted, `cases[${index}].pgvector_attempted`, errors);
   requireNumber(value.candidate_count, `cases[${index}].candidate_count`, errors);
   requireNumber(value.product_item_count, `cases[${index}].product_item_count`, errors);
   if (!isRecord(value.metrics)) {
@@ -428,6 +453,12 @@ function validateFinding(value, caseIndex, findingIndex, errors) {
 function requireString(value, field, errors) {
   if (typeof value !== "string" || value.length === 0) {
     errors.push(`${field} must be a non-empty string`);
+  }
+}
+
+function requireBoolean(value, field, errors) {
+  if (typeof value !== "boolean") {
+    errors.push(`${field} must be a boolean`);
   }
 }
 
@@ -510,7 +541,7 @@ git commit -m "feat: add variant practice eval fixtures"
 
 **Interfaces:**
 - Produces `handleDynamicVariantPracticeEvalRequest(value, deps)`.
-- Produces `DynamicVariantPracticeEvalResult` with `retrieval_source`, `candidate_count_before_agent`, `candidate_count_after_approved_filter`, and `product_view_model`.
+- Produces `DynamicVariantPracticeEvalResult` with `retrieval_source`, `pgvector_attempted`, candidate counts, candidate metadata, and `product_view_model`.
 - Keeps `handleDynamicVariantPracticeRequest()` response unchanged.
 
 - [ ] **Step 1: Write failing eval service test**
@@ -570,9 +601,13 @@ const evalResult = await service.handleDynamicVariantPracticeEvalRequest(validRe
 
 assert.equal(evalResult.status, 200);
 assert.equal(evalResult.retrieval_source, "pgvector");
+assert.equal(evalResult.pgvector_attempted, true);
 assert.equal(evalResult.candidate_count_before_agent, 4);
 assert.equal(evalResult.candidate_count_after_approved_filter, 3);
 assert.equal(evalResult.product_view_model.items.length, 3);
+assert.equal(evalResult.candidate_items_after_filter.length, 3);
+assert.equal(evalResult.selected_candidate_items.length, 3);
+assert.deepEqual(evalResult.selected_candidate_items.map((item) => item.id), ["a", "b", "c"]);
 
 const publicResult = await service.handleDynamicVariantPracticeRequest(validRequest, {
   agent: fakeAgent,
@@ -594,7 +629,10 @@ const unsupported = await service.handleDynamicVariantPracticeEvalRequest(
 );
 assert.equal(unsupported.status, 200);
 assert.equal(unsupported.retrieval_source, null);
+assert.equal(unsupported.pgvector_attempted, false);
 assert.equal(unsupported.candidate_count_before_agent, 0);
+assert.deepEqual(unsupported.candidate_items_after_filter, []);
+assert.deepEqual(unsupported.selected_candidate_items, []);
 assert.equal(unsupported.product_view_model, null);
 
 console.log("dynamic variant practice eval service tests passed");
@@ -632,9 +670,21 @@ Modify `src/lib/server/rag/dynamic-variant-practice-service.ts`:
 export interface DynamicVariantPracticeEvalResult {
   status: number;
   retrieval_source: "pgvector" | "local_json" | null;
+  pgvector_attempted: boolean;
   candidate_count_before_agent: number;
   candidate_count_after_approved_filter: number;
+  candidate_items_after_filter: DynamicVariantPracticeEvalCandidateItem[];
+  selected_candidate_items: DynamicVariantPracticeEvalCandidateItem[];
   product_view_model: ProductVariantPractice | null;
+}
+
+interface DynamicVariantPracticeEvalCandidateItem {
+  id: string;
+  source_candidate_id: string;
+  knowledge_points: string[];
+  section_title?: string | null;
+  target_skills?: string[];
+  method_tags?: string[];
 }
 
 export async function handleDynamicVariantPracticeEvalRequest(
@@ -643,22 +693,23 @@ export async function handleDynamicVariantPracticeEvalRequest(
 ): Promise<DynamicVariantPracticeEvalResult> {
   const parsed = parseDynamicVariantPracticeRequest(value);
   if (!parsed.ok) {
-    return evalResult(null, 0, 0, null, 400);
+    return evalResult(null, false, 0, 0, [], [], null, 400);
   }
 
   const query = deriveDynamicVariantPracticeQuery(parsed.value);
   if (!query) {
-    return evalResult(null, 0, 0, null);
+    return evalResult(null, false, 0, 0, [], [], null);
   }
 
+  const shouldUsePgvector = deps.pgvectorCorpusSource !== null;
   const pgvectorCorpusSource =
     deps.pgvectorCorpusSource ?? readPgvectorDynamicPracticeCorpus;
   const localCorpusSource =
     deps.localCorpusSource ?? readLocalDynamicPracticeCorpus;
 
-  const pgvectorCorpus = await pgvectorCorpusSource(query);
+  const pgvectorCorpus = shouldUsePgvector ? await pgvectorCorpusSource(query) : null;
   const pgvectorResult = pgvectorCorpus
-    ? await buildVariantPracticeEvalFromCorpus("pgvector", pgvectorCorpus, query, deps)
+    ? await buildVariantPracticeEvalFromCorpus("pgvector", true, pgvectorCorpus, query, deps)
     : null;
   if (pgvectorResult?.product_view_model) {
     return pgvectorResult;
@@ -666,18 +717,27 @@ export async function handleDynamicVariantPracticeEvalRequest(
 
   const localCorpus = await localCorpusSource(deps.corpusFilePath);
   const localResult = localCorpus
-    ? await buildVariantPracticeEvalFromCorpus("local_json", localCorpus, query, deps)
+    ? await buildVariantPracticeEvalFromCorpus(
+        "local_json",
+        shouldUsePgvector,
+        localCorpus,
+        query,
+        deps,
+      )
     : null;
 
-  return localResult ?? evalResult(null, 0, 0, null);
+  return localResult ?? evalResult(null, shouldUsePgvector, 0, 0, [], [], null);
 }
 ```
+
+For eval-only local mode, widen `DynamicVariantPracticeServiceDeps.pgvectorCorpusSource` to accept `null` as a disable signal. Production callers keep omitting this dependency and continue to use the normal pgvector-preferred source order.
 
 Add helper functions near `buildVariantPracticeFromCorpus()`:
 
 ```ts
 async function buildVariantPracticeEvalFromCorpus(
   retrievalSource: "pgvector" | "local_json",
+  pgvectorAttempted: boolean,
   corpus: DynamicPracticeCorpus,
   query: DynamicPracticeQuery,
   deps: DynamicVariantPracticeServiceDeps,
@@ -685,16 +745,22 @@ async function buildVariantPracticeEvalFromCorpus(
   const candidateCountBeforeAgent = corpus.items.length;
   const prepared = prepareCorpusAndQuery(corpus, query);
   const candidateCountAfterApprovedFilter = prepared?.corpus.items.length ?? 0;
+  const candidateItemsAfterFilter = prepared
+    ? toEvalCandidateItems(prepared.corpus.items)
+    : [];
   if (!prepared) {
     return evalResult(
       retrievalSource,
+      pgvectorAttempted,
       candidateCountBeforeAgent,
       candidateCountAfterApprovedFilter,
+      candidateItemsAfterFilter,
+      [],
       null,
     );
   }
 
-  const productViewModel = await buildVariantPracticeFromPreparedCorpus(
+  const productResult = await buildVariantPracticeFromPreparedCorpus(
     prepared.corpus,
     prepared.query,
     deps,
@@ -702,24 +768,33 @@ async function buildVariantPracticeEvalFromCorpus(
 
   return evalResult(
     retrievalSource,
+    pgvectorAttempted,
     candidateCountBeforeAgent,
     candidateCountAfterApprovedFilter,
-    productViewModel,
+    candidateItemsAfterFilter,
+    productResult?.selectedCandidateItems ?? [],
+    productResult?.viewModel ?? null,
   );
 }
 
 function evalResult(
   retrievalSource: "pgvector" | "local_json" | null,
+  pgvectorAttempted: boolean,
   candidateCountBeforeAgent: number,
   candidateCountAfterApprovedFilter: number,
+  candidateItemsAfterFilter: DynamicVariantPracticeEvalCandidateItem[],
+  selectedCandidateItems: DynamicVariantPracticeEvalResult["selected_candidate_items"],
   productViewModel: ProductVariantPractice | null,
   status = 200,
 ): DynamicVariantPracticeEvalResult {
   return {
     status,
     retrieval_source: retrievalSource,
+    pgvector_attempted: pgvectorAttempted,
     candidate_count_before_agent: candidateCountBeforeAgent,
     candidate_count_after_approved_filter: candidateCountAfterApprovedFilter,
+    candidate_items_after_filter: candidateItemsAfterFilter,
+    selected_candidate_items: selectedCandidateItems,
     product_view_model: productViewModel,
   };
 }
@@ -738,14 +813,22 @@ async function buildVariantPracticeFromCorpus(
     return null;
   }
 
-  return buildVariantPracticeFromPreparedCorpus(prepared.corpus, prepared.query, deps);
+  const result = await buildVariantPracticeFromPreparedCorpus(
+    prepared.corpus,
+    prepared.query,
+    deps,
+  );
+  return result?.viewModel ?? null;
 }
 
 async function buildVariantPracticeFromPreparedCorpus(
   corpus: DynamicPracticeCorpus,
   query: DynamicPracticeQuery,
   deps: DynamicVariantPracticeServiceDeps,
-): Promise<ProductVariantPractice | null> {
+): Promise<{
+  viewModel: ProductVariantPractice;
+  selectedCandidateItems: DynamicVariantPracticeEvalResult["selected_candidate_items"];
+} | null> {
   const agent = deps.agent ?? (await loadDefaultVariantPracticeAgent());
   if (!agent) {
     return null;
@@ -758,10 +841,46 @@ async function buildVariantPracticeFromPreparedCorpus(
       searchLimit: deps.searchLimit ?? 12,
     });
     const viewModel = createVariantPracticeProductViewModel(artifact);
-    return viewModel && viewModel.items.length === 3 ? viewModel : null;
+    if (!viewModel || viewModel.items.length !== 3) {
+      return null;
+    }
+
+    return {
+      viewModel,
+      selectedCandidateItems: selectCandidateItemsForProductViewModel(
+        viewModel,
+        corpus.items,
+      ),
+    };
   } catch {
     return null;
   }
+}
+
+function selectCandidateItemsForProductViewModel(
+  viewModel: ProductVariantPractice,
+  corpusItems: DynamicPracticeCorpus["items"],
+): DynamicVariantPracticeEvalResult["selected_candidate_items"] {
+  const selectedItems = viewModel.items
+    .map((productItem) =>
+      corpusItems.find((item) => item.question_text === productItem.question_text),
+    )
+    .filter((item): item is DynamicPracticeCorpus["items"][number] => Boolean(item));
+
+  return toEvalCandidateItems(selectedItems);
+}
+
+function toEvalCandidateItems(
+  items: DynamicPracticeCorpus["items"],
+): DynamicVariantPracticeEvalCandidateItem[] {
+  return items.map((item) => ({
+    id: item.id,
+    source_candidate_id: item.source_candidate_id,
+    knowledge_points: item.knowledge_points,
+    section_title: item.section_title,
+    target_skills: item.target_skills,
+    method_tags: item.method_tags,
+  }));
 }
 ```
 
@@ -870,15 +989,24 @@ const report = await buildVariantPracticeRetrievalEvalReport({
     if (evalCase.id === "unsupported_non_derivative") {
       return {
         retrieval_source: null,
+        pgvector_attempted: false,
         candidate_count_before_agent: 0,
         candidate_count_after_approved_filter: 0,
+        candidate_items_after_filter: [],
+        selected_candidate_items: [],
         product_view_model: null,
       };
     }
     return {
       retrieval_source: "local_json",
+      pgvector_attempted: false,
       candidate_count_before_agent: 4,
       candidate_count_after_approved_filter: 3,
+      candidate_items_after_filter: [
+        buildDebugItem("A", ["monotonicity"]),
+        buildDebugItem("B", ["monotonicity"]),
+        buildDebugItem("C", ["parameter_range"]),
+      ],
       product_view_model: {
         items: [
           buildProductItem("foundation", "A"),
@@ -886,7 +1014,7 @@ const report = await buildVariantPracticeRetrievalEvalReport({
           buildProductItem("additional_practice", "C"),
         ],
       },
-      debug_items: [
+      selected_candidate_items: [
         buildDebugItem("A", ["monotonicity"]),
         buildDebugItem("B", ["monotonicity"]),
         buildDebugItem("C", ["parameter_range"]),
@@ -901,12 +1029,15 @@ assert.equal(report.summary.pass, 2);
 assert.equal(report.summary.warn, 0);
 assert.equal(report.summary.fail, 0);
 assert.equal(report.summary.three_item_rate, 0.5);
+assert.equal(report.summary.fallback_rate, 0);
 assert.equal(report.cases[0].status, "pass");
 assert.equal(report.cases[0].retrieval_source, "local_json");
+assert.equal(report.cases[0].pgvector_attempted, false);
 assert.equal(report.cases[0].display_source, "variant_practice_api");
 assert.equal(report.cases[0].metrics.required_target_skill_matches, 2);
 assert.equal(report.cases[1].status, "pass");
 assert.equal(report.cases[1].retrieval_source, null);
+assert.equal(report.cases[1].pgvector_attempted, false);
 assert.equal(report.cases[1].display_source, "diagnosis_practice_questions");
 
 assert.equal(Array.from(truncateDebugText("abcdef", 3)).join(""), "abc");
@@ -1012,8 +1143,8 @@ export async function buildVariantPracticeRetrievalEvalReport({
 
 export function buildCaseReport(evalCase, result) {
   const productItems = result.product_view_model?.items ?? [];
-  const debugItems = result.debug_items ?? [];
-  const metrics = buildMetrics(evalCase, productItems, debugItems);
+  const selectedCandidateItems = result.selected_candidate_items ?? [];
+  const metrics = buildMetrics(evalCase, productItems, selectedCandidateItems);
   const findings = buildFindings(evalCase, result, metrics);
   const status = classifyCase(evalCase, result, metrics, findings);
 
@@ -1021,6 +1152,7 @@ export function buildCaseReport(evalCase, result) {
     case_id: evalCase.id,
     status,
     retrieval_source: result.retrieval_source,
+    pgvector_attempted: result.pgvector_attempted,
     display_source:
       productItems.length > 0 ? "variant_practice_api" : "diagnosis_practice_questions",
     candidate_count: result.candidate_count_before_agent,
@@ -1035,7 +1167,7 @@ export function buildCaseReport(evalCase, result) {
   };
 }
 
-export function buildMetrics(evalCase, productItems, debugItems) {
+export function buildMetrics(evalCase, productItems, selectedCandidateItems) {
   const expectedSkills = new Set(evalCase.expected.required_target_skills);
   const expectedMethodTags = new Set([
     ...evalCase.expected.preferred_method_tags,
@@ -1047,7 +1179,7 @@ export function buildMetrics(evalCase, productItems, debugItems) {
   let mistakeCauseAlignmentMatches = 0;
   let offTopicCount = 0;
 
-  for (const item of debugItems) {
+  for (const item of selectedCandidateItems) {
     const skillSet = new Set([...(item.target_skills ?? []), ...(item.method_tags ?? [])]);
     if (intersects(skillSet, expectedSkills)) {
       requiredTargetSkillMatches += 1;
@@ -1091,11 +1223,28 @@ export function classifyCase(evalCase, result, metrics, findings) {
 
 export function buildFindings(evalCase, result, metrics) {
   const findings = [];
-  if (result.retrieval_source === null && evalCase.expected.min_items > 0) {
+  const candidateTargetSkillMatches = countTargetSkillMatches(
+    result.candidate_items_after_filter ?? [],
+    evalCase.expected.required_target_skills,
+  );
+  if (
+    result.pgvector_attempted &&
+    result.retrieval_source === "local_json" &&
+    evalCase.expected.min_items > 0
+  ) {
     findings.push({
       severity: "warn",
       reason: "fallback_triggered",
-      message: "RAG 未返回推荐，前端将保留诊断响应自带练习题。",
+      message: "pgvector 路径未返回有效结果，已回退到本地 JSON corpus。",
+    });
+  }
+  if (result.retrieval_source === null && evalCase.expected.min_items > 0) {
+    findings.push({
+      severity: "warn",
+      reason: result.pgvector_attempted ? "corpus_gap" : "unsupported_scope",
+      message: result.pgvector_attempted
+        ? "pgvector 与本地 fallback 均未返回足够候选。"
+        : "当前输入没有进入支持的导数 RAG scope。",
     });
   }
   if (metrics.off_topic_count > 0) {
@@ -1112,14 +1261,44 @@ export function buildFindings(evalCase, result, metrics) {
       message: "最终 3 题对目标技能覆盖不足。",
     });
   }
-  if (metrics.unique_item_count < (result.product_view_model?.items.length ?? 0)) {
+  if (
+    result.pgvector_attempted &&
+    result.candidate_count_before_agent >= 3 &&
+    metrics.required_target_skill_matches < 2 &&
+    evalCase.expected.min_items === 3
+  ) {
+    findings.push({
+      severity: "warn",
+      reason: "vector_too_broad",
+      message: "pgvector 召回候选足够，但最终题对目标技能覆盖不足。",
+    });
+  }
+  if (
+    candidateTargetSkillMatches >= 2 &&
+    metrics.required_target_skill_matches < 2 &&
+    evalCase.expected.min_items === 3
+  ) {
     findings.push({
       severity: "warn",
       reason: "agent_slotting_gap",
+      message: "候选中存在目标技能命中题，但最终推荐未选入足够目标题。",
+    });
+  }
+  if (metrics.unique_item_count < (result.product_view_model?.items.length ?? 0)) {
+    findings.push({
+      severity: "warn",
+      reason: "duplicate_items",
       message: "最终推荐中存在重复题干。",
     });
   }
   return findings;
+}
+
+function countTargetSkillMatches(items, requiredTargetSkills) {
+  const expectedSkills = new Set(requiredTargetSkills);
+  return items.filter((item) =>
+    intersects(new Set([...(item.target_skills ?? []), ...(item.method_tags ?? [])]), expectedSkills),
+  ).length;
 }
 
 export function summarizeCases(cases) {
@@ -1128,7 +1307,7 @@ export function summarizeCases(cases) {
   const fail = cases.filter((item) => item.status === "fail").length;
   const threeItemCount = cases.filter((item) => item.product_item_count === 3).length;
   const fallbackCount = cases.filter(
-    (item) => item.display_source === "diagnosis_practice_questions",
+    (item) => item.pgvector_attempted && item.retrieval_source === "local_json",
   ).length;
   return {
     pass,
@@ -1189,7 +1368,7 @@ export async function writeEvalReportFiles({ report, outputDir, writeLatest }) {
 }
 
 function formatTimestampForFile(value) {
-  return value.replace(/[:.]/g, "-").replace(/Z$/, "");
+  return new Date(value).toISOString().slice(0, 19).replace(/:/g, "-") + "Z";
 }
 
 function mapMistakeCausesToMethodTags(mistakeCauses) {
@@ -1325,6 +1504,22 @@ const badMode = spawnSync(
 assert.equal(badMode.status, 1);
 assert.match(badMode.stderr, /Choose exactly one mode/);
 
+const missingOutput = spawnSync(
+  process.execPath,
+  ["scripts/rag/evaluate-variant-practice-retrieval.mjs", "--local-only", "--output"],
+  { cwd: process.cwd(), encoding: "utf8" },
+);
+assert.equal(missingOutput.status, 1);
+assert.match(missingOutput.stderr, /--output requires a value/);
+
+const missingCase = spawnSync(
+  process.execPath,
+  ["scripts/rag/evaluate-variant-practice-retrieval.mjs", "--local-only", "--case", "--no-latest"],
+  { cwd: process.cwd(), encoding: "utf8" },
+);
+assert.equal(missingCase.status, 1);
+assert.match(missingCase.stderr, /--case requires a value/);
+
 console.log("evaluate variant practice retrieval cli tests passed");
 ```
 
@@ -1377,7 +1572,7 @@ const report = await buildVariantPracticeRetrievalEvalReport({
   mode: args.mode,
   runCase: async (evalCase) =>
     handleDynamicVariantPracticeEvalRequest(evalCase.request, {
-      pgvectorCorpusSource: args.mode === "local_only" ? async () => null : undefined,
+      pgvectorCorpusSource: args.mode === "local_only" ? null : undefined,
     }),
 });
 
@@ -1405,10 +1600,18 @@ function parseArgs(argv) {
     } else if (arg === "--pgvector-preferred") {
       mode = mode ? "invalid" : "pgvector_preferred";
     } else if (arg === "--output") {
-      outputDir = argv[index + 1];
+      const consumed = consumeValue(argv, index, "--output");
+      if (!consumed.ok) {
+        return consumed;
+      }
+      outputDir = consumed.value;
       index += 1;
     } else if (arg === "--case") {
-      caseId = argv[index + 1];
+      const consumed = consumeValue(argv, index, "--case");
+      if (!consumed.ok) {
+        return consumed;
+      }
+      caseId = consumed.value;
       index += 1;
     } else if (arg === "--no-latest") {
       noLatest = true;
@@ -1420,13 +1623,15 @@ function parseArgs(argv) {
   if (!mode || mode === "invalid") {
     return { ok: false, message: "Choose exactly one mode: --local-only or --pgvector-preferred" };
   }
-  if (outputDir === "") {
-    return { ok: false, message: "--output requires a path" };
-  }
-  if (caseId === "") {
-    return { ok: false, message: "--case requires a case id" };
-  }
   return { ok: true, mode, outputDir, caseId, noLatest };
+}
+
+function consumeValue(argv, index, name) {
+  const next = argv[index + 1];
+  if (next === undefined || next.startsWith("--")) {
+    return { ok: false, message: `${name} requires a value` };
+  }
+  return { ok: true, value: next };
 }
 ```
 
