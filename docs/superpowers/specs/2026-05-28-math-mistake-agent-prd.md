@@ -157,9 +157,9 @@ P1.5 的 DeepSeek/text analysis provider 边界是“展示增强”，不是“
 
 P1.6a 增加 Demo smoke stability guard。它不改变用户功能，只把 `sample_diagnosis`、`image_diagnosis` 识别草稿、`/api/confirm`、P1.5 低证据追问、跳过追问、用户确认写入和标准解法展示残留固化为可复现脚本。`npm run test:smoke` 必须在无 API Key、无网络环境下通过；真实 provider smoke 不纳入本阶段，避免把演示稳定性绑定到外部模型可用性。
 
-P1.7 引入 Supabase Postgres 数据底座，但只覆盖确认后的诊断记录、只读错题本和可解释画像事件，不扩展为完整商业系统。新增表为 `students`、`diagnosis_runs`、`mistake_book_items` 和 `memory_events`。`sample_diagnosis` 作为 demo 自动确认路径，在 `memory_delta.should_persist=true` 时也会尝试写入；图片诊断必须经过 `/api/confirm`，并满足服务端证据策略后才写入。当前仍固定 `demo_student_001`，不做登录、权限、老师端、RAG、pgvector、Storage 或完整画像迁移。Supabase 未配置或写入失败时，诊断报告仍返回，错题本展示为空，`sample_diagnosis` 稳定路径不得被数据库依赖破坏。
+P1.7 引入 Supabase Postgres 数据底座，但只覆盖确认后的诊断记录、只读错题本和可解释画像事件，不扩展为完整商业系统。新增表为 `students`、`diagnosis_runs`、`mistake_book_items` 和 `memory_events`。`sample_diagnosis` 作为 demo 自动确认路径，在 `memory_delta.should_persist=true` 时也会尝试写入；图片诊断必须经过 `/api/confirm`，并满足服务端证据策略后才写入。P1.7 阶段仍固定 `demo_student_001`，当时不做登录、权限、老师端、RAG、pgvector、Storage 或完整画像迁移。Supabase 未配置或写入失败时，诊断报告仍返回，错题本展示为空，`sample_diagnosis` 稳定路径不得被数据库依赖破坏。
 
-P1.8 在 P1.7 数据底座上新增云端当前画像快照 `student_profiles`，但它只是一个小型结构化 read model，不是 RAG、不是 pgvector/Milvus，也不是模型输出存储。`student_profiles` 从 `memory_events` 中 `memory_delta.should_persist=true` 的门控事件投影重建，使用 shared `StudentProfile` 运行时校验；`memory_events` 继续作为可解释画像事件历史和审计轨迹，`diagnosis_runs` 继续保存完整诊断审计，`mistake_book_items` 继续保存题目级错题本条目。前端只能通过 `GET /api/student-profile` 读取当前云端画像，不能直连 Supabase 或 service role key。localStorage 仍是 demo fallback；工作台先从 localStorage/demo 恢复，再 best-effort 拉取云端画像；成功持久化诊断或成功删除错题后会尝试同步投影画像，同步失败只返回 warning，不破坏诊断和 `sample_diagnosis` 主路径。当前 `demoStudentProfile` 是空历史基线，只保留 `demo_student_001`、年级、学科和时间字段，不预置知识点弱项、错因累计、复习优先级或高考关注项；画像变化只应来自确认写入后的 `memory_delta` / `memory_events`。当前仍固定 `demo_student_001` 和 `math`，不做登录、真实多用户、老师端、面向用户的 RLS 策略、RAG、pgvector 或 Milvus。
+P1.8 在 P1.7 数据底座上新增云端当前画像快照 `student_profiles`，但它只是一个小型结构化 read model，不是 RAG、不是 pgvector/Milvus，也不是模型输出存储。`student_profiles` 从 `memory_events` 中 `memory_delta.should_persist=true` 的门控事件投影重建，使用 shared `StudentProfile` 运行时校验；`memory_events` 继续作为可解释画像事件历史和审计轨迹，`diagnosis_runs` 继续保存完整诊断审计，`mistake_book_items` 继续保存题目级错题本条目。前端只能通过 `GET /api/student-profile` 读取当前云端画像，不能直连 Supabase 或 service role key。localStorage 仍是 demo fallback；工作台先从 localStorage/demo 恢复，再 best-effort 拉取云端画像；成功持久化诊断或成功删除错题后会尝试同步投影画像，同步失败只返回 warning，不破坏诊断和 `sample_diagnosis` 主路径。当前 `demoStudentProfile` 是空历史基线，只保留 `demo_student_001`、年级、学科和时间字段，不预置知识点弱项、错因累计、复习优先级或高考关注项；画像变化只应来自确认写入后的 `memory_delta` / `memory_events`。P1.8 阶段仍固定 `demo_student_001` 和 `math`，当时不做登录、真实多用户、老师端、面向用户的 RLS 策略、RAG、pgvector 或 Milvus；P2.9 后 pgvector 仅用于变式练习候选召回，不进入画像事实层。
 
 P1.9 在 P1.8 云端画像快照基础上重构学生画像展示语义，但不改变数据库、`memory_delta` 契约或画像投影规则。页面不再把错题诊断直接展示为“掌握度扣分”，而是基于当前 `StudentProfile`、本次 `DiagnosisViewModel.memory_delta` 和已有 demo 历史派生“薄弱指数”“本次诊断结论”“需要关注的错因”和“推荐依据”。薄弱指数仅为展示层派生值，计算方式为 `100 - mastery_score`，数字越大表示越需要优先处理；它不写入 `student_profiles`，也不替代 `mastery_scores`。P1.9 不新增 profile evidence API，不向前端暴露完整 `memory_events` 历史；后续如需展示“近 N 次趋势”或“具体事件证据”，应单独设计服务端 evidence/history 接口。
 
@@ -386,7 +386,7 @@ P1.7 持久化边界：
 - 未配置数据库或写入失败时，诊断主流程不失败，错题本为空或保留旧列表。
 - 不保存完整图片 base64，不保存 provider secret，不把完整 provider payload 写入数据库。
 - localStorage 暂时继续作为 demo fallback；云端 `student_profiles` 是当前画像 read model，不是完整多用户画像系统。
-- 当前不做登录、RLS 用户策略、老师端、多学生权限、RAG、pgvector 或错题内容编辑。
+- 当前不做登录、RLS 用户策略、老师端、多学生权限或错题内容编辑；P2.9 的 RAG/pgvector 仅服务变式练习检索，不写画像或错题本。
 
 ### Workflow Principles
 
@@ -1142,7 +1142,7 @@ Supabase PostgreSQL + server-only service role + Next API
 
 边界：
 
-- 不做登录、老师端、RLS 用户策略、RAG、pgvector、Storage 或完整多用户画像迁移。
+- 不做登录、老师端、RLS 用户策略、Storage 或完整多用户画像迁移；P2.9 的 RAG/pgvector 仅服务变式练习检索，不写画像或错题本。
 - 前端不直连数据库，service role key 只在服务端读取。
 - 重复题不新增错题或 memory event，删除错题必须二次确认且不删除 `diagnosis_runs` 审计记录。
 - 未配置数据库时，demo 仍可运行，错题本为空，诊断主流程不失败。

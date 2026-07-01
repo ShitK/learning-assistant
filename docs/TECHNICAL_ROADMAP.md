@@ -866,7 +866,7 @@ Supabase Storage（图片长期保存阶段再引入）
 验收：
 
 - 诊断确认后写入 diagnosis run、错题本条目和 memory event；`sample_diagnosis` 作为 demo 自动确认路径也会写。
-- 当前仍固定 `demo_student_001`，不做登录、权限、老师端、RAG 或 pgvector。
+- P1.7 阶段仍固定 `demo_student_001`，当时不做登录、权限、老师端、RAG 或 pgvector。
 - 前端不直连数据库；未配置 Supabase 时 demo 仍可运行，错题本为空或稳定降级。
 - 不存完整图片 base64；localStorage 暂时继续作为 demo 画像恢复，不迁移完整画像。
 - `sample_diagnosis` 稳定路径不破坏。
@@ -894,7 +894,7 @@ Supabase Storage（图片长期保存阶段再引入）
 验收：
 
 - `student_profiles` 是当前画像快照，不是事实源；事实源仍是 `memory_events`、`diagnosis_runs` 和 `mistake_book_items`。
-- 当前仍固定 `demo_student_001` 和 `math`，不做登录、真实多用户、老师端、RAG、pgvector 或 Milvus。
+- P1.8 阶段仍固定 `demo_student_001` 和 `math`，当时不做登录、真实多用户、老师端、RAG、pgvector 或 Milvus；P2.9 后 pgvector 仅用于变式练习候选召回，不进入画像事实层。
 - 前端不直连 Supabase；工作台先从 localStorage/demo 恢复，再 best-effort 读取云端画像。
 - 成功持久化诊断或成功删除错题后同步投影画像；同步失败不破坏诊断、删除和 `sample_diagnosis` 主路径。
 
