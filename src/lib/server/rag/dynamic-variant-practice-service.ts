@@ -33,6 +33,17 @@ export interface DynamicVariantPracticeServiceResult {
   body: DynamicVariantPracticeApiResponse;
 }
 
+export interface DynamicVariantPracticeEvalResult {
+  status: number;
+  retrieval_source: "pgvector" | "local_json" | null;
+  pgvector_attempted: boolean;
+  candidate_count_before_agent: number;
+  candidate_count_after_approved_filter: number;
+  candidate_items_after_filter: DynamicVariantPracticeEvalCandidateItem[];
+  selected_candidate_items: DynamicVariantPracticeEvalCandidateItem[];
+  product_view_model: ProductVariantPractice | null;
+}
+
 export interface VariantPracticeAgent {
   // Agent artifact 来自 scripts/**，必须按不可信输入交给 product view model 校验。
   recommendVariantPractice(input: {
@@ -46,7 +57,7 @@ export interface DynamicVariantPracticeServiceDeps {
   corpusFilePath?: string;
   agent?: VariantPracticeAgent;
   searchLimit?: number;
-  pgvectorCorpusSource?: typeof readPgvectorDynamicPracticeCorpus;
+  pgvectorCorpusSource?: typeof readPgvectorDynamicPracticeCorpus | null;
   localCorpusSource?: typeof readLocalDynamicPracticeCorpus;
 }
 
@@ -92,6 +103,54 @@ export async function handleDynamicVariantPracticeRequest(
   return success(localResult);
 }
 
+export async function handleDynamicVariantPracticeEvalRequest(
+  value: unknown,
+  deps: DynamicVariantPracticeServiceDeps = {},
+): Promise<DynamicVariantPracticeEvalResult> {
+  const parsed = parseDynamicVariantPracticeRequest(value);
+  if (!parsed.ok) {
+    return evalResult(null, false, 0, 0, [], [], null, 400);
+  }
+
+  const query = deriveDynamicVariantPracticeQuery(parsed.value);
+  if (!query) {
+    return evalResult(null, false, 0, 0, [], [], null);
+  }
+
+  const shouldUsePgvector = deps.pgvectorCorpusSource !== null;
+  const pgvectorCorpusSource =
+    deps.pgvectorCorpusSource ?? readPgvectorDynamicPracticeCorpus;
+  const localCorpusSource =
+    deps.localCorpusSource ?? readLocalDynamicPracticeCorpus;
+
+  const pgvectorCorpus = shouldUsePgvector ? await pgvectorCorpusSource(query) : null;
+  const pgvectorResult = pgvectorCorpus
+    ? await buildVariantPracticeEvalFromCorpus(
+        "pgvector",
+        true,
+        pgvectorCorpus,
+        query,
+        deps,
+      )
+    : null;
+  if (pgvectorResult?.product_view_model) {
+    return pgvectorResult;
+  }
+
+  const localCorpus = await localCorpusSource(deps.corpusFilePath);
+  const localResult = localCorpus
+    ? await buildVariantPracticeEvalFromCorpus(
+        "local_json",
+        shouldUsePgvector,
+        localCorpus,
+        query,
+        deps,
+      )
+    : null;
+
+  return localResult ?? evalResult(null, shouldUsePgvector, 0, 0, [], [], null);
+}
+
 export async function loadDefaultVariantPracticeAgent(): Promise<VariantPracticeAgent | null> {
   return defaultVariantPracticeAgent;
 }
@@ -106,6 +165,64 @@ async function buildVariantPracticeFromCorpus(
     return null;
   }
 
+  const result = await buildVariantPracticeFromPreparedCorpus(
+    prepared.corpus,
+    prepared.query,
+    deps,
+  );
+  return result?.viewModel ?? null;
+}
+
+async function buildVariantPracticeEvalFromCorpus(
+  retrievalSource: "pgvector" | "local_json",
+  pgvectorAttempted: boolean,
+  corpus: DynamicPracticeCorpus,
+  query: DynamicPracticeQuery,
+  deps: DynamicVariantPracticeServiceDeps,
+): Promise<DynamicVariantPracticeEvalResult> {
+  const candidateCountBeforeAgent = corpus.items.length;
+  const prepared = prepareCorpusAndQuery(corpus, query);
+  const candidateCountAfterApprovedFilter = prepared?.corpus.items.length ?? 0;
+  const candidateItemsAfterFilter = prepared
+    ? toEvalCandidateItems(prepared.corpus.items)
+    : [];
+  if (!prepared) {
+    return evalResult(
+      retrievalSource,
+      pgvectorAttempted,
+      candidateCountBeforeAgent,
+      candidateCountAfterApprovedFilter,
+      candidateItemsAfterFilter,
+      [],
+      null,
+    );
+  }
+
+  const productResult = await buildVariantPracticeFromPreparedCorpus(
+    prepared.corpus,
+    prepared.query,
+    deps,
+  );
+
+  return evalResult(
+    retrievalSource,
+    pgvectorAttempted,
+    candidateCountBeforeAgent,
+    candidateCountAfterApprovedFilter,
+    candidateItemsAfterFilter,
+    productResult?.selectedCandidateItems ?? [],
+    productResult?.viewModel ?? null,
+  );
+}
+
+async function buildVariantPracticeFromPreparedCorpus(
+  corpus: DynamicPracticeCorpus,
+  query: DynamicPracticeQuery,
+  deps: DynamicVariantPracticeServiceDeps,
+): Promise<{
+  viewModel: ProductVariantPractice;
+  selectedCandidateItems: DynamicVariantPracticeEvalResult["selected_candidate_items"];
+} | null> {
   const agent = deps.agent ?? (await loadDefaultVariantPracticeAgent());
   if (!agent) {
     return null;
@@ -113,12 +230,22 @@ async function buildVariantPracticeFromCorpus(
 
   try {
     const artifact = agent.recommendVariantPractice({
-      corpus: prepared.corpus,
-      query: prepared.query,
+      corpus,
+      query,
       searchLimit: deps.searchLimit ?? 12,
     });
     const viewModel = createVariantPracticeProductViewModel(artifact);
-    return viewModel && viewModel.items.length === 3 ? viewModel : null;
+    if (!viewModel || viewModel.items.length !== 3) {
+      return null;
+    }
+
+    return {
+      viewModel,
+      selectedCandidateItems: selectCandidateItemsForProductViewModel(
+        viewModel,
+        corpus.items,
+      ),
+    };
   } catch {
     return null;
   }
@@ -157,6 +284,32 @@ function isApprovedDynamicPracticeItem(item: DynamicPracticeCorpusItem): boolean
   return item.tag_review_meta?.review_status === "approved";
 }
 
+function selectCandidateItemsForProductViewModel(
+  viewModel: ProductVariantPractice,
+  corpusItems: DynamicPracticeCorpus["items"],
+): DynamicVariantPracticeEvalResult["selected_candidate_items"] {
+  const selectedItems = viewModel.items
+    .map((productItem) =>
+      corpusItems.find((item) => item.question_text === productItem.question_text),
+    )
+    .filter((item): item is DynamicPracticeCorpus["items"][number] => Boolean(item));
+
+  return toEvalCandidateItems(selectedItems);
+}
+
+function toEvalCandidateItems(
+  items: DynamicPracticeCorpus["items"],
+): DynamicVariantPracticeEvalCandidateItem[] {
+  return items.map((item) => ({
+    id: item.id,
+    source_candidate_id: item.source_candidate_id,
+    knowledge_points: item.knowledge_points,
+    section_title: item.section_title,
+    target_skills: item.target_skills,
+    method_tags: item.method_tags,
+  }));
+}
+
 function success(
   variantPractice: ProductVariantPractice | null,
 ): DynamicVariantPracticeServiceResult {
@@ -164,4 +317,35 @@ function success(
     status: 200,
     body: { variant_practice: variantPractice },
   };
+}
+
+function evalResult(
+  retrievalSource: "pgvector" | "local_json" | null,
+  pgvectorAttempted: boolean,
+  candidateCountBeforeAgent: number,
+  candidateCountAfterApprovedFilter: number,
+  candidateItemsAfterFilter: DynamicVariantPracticeEvalCandidateItem[],
+  selectedCandidateItems: DynamicVariantPracticeEvalResult["selected_candidate_items"],
+  productViewModel: ProductVariantPractice | null,
+  status = 200,
+): DynamicVariantPracticeEvalResult {
+  return {
+    status,
+    retrieval_source: retrievalSource,
+    pgvector_attempted: pgvectorAttempted,
+    candidate_count_before_agent: candidateCountBeforeAgent,
+    candidate_count_after_approved_filter: candidateCountAfterApprovedFilter,
+    candidate_items_after_filter: candidateItemsAfterFilter,
+    selected_candidate_items: selectedCandidateItems,
+    product_view_model: productViewModel,
+  };
+}
+
+interface DynamicVariantPracticeEvalCandidateItem {
+  id: string;
+  source_candidate_id: string;
+  knowledge_points: string[];
+  section_title?: string | null;
+  target_skills?: string[];
+  method_tags?: string[];
 }

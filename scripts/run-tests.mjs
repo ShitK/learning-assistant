@@ -42,6 +42,7 @@ const suites = {
     "scripts/tests/rag/variant-practice-embedding-text.test.mjs",
     "scripts/tests/rag/variant-practice-corpus-source.test.mjs",
     "scripts/tests/rag/variant-practice-route.test.mjs",
+    "scripts/tests/rag/dynamic-variant-practice-eval-service.test.mjs",
     "scripts/tests/rag/dynamic-variant-practice-service.test.mjs",
     "scripts/tests/rag/dynamic-variant-practice-client.test.mjs",
     "scripts/tests/rag/sync-variant-practice-pgvector-core.test.mjs",
