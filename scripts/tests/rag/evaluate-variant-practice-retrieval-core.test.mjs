@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  buildCaseReport,
   buildVariantPracticeRetrievalEvalReport,
   truncateDebugText,
   validateEvalOutputDir,
@@ -99,6 +100,66 @@ assert.equal(truncateDebugText("短文本", 200), "短文本");
 assert.equal(validateEvalOutputDir(join("artifacts", "rag", "evals", "x")).ok, true);
 assert.equal(validateEvalOutputDir("src/generated").ok, false);
 assert.equal(validateEvalOutputDir("public/evals").ok, false);
+assert.equal(validateEvalOutputDir("./public/evals").ok, false);
+assert.equal(validateEvalOutputDir("artifacts/../public/evals").ok, false);
+assert.equal(validateEvalOutputDir("./src/generated").ok, false);
+assert.equal(validateEvalOutputDir("app/../public/x").ok, false);
+assert.equal(validateEvalOutputDir("./artifacts/localStorage-cache").ok, false);
+
+const filteredGapCase = buildCaseReport(cases[0], {
+  retrieval_source: "pgvector",
+  pgvector_attempted: true,
+  candidate_count_before_agent: 5,
+  candidate_count_after_approved_filter: 1,
+  candidate_items_after_filter: [buildDebugItem("D", ["parameter_range"])],
+  product_view_model: {
+    items: [
+      buildProductItem("foundation", "A"),
+      buildProductItem("near_transfer", "B"),
+      buildProductItem("additional_practice", "C"),
+    ],
+  },
+  selected_candidate_items: [
+    buildDebugItem("A", ["parameter_range"]),
+    buildDebugItem("B", ["parameter_range"]),
+    buildDebugItem("C", ["parameter_range"]),
+  ],
+});
+assert.equal(
+  filteredGapCase.findings.some((finding) => finding.reason === "vector_too_broad"),
+  false,
+);
+
+const metadataGapCase = buildCaseReport(cases[0], {
+  retrieval_source: "pgvector",
+  pgvector_attempted: true,
+  candidate_count_before_agent: 4,
+  candidate_count_after_approved_filter: 4,
+  candidate_items_after_filter: [
+    buildDebugItem("A", ["monotonicity"]),
+    buildDebugItem("B", ["monotonicity"]),
+    buildDebugItem("C", ["parameter_range"]),
+    buildDebugItem("D", ["parameter_range"]),
+  ],
+  product_view_model: {
+    items: [
+      buildProductItem("foundation", "A"),
+      buildProductItem("near_transfer", "B"),
+      buildProductItem("additional_practice", "C"),
+    ],
+  },
+  selected_candidate_items: [
+    buildDebugItem("A", ["monotonicity"]),
+    buildDebugItem("B", ["monotonicity"]),
+  ],
+});
+assert.equal(metadataGapCase.status, "fail");
+assert.equal(
+  metadataGapCase.findings.some(
+    (finding) => finding.reason === "metadata_gap" && finding.severity === "fail",
+  ),
+  true,
+);
 
 const outputDir = mkdtempSync(join(tmpdir(), "variant-practice-eval-"));
 const writeResult = await writeEvalReportFiles({

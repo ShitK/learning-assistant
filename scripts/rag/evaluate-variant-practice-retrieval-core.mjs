@@ -1,5 +1,5 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { validateVariantPracticeEvalReport } from "./variant-practice-eval-report-schema.mjs";
 
 const evalVersion = "variant-practice-retrieval-quality-v0";
@@ -110,7 +110,10 @@ export function classifyCase(evalCase, result, metrics, findings) {
   if ((result.product_view_model?.items.length ?? 0) < evalCase.expected.min_items) {
     return "fail";
   }
-  if (metrics.off_topic_count > 0) {
+  if (
+    metrics.off_topic_count > 0 ||
+    findings.some((finding) => finding.severity === "fail")
+  ) {
     return "fail";
   }
   if (
@@ -120,11 +123,14 @@ export function classifyCase(evalCase, result, metrics, findings) {
   ) {
     return "warn";
   }
-  return findings.some((finding) => finding.severity === "fail") ? "fail" : "pass";
+  return "pass";
 }
 
 export function buildFindings(evalCase, result, metrics) {
   const findings = [];
+  const productItemCount = result.product_view_model?.items.length ?? 0;
+  const selectedCandidateItems = result.selected_candidate_items ?? [];
+  const filteredCandidateCount = getFilteredCandidateCount(result);
   const candidateTargetSkillMatches = countTargetSkillMatches(
     result.candidate_items_after_filter ?? [],
     evalCase.expected.required_target_skills,
@@ -156,6 +162,13 @@ export function buildFindings(evalCase, result, metrics) {
       message: "推荐题中存在非导数候选。",
     });
   }
+  if (productItemCount > 0 && selectedCandidateItems.length !== productItemCount) {
+    findings.push({
+      severity: "fail",
+      reason: "metadata_gap",
+      message: "最终展示题目数量与 selected_candidate_items 元数据数量不一致。",
+    });
+  }
   if (metrics.required_target_skill_matches < 2 && evalCase.expected.min_items === 3) {
     findings.push({
       severity: "warn",
@@ -165,7 +178,7 @@ export function buildFindings(evalCase, result, metrics) {
   }
   if (
     result.pgvector_attempted &&
-    result.candidate_count_before_agent >= 3 &&
+    filteredCandidateCount >= 3 &&
     metrics.required_target_skill_matches < 2 &&
     evalCase.expected.min_items === 3
   ) {
@@ -226,8 +239,9 @@ export function truncateDebugText(text, maxLength) {
 
 export function validateEvalOutputDir(outputDir) {
   const normalized = isAbsolute(outputDir)
-    ? relative(process.cwd(), outputDir)
-    : outputDir;
+    ? normalize(relative(process.cwd(), outputDir))
+    : normalize(relative(process.cwd(), resolve(process.cwd(), outputDir)));
+  const normalizedLower = normalized.toLowerCase();
   if (
     normalized === "" ||
     normalized.startsWith("src/") ||
@@ -236,7 +250,7 @@ export function validateEvalOutputDir(outputDir) {
     normalized === "app" ||
     normalized.startsWith("public/") ||
     normalized === "public" ||
-    normalized.includes("localStorage")
+    normalizedLower.includes("localstorage")
   ) {
     return {
       ok: false,
@@ -278,6 +292,16 @@ function formatTimestampForFile(value) {
 
 function mapMistakeCausesToMethodTags(mistakeCauses) {
   return mistakeCauses.flatMap((cause) => mistakeCauseMethodTagMap[cause] ?? []);
+}
+
+function getFilteredCandidateCount(result) {
+  const filteredItemsLength = Array.isArray(result.candidate_items_after_filter)
+    ? result.candidate_items_after_filter.length
+    : 0;
+  if (typeof result.candidate_count_after_approved_filter === "number") {
+    return Math.max(result.candidate_count_after_approved_filter, filteredItemsLength);
+  }
+  return filteredItemsLength;
 }
 
 function intersects(left, right) {
