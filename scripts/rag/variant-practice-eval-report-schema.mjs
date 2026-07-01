@@ -24,6 +24,9 @@ export function validateVariantPracticeEvalReport(value) {
   if (!Array.isArray(value.cases)) {
     errors.push("cases must be an array");
   } else {
+    if (value.case_count !== value.cases.length) {
+      errors.push("case_count must equal cases.length");
+    }
     value.cases.forEach((item, index) => validateCase(item, index, errors));
   }
 
@@ -64,6 +67,18 @@ function validateCase(value, index, errors) {
   requireNumber(value.product_item_count, `cases[${index}].product_item_count`, errors);
   if (!isRecord(value.metrics)) {
     errors.push(`cases[${index}].metrics must be an object`);
+  } else {
+    requireNumber(
+      value.metrics.required_target_skill_matches,
+      `cases[${index}].metrics.required_target_skill_matches`,
+      errors,
+    );
+    requireNumber(value.metrics.unique_item_count, `cases[${index}].metrics.unique_item_count`, errors);
+    requireStringArray(
+      value.metrics.recommendation_type_coverage,
+      `cases[${index}].metrics.recommendation_type_coverage`,
+      errors,
+    );
   }
   if (!Array.isArray(value.findings)) {
     errors.push(`cases[${index}].findings must be an array`);
@@ -104,6 +119,12 @@ function requireBoolean(value, field, errors) {
 function requireNumber(value, field, errors) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     errors.push(`${field} must be a finite number`);
+  }
+}
+
+function requireStringArray(value, field, errors) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item.length === 0)) {
+    errors.push(`${field} must be an array of non-empty strings`);
   }
 }
 

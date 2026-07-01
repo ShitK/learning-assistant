@@ -52,4 +52,58 @@ assert.equal(
   true,
 );
 
+const invalidMetrics = structuredClone(validReport);
+invalidMetrics.cases[0].metrics = {
+  required_target_skill_matches: "2",
+  unique_item_count: 3,
+  recommendation_type_coverage: ["foundation"],
+};
+const invalidMetricsResult = validateVariantPracticeEvalReport(invalidMetrics);
+assert.equal(invalidMetricsResult.ok, false);
+assert.equal(
+  invalidMetricsResult.errors.some((error) =>
+    error.includes("cases[0].metrics.required_target_skill_matches"),
+  ),
+  true,
+);
+
+const invalidCoverage = structuredClone(validReport);
+invalidCoverage.cases[0].metrics = {
+  required_target_skill_matches: 2,
+  unique_item_count: 3,
+  recommendation_type_coverage: ["foundation", 1],
+};
+const invalidCoverageResult = validateVariantPracticeEvalReport(invalidCoverage);
+assert.equal(invalidCoverageResult.ok, false);
+assert.equal(
+  invalidCoverageResult.errors.some((error) =>
+    error.includes("cases[0].metrics.recommendation_type_coverage"),
+  ),
+  true,
+);
+
+const invalidUniqueItemCount = structuredClone(validReport);
+invalidUniqueItemCount.cases[0].metrics = {
+  required_target_skill_matches: 2,
+  unique_item_count: "3",
+  recommendation_type_coverage: ["foundation"],
+};
+const invalidUniqueItemCountResult = validateVariantPracticeEvalReport(invalidUniqueItemCount);
+assert.equal(invalidUniqueItemCountResult.ok, false);
+assert.equal(
+  invalidUniqueItemCountResult.errors.some((error) =>
+    error.includes("cases[0].metrics.unique_item_count"),
+  ),
+  true,
+);
+
+const mismatchedCaseCount = structuredClone(validReport);
+mismatchedCaseCount.case_count = 2;
+const mismatchedCaseCountResult = validateVariantPracticeEvalReport(mismatchedCaseCount);
+assert.equal(mismatchedCaseCountResult.ok, false);
+assert.equal(
+  mismatchedCaseCountResult.errors.some((error) => error.includes("case_count")),
+  true,
+);
+
 console.log("variant practice eval report schema tests passed");

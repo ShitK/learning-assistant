@@ -7,6 +7,7 @@ const ids = variantPracticeEvalCases.map((item) => item.id);
 assert.equal(new Set(ids).size, ids.length);
 assert.equal(ids.includes("sample_derivative_parameter_classification"), true);
 assert.equal(ids.includes("upload_derivative_monotonicity"), true);
+assert.equal(ids.includes("upload_tangent_slope"), true);
 assert.equal(ids.includes("upload_problem_only_low_evidence"), true);
 assert.equal(ids.includes("upload_extrema_or_maximum"), true);
 assert.equal(ids.includes("unsupported_non_derivative"), true);
@@ -45,5 +46,18 @@ assert.equal(
   ),
   false,
 );
+
+const tangentSlope = variantPracticeEvalCases.find(
+  (evalCase) => evalCase.id === "upload_tangent_slope",
+);
+assert.ok(tangentSlope);
+assert.deepEqual(tangentSlope.expected.required_target_skills, [
+  "tangent_slope",
+  "derivative_geometric_meaning",
+]);
+assert.deepEqual(tangentSlope.expected.preferred_method_tags, [
+  "tangent_slope",
+  "derivative_geometric_meaning",
+]);
 
 console.log("variant practice eval cases tests passed");
