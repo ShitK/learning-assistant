@@ -65,6 +65,10 @@ export function buildCaseReport(evalCase, result) {
       candidate_count_after_approved_filter:
         result.candidate_count_after_approved_filter,
       question_text_preview: truncateDebugText(evalCase.request?.question_text ?? "", 200),
+      candidate_items_after_filter: sanitizeDebugCandidateItems(
+        result.candidate_items_after_filter ?? [],
+      ),
+      selected_candidate_items: sanitizeDebugCandidateItems(selectedCandidateItems),
     },
   };
 }
@@ -135,6 +139,10 @@ export function buildFindings(evalCase, result, metrics) {
     result.product_view_model?.items ?? [],
     evalCase.expected.forbidden_internal_fields ?? [],
   );
+  const forbiddenClaimTerms = findForbiddenClaimTerms(
+    result.product_view_model,
+    evalCase.expected.forbidden_claim_terms ?? [],
+  );
   const candidateTargetSkillMatches = countTargetSkillMatches(
     result.candidate_items_after_filter ?? [],
     evalCase.expected.required_target_skills,
@@ -171,6 +179,13 @@ export function buildFindings(evalCase, result, metrics) {
       severity: "fail",
       reason: "internal_field_leak",
       message: `正式展示题目包含 eval 禁止的内部字段：${forbiddenInternalFields.join("、")}。`,
+    });
+  }
+  if (forbiddenClaimTerms.length > 0) {
+    findings.push({
+      severity: "fail",
+      reason: "low_evidence_claim",
+      message: `低证据展示文案包含具体学生错因断言：${forbiddenClaimTerms.join("、")}。`,
     });
   }
   if (productItemCount > 0 && selectedCandidateItems.length !== productItemCount) {
@@ -220,6 +235,21 @@ export function buildFindings(evalCase, result, metrics) {
   return findings;
 }
 
+function sanitizeDebugCandidateItems(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item) => ({
+    id: item?.id,
+    source_candidate_id: item?.source_candidate_id,
+    knowledge_points: item?.knowledge_points,
+    section_title: item?.section_title,
+    target_skills: item?.target_skills,
+    method_tags: item?.method_tags,
+  }));
+}
+
 function countTargetSkillMatches(items, requiredTargetSkills) {
   const expectedSkills = new Set(requiredTargetSkills);
   return items.filter((item) =>
@@ -241,6 +271,28 @@ function findForbiddenInternalFields(productItems, forbiddenFields) {
       if (typeof field === "string" && Object.prototype.hasOwnProperty.call(item, field)) {
         found.add(field);
       }
+    }
+  }
+  return Array.from(found).sort();
+}
+
+function findForbiddenClaimTerms(productViewModel, forbiddenTerms) {
+  if (!Array.isArray(forbiddenTerms) || forbiddenTerms.length === 0) {
+    return [];
+  }
+
+  const displayTexts = [
+    productViewModel?.notice,
+    ...(productViewModel?.items ?? []).map((item) => item?.reason),
+  ].filter((value) => typeof value === "string" && value.length > 0);
+  const found = new Set();
+  for (const term of forbiddenTerms) {
+    if (
+      typeof term === "string" &&
+      term.length > 0 &&
+      displayTexts.some((text) => text.includes(term))
+    ) {
+      found.add(term);
     }
   }
   return Array.from(found).sort();

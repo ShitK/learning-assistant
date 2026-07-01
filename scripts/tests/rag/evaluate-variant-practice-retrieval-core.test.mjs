@@ -89,6 +89,18 @@ assert.equal(report.cases[0].retrieval_source, "local_json");
 assert.equal(report.cases[0].pgvector_attempted, false);
 assert.equal(report.cases[0].display_source, "variant_practice_api");
 assert.equal(report.cases[0].metrics.required_target_skill_matches, 2);
+assert.deepEqual(report.cases[0].debug.candidate_items_after_filter, [
+  buildExpectedDebugCandidate("A", ["monotonicity"]),
+  buildExpectedDebugCandidate("B", ["monotonicity"]),
+  buildExpectedDebugCandidate("C", ["parameter_range"]),
+]);
+assert.deepEqual(report.cases[0].debug.selected_candidate_items, [
+  buildExpectedDebugCandidate("A", ["monotonicity"]),
+  buildExpectedDebugCandidate("B", ["monotonicity"]),
+  buildExpectedDebugCandidate("C", ["parameter_range"]),
+]);
+assert.equal("question_text" in report.cases[0].debug.candidate_items_after_filter[0], false);
+assert.equal("score" in report.cases[0].debug.candidate_items_after_filter[0], false);
 assert.equal(report.cases[1].status, "pass");
 assert.equal(report.cases[1].retrieval_source, null);
 assert.equal(report.cases[1].pgvector_attempted, false);
@@ -217,6 +229,57 @@ assert.equal(
   true,
 );
 
+const lowEvidenceClaimCase = buildCaseReport(
+  {
+    ...cases[0],
+    id: "problem_only_claim",
+    request: {
+      ...cases[0].request,
+      evidence_level: "problem_only",
+      persistence_evidence: "uploaded_problem_only",
+      mistake_causes: [],
+    },
+    expected: {
+      ...cases[0].expected,
+      forbidden_claim_terms: ["遗漏边界", "分类讨论"],
+    },
+  },
+  {
+    retrieval_source: "local_json",
+    pgvector_attempted: false,
+    candidate_count_before_agent: 3,
+    candidate_count_after_approved_filter: 3,
+    candidate_items_after_filter: [
+      buildDebugItem("A", ["monotonicity"]),
+      buildDebugItem("B", ["monotonicity"]),
+      buildDebugItem("C", ["monotonicity"]),
+    ],
+    product_view_model: {
+      notice: "根据题干推荐，不断言学生具体错因。",
+      items: [
+        { ...buildProductItem("foundation", "A"), reason: "针对遗漏边界先巩固。" },
+        buildProductItem("near_transfer", "B"),
+        buildProductItem("additional_practice", "C"),
+      ],
+    },
+    selected_candidate_items: [
+      buildDebugItem("A", ["monotonicity"]),
+      buildDebugItem("B", ["monotonicity"]),
+      buildDebugItem("C", ["monotonicity"]),
+    ],
+  },
+);
+assert.equal(lowEvidenceClaimCase.status, "fail");
+assert.equal(
+  lowEvidenceClaimCase.findings.some(
+    (finding) =>
+      finding.severity === "fail" &&
+      finding.reason === "low_evidence_claim" &&
+      finding.message.includes("遗漏边界"),
+  ),
+  true,
+);
+
 const outputDir = join("artifacts", "rag", "evals", `test-${process.pid}-${Date.now()}`);
 try {
   const writeResult = await writeEvalReportFiles({
@@ -249,10 +312,23 @@ function buildProductItem(type, suffix) {
 function buildDebugItem(id, targetSkills) {
   return {
     id,
+    source_candidate_id: `candidate-${id}`,
     knowledge_points: ["derivative"],
     section_title: "考点 2 导数与函数的单调性",
     target_skills: targetSkills,
     method_tags: targetSkills,
     question_text: `debug ${id}`,
+    score: 0.9,
+  };
+}
+
+function buildExpectedDebugCandidate(id, targetSkills) {
+  return {
+    id,
+    source_candidate_id: `candidate-${id}`,
+    knowledge_points: ["derivative"],
+    section_title: "考点 2 导数与函数的单调性",
+    target_skills: targetSkills,
+    method_tags: targetSkills,
   };
 }

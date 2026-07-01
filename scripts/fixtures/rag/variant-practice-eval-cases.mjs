@@ -110,6 +110,15 @@ export const variantPracticeEvalCases = [
       required_target_skills: ["monotonicity", "extrema"],
       preferred_method_tags: ["monotonicity", "extrema"],
       forbidden_internal_fields: forbiddenInternalFields,
+      forbidden_claim_terms: [
+        "遗漏",
+        "忽略",
+        "错因",
+        "错误",
+        "混淆",
+        "不会",
+        "没有完整分析",
+      ],
     },
   },
   {

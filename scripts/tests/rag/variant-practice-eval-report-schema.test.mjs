@@ -30,7 +30,37 @@ const validReport = {
         recommendation_type_coverage: ["foundation", "near_transfer", "additional_practice"],
         off_topic_count: 0,
       },
-      findings: [],
+      findings: [
+        {
+          severity: "fail",
+          reason: "low_evidence_claim",
+          message: "低证据展示文案包含具体学生错因断言：遗漏边界。",
+        },
+      ],
+      debug: {
+        candidate_count_after_approved_filter: 3,
+        question_text_preview: "已知函数 f(x)=ln x-ax，讨论函数单调区间。",
+        candidate_items_after_filter: [
+          {
+            id: "item-a",
+            source_candidate_id: "candidate-a",
+            knowledge_points: ["derivative"],
+            section_title: "考点 2 导数与函数的单调性",
+            target_skills: ["monotonicity"],
+            method_tags: ["monotonicity"],
+          },
+        ],
+        selected_candidate_items: [
+          {
+            id: "item-a",
+            source_candidate_id: "candidate-a",
+            knowledge_points: ["derivative"],
+            section_title: "考点 2 导数与函数的单调性",
+            target_skills: ["monotonicity"],
+            method_tags: ["monotonicity"],
+          },
+        ],
+      },
     },
   ],
 };
@@ -135,6 +165,31 @@ const mismatchedCaseCountResult = validateVariantPracticeEvalReport(mismatchedCa
 assert.equal(mismatchedCaseCountResult.ok, false);
 assert.equal(
   mismatchedCaseCountResult.errors.some((error) => error.includes("case_count")),
+  true,
+);
+
+const invalidDebug = structuredClone(validReport);
+invalidDebug.cases[0].debug.selected_candidate_items[0].question_text = "不应进入 debug 明细";
+const invalidDebugResult = validateVariantPracticeEvalReport(invalidDebug);
+assert.equal(invalidDebugResult.ok, false);
+assert.equal(
+  invalidDebugResult.errors.some((error) =>
+    error.includes("cases[0].debug.selected_candidate_items[0].question_text"),
+  ),
+  true,
+);
+
+const invalidDebugCandidate = structuredClone(validReport);
+invalidDebugCandidate.cases[0].debug.candidate_items_after_filter[0].knowledge_points = [
+  "derivative",
+  1,
+];
+const invalidDebugCandidateResult = validateVariantPracticeEvalReport(invalidDebugCandidate);
+assert.equal(invalidDebugCandidateResult.ok, false);
+assert.equal(
+  invalidDebugCandidateResult.errors.some((error) =>
+    error.includes("cases[0].debug.candidate_items_after_filter[0].knowledge_points"),
+  ),
   true,
 );
 

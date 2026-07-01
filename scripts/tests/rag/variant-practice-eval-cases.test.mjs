@@ -60,4 +60,19 @@ assert.deepEqual(tangentSlope.expected.preferred_method_tags, [
   "derivative_geometric_meaning",
 ]);
 
+const lowEvidence = variantPracticeEvalCases.find(
+  (evalCase) => evalCase.id === "upload_problem_only_low_evidence",
+);
+assert.ok(lowEvidence);
+assert.equal(lowEvidence.request.evidence_level, "problem_only");
+assert.deepEqual(lowEvidence.expected.forbidden_claim_terms, [
+  "遗漏",
+  "忽略",
+  "错因",
+  "错误",
+  "混淆",
+  "不会",
+  "没有完整分析",
+]);
+
 console.log("variant practice eval cases tests passed");

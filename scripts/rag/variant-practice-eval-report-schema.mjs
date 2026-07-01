@@ -93,6 +93,7 @@ function validateCase(value, index, errors) {
       validateFinding(finding, index, findingIndex, errors),
     );
   }
+  validateDebug(value.debug, index, errors);
 }
 
 function validateFinding(value, caseIndex, findingIndex, errors) {
@@ -110,9 +111,74 @@ function validateFinding(value, caseIndex, findingIndex, errors) {
   requireString(value.message, `cases[${caseIndex}].findings[${findingIndex}].message`, errors);
 }
 
+function validateDebug(value, caseIndex, errors) {
+  const field = `cases[${caseIndex}].debug`;
+  if (!isRecord(value)) {
+    errors.push(`${field} must be an object`);
+    return;
+  }
+  requireNumber(
+    value.candidate_count_after_approved_filter,
+    `${field}.candidate_count_after_approved_filter`,
+    errors,
+  );
+  requireStringValue(value.question_text_preview, `${field}.question_text_preview`, errors);
+  validateDebugCandidateArray(
+    value.candidate_items_after_filter,
+    `${field}.candidate_items_after_filter`,
+    errors,
+  );
+  validateDebugCandidateArray(
+    value.selected_candidate_items,
+    `${field}.selected_candidate_items`,
+    errors,
+  );
+}
+
+function validateDebugCandidateArray(value, field, errors) {
+  if (!Array.isArray(value)) {
+    errors.push(`${field} must be an array`);
+    return;
+  }
+  value.forEach((item, index) => validateDebugCandidateItem(item, `${field}[${index}]`, errors));
+}
+
+function validateDebugCandidateItem(value, field, errors) {
+  if (!isRecord(value)) {
+    errors.push(`${field} must be an object`);
+    return;
+  }
+
+  const allowedFields = new Set([
+    "id",
+    "source_candidate_id",
+    "knowledge_points",
+    "section_title",
+    "target_skills",
+    "method_tags",
+  ]);
+  for (const key of Object.keys(value)) {
+    if (!allowedFields.has(key)) {
+      errors.push(`${field}.${key} is not allowed in debug candidate items`);
+    }
+  }
+  requireString(value.id, `${field}.id`, errors);
+  requireString(value.source_candidate_id, `${field}.source_candidate_id`, errors);
+  requireStringArray(value.knowledge_points, `${field}.knowledge_points`, errors);
+  requireString(value.section_title, `${field}.section_title`, errors);
+  requireStringArray(value.target_skills, `${field}.target_skills`, errors);
+  requireStringArray(value.method_tags, `${field}.method_tags`, errors);
+}
+
 function requireString(value, field, errors) {
   if (typeof value !== "string" || value.length === 0) {
     errors.push(`${field} must be a non-empty string`);
+  }
+}
+
+function requireStringValue(value, field, errors) {
+  if (typeof value !== "string") {
+    errors.push(`${field} must be a string`);
   }
 }
 
