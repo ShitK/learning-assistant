@@ -9,6 +9,7 @@ import {
   validateEvalOutputDir,
   writeEvalReportFiles,
 } from "../../rag/evaluate-variant-practice-retrieval-core.mjs";
+import { validateVariantPracticeEvalReport } from "../../rag/variant-practice-eval-report-schema.mjs";
 
 const cases = [
   {
@@ -280,6 +281,64 @@ assert.equal(
   true,
 );
 
+const lowMetadataCase = buildCaseReport(cases[0], {
+  retrieval_source: "local_json",
+  pgvector_attempted: false,
+  candidate_count_before_agent: 3,
+  candidate_count_after_approved_filter: 3,
+  candidate_items_after_filter: [
+    buildLowMetadataDebugItem("A"),
+    buildLowMetadataDebugItem("B"),
+    buildLowMetadataDebugItem("C"),
+  ],
+  product_view_model: {
+    items: [
+      buildProductItem("foundation", "A"),
+      buildProductItem("near_transfer", "B"),
+      buildProductItem("additional_practice", "C"),
+    ],
+  },
+  selected_candidate_items: [
+    buildLowMetadataDebugItem("A"),
+    buildLowMetadataDebugItem("B"),
+    buildLowMetadataDebugItem("C"),
+  ],
+});
+assert.deepEqual(lowMetadataCase.debug.candidate_items_after_filter[0], {
+  id: "A",
+  source_candidate_id: "candidate-A",
+  knowledge_points: [],
+  section_title: null,
+  target_skills: [],
+  method_tags: [],
+});
+assert.deepEqual(lowMetadataCase.debug.selected_candidate_items[0], {
+  id: "A",
+  source_candidate_id: "candidate-A",
+  knowledge_points: [],
+  section_title: null,
+  target_skills: [],
+  method_tags: [],
+});
+assert.equal(
+  validateVariantPracticeEvalReport({
+    eval_version: "variant-practice-retrieval-quality-v0",
+    generated_at: "2026-07-01T00:00:00.000Z",
+    mode: "local_only",
+    corpus_version: "enriched-practice-corpus-v0",
+    case_count: 1,
+    summary: {
+      pass: lowMetadataCase.status === "pass" ? 1 : 0,
+      warn: lowMetadataCase.status === "warn" ? 1 : 0,
+      fail: lowMetadataCase.status === "fail" ? 1 : 0,
+      three_item_rate: 1,
+      fallback_rate: 0,
+    },
+    cases: [lowMetadataCase],
+  }).ok,
+  true,
+);
+
 const outputDir = join("artifacts", "rag", "evals", `test-${process.pid}-${Date.now()}`);
 try {
   const writeResult = await writeEvalReportFiles({
@@ -317,6 +376,15 @@ function buildDebugItem(id, targetSkills) {
     section_title: "考点 2 导数与函数的单调性",
     target_skills: targetSkills,
     method_tags: targetSkills,
+    question_text: `debug ${id}`,
+    score: 0.9,
+  };
+}
+
+function buildLowMetadataDebugItem(id) {
+  return {
+    id,
+    source_candidate_id: `candidate-${id}`,
     question_text: `debug ${id}`,
     score: 0.9,
   };

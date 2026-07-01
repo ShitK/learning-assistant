@@ -243,11 +243,19 @@ function sanitizeDebugCandidateItems(items) {
   return items.map((item) => ({
     id: item?.id,
     source_candidate_id: item?.source_candidate_id,
-    knowledge_points: item?.knowledge_points,
-    section_title: item?.section_title,
-    target_skills: item?.target_skills,
-    method_tags: item?.method_tags,
+    knowledge_points: normalizeDebugStringArray(item?.knowledge_points),
+    section_title: normalizeDebugNullableString(item?.section_title),
+    target_skills: normalizeDebugStringArray(item?.target_skills),
+    method_tags: normalizeDebugStringArray(item?.method_tags),
   }));
+}
+
+function normalizeDebugStringArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeDebugNullableString(value) {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function countTargetSkillMatches(items, requiredTargetSkills) {

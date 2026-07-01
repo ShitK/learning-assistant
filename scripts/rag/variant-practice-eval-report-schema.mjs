@@ -165,7 +165,7 @@ function validateDebugCandidateItem(value, field, errors) {
   requireString(value.id, `${field}.id`, errors);
   requireString(value.source_candidate_id, `${field}.source_candidate_id`, errors);
   requireStringArray(value.knowledge_points, `${field}.knowledge_points`, errors);
-  requireString(value.section_title, `${field}.section_title`, errors);
+  requireStringOrNull(value.section_title, `${field}.section_title`, errors);
   requireStringArray(value.target_skills, `${field}.target_skills`, errors);
   requireStringArray(value.method_tags, `${field}.method_tags`, errors);
 }
@@ -179,6 +179,12 @@ function requireString(value, field, errors) {
 function requireStringValue(value, field, errors) {
   if (typeof value !== "string") {
     errors.push(`${field} must be a string`);
+  }
+}
+
+function requireStringOrNull(value, field, errors) {
+  if (value !== null && (typeof value !== "string" || value.length === 0)) {
+    errors.push(`${field} must be a non-empty string or null`);
   }
 }
 

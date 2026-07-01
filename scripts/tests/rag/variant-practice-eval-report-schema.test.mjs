@@ -170,6 +170,7 @@ assert.equal(
 
 const invalidDebug = structuredClone(validReport);
 invalidDebug.cases[0].debug.selected_candidate_items[0].question_text = "不应进入 debug 明细";
+invalidDebug.cases[0].debug.selected_candidate_items[0].score = 0.9;
 const invalidDebugResult = validateVariantPracticeEvalReport(invalidDebug);
 assert.equal(invalidDebugResult.ok, false);
 assert.equal(
@@ -178,6 +179,31 @@ assert.equal(
   ),
   true,
 );
+assert.equal(
+  invalidDebugResult.errors.some((error) =>
+    error.includes("cases[0].debug.selected_candidate_items[0].score"),
+  ),
+  true,
+);
+
+const normalizedLowMetadataDebug = structuredClone(validReport);
+normalizedLowMetadataDebug.cases[0].debug.candidate_items_after_filter[0] = {
+  id: "item-low-metadata",
+  source_candidate_id: "candidate-low-metadata",
+  knowledge_points: [],
+  section_title: null,
+  target_skills: [],
+  method_tags: [],
+};
+normalizedLowMetadataDebug.cases[0].debug.selected_candidate_items[0] = {
+  id: "item-low-metadata",
+  source_candidate_id: "candidate-low-metadata",
+  knowledge_points: [],
+  section_title: null,
+  target_skills: [],
+  method_tags: [],
+};
+assert.equal(validateVariantPracticeEvalReport(normalizedLowMetadataDebug).ok, true);
 
 const invalidDebugCandidate = structuredClone(validReport);
 invalidDebugCandidate.cases[0].debug.candidate_items_after_filter[0].knowledge_points = [
