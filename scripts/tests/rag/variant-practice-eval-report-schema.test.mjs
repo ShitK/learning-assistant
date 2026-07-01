@@ -25,8 +25,10 @@ const validReport = {
       product_item_count: 3,
       metrics: {
         required_target_skill_matches: 2,
+        mistake_cause_alignment_matches: 2,
         unique_item_count: 3,
         recommendation_type_coverage: ["foundation", "near_transfer", "additional_practice"],
+        off_topic_count: 0,
       },
       findings: [],
     },
@@ -55,8 +57,10 @@ assert.equal(
 const invalidMetrics = structuredClone(validReport);
 invalidMetrics.cases[0].metrics = {
   required_target_skill_matches: "2",
+  mistake_cause_alignment_matches: 2,
   unique_item_count: 3,
   recommendation_type_coverage: ["foundation"],
+  off_topic_count: 0,
 };
 const invalidMetricsResult = validateVariantPracticeEvalReport(invalidMetrics);
 assert.equal(invalidMetricsResult.ok, false);
@@ -70,8 +74,10 @@ assert.equal(
 const invalidCoverage = structuredClone(validReport);
 invalidCoverage.cases[0].metrics = {
   required_target_skill_matches: 2,
+  mistake_cause_alignment_matches: 2,
   unique_item_count: 3,
   recommendation_type_coverage: ["foundation", 1],
+  off_topic_count: 0,
 };
 const invalidCoverageResult = validateVariantPracticeEvalReport(invalidCoverage);
 assert.equal(invalidCoverageResult.ok, false);
@@ -85,14 +91,40 @@ assert.equal(
 const invalidUniqueItemCount = structuredClone(validReport);
 invalidUniqueItemCount.cases[0].metrics = {
   required_target_skill_matches: 2,
+  mistake_cause_alignment_matches: 2,
   unique_item_count: "3",
   recommendation_type_coverage: ["foundation"],
+  off_topic_count: 0,
 };
 const invalidUniqueItemCountResult = validateVariantPracticeEvalReport(invalidUniqueItemCount);
 assert.equal(invalidUniqueItemCountResult.ok, false);
 assert.equal(
   invalidUniqueItemCountResult.errors.some((error) =>
     error.includes("cases[0].metrics.unique_item_count"),
+  ),
+  true,
+);
+
+const invalidMistakeCauseAlignment = structuredClone(validReport);
+invalidMistakeCauseAlignment.cases[0].metrics.mistake_cause_alignment_matches = "2";
+const invalidMistakeCauseAlignmentResult = validateVariantPracticeEvalReport(
+  invalidMistakeCauseAlignment,
+);
+assert.equal(invalidMistakeCauseAlignmentResult.ok, false);
+assert.equal(
+  invalidMistakeCauseAlignmentResult.errors.some((error) =>
+    error.includes("cases[0].metrics.mistake_cause_alignment_matches"),
+  ),
+  true,
+);
+
+const invalidOffTopicCount = structuredClone(validReport);
+invalidOffTopicCount.cases[0].metrics.off_topic_count = "0";
+const invalidOffTopicCountResult = validateVariantPracticeEvalReport(invalidOffTopicCount);
+assert.equal(invalidOffTopicCountResult.ok, false);
+assert.equal(
+  invalidOffTopicCountResult.errors.some((error) =>
+    error.includes("cases[0].metrics.off_topic_count"),
   ),
   true,
 );

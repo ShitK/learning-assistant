@@ -73,12 +73,18 @@ function validateCase(value, index, errors) {
       `cases[${index}].metrics.required_target_skill_matches`,
       errors,
     );
+    requireNumber(
+      value.metrics.mistake_cause_alignment_matches,
+      `cases[${index}].metrics.mistake_cause_alignment_matches`,
+      errors,
+    );
     requireNumber(value.metrics.unique_item_count, `cases[${index}].metrics.unique_item_count`, errors);
     requireStringArray(
       value.metrics.recommendation_type_coverage,
       `cases[${index}].metrics.recommendation_type_coverage`,
       errors,
     );
+    requireNumber(value.metrics.off_topic_count, `cases[${index}].metrics.off_topic_count`, errors);
   }
   if (!Array.isArray(value.findings)) {
     errors.push(`cases[${index}].findings must be an array`);

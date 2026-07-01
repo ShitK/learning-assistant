@@ -173,6 +173,50 @@ assert.equal(
   true,
 );
 
+const forbiddenFieldCase = buildCaseReport(
+  {
+    ...cases[0],
+    expected: {
+      ...cases[0].expected,
+      forbidden_internal_fields: ["score", "item_id"],
+    },
+  },
+  {
+    retrieval_source: "local_json",
+    pgvector_attempted: false,
+    candidate_count_before_agent: 3,
+    candidate_count_after_approved_filter: 3,
+    candidate_items_after_filter: [
+      buildDebugItem("A", ["monotonicity"]),
+      buildDebugItem("B", ["monotonicity"]),
+      buildDebugItem("C", ["monotonicity"]),
+    ],
+    product_view_model: {
+      items: [
+        { ...buildProductItem("foundation", "A"), score: 10 },
+        buildProductItem("near_transfer", "B"),
+        { ...buildProductItem("additional_practice", "C"), item_id: "C" },
+      ],
+    },
+    selected_candidate_items: [
+      buildDebugItem("A", ["monotonicity"]),
+      buildDebugItem("B", ["monotonicity"]),
+      buildDebugItem("C", ["monotonicity"]),
+    ],
+  },
+);
+assert.equal(forbiddenFieldCase.status, "fail");
+assert.equal(
+  forbiddenFieldCase.findings.some(
+    (finding) =>
+      finding.severity === "fail" &&
+      finding.reason === "internal_field_leak" &&
+      finding.message.includes("score") &&
+      finding.message.includes("item_id"),
+  ),
+  true,
+);
+
 const outputDir = join("artifacts", "rag", "evals", `test-${process.pid}-${Date.now()}`);
 try {
   const writeResult = await writeEvalReportFiles({

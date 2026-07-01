@@ -1,4 +1,5 @@
 // server-only: this file reads ignored local RAG artifacts and imports server-side Agent code.
+import { searchPracticeCorpus } from "../../../../scripts/rag/practice-corpus-search-core.mjs";
 import { recommendVariantPractice } from "../../../../scripts/rag/variant-practice-agent-core.mjs";
 import {
   createDiagnoseError,
@@ -12,6 +13,7 @@ import {
 import {
   createVariantPracticeProductViewModel,
   type ProductVariantPractice,
+  type ProductVariantPracticeItem,
 } from "@/lib/rag/variant-practice-product-view-model";
 import {
   readLocalDynamicPracticeCorpus,
@@ -182,10 +184,15 @@ async function buildVariantPracticeEvalFromCorpus(
 ): Promise<DynamicVariantPracticeEvalResult> {
   const candidateCountBeforeAgent = corpus.items.length;
   const prepared = prepareCorpusAndQuery(corpus, query);
-  const candidateCountAfterApprovedFilter = prepared?.corpus.items.length ?? 0;
-  const candidateItemsAfterFilter = prepared
-    ? toEvalCandidateItems(prepared.corpus.items)
+  const searchCandidateItems = prepared
+    ? searchPracticeCorpus({
+        corpus: prepared.corpus,
+        query: prepared.query,
+        limit: deps.searchLimit ?? 12,
+      }).map((candidate: { item: DynamicPracticeCorpus["items"][number] }) => candidate.item)
     : [];
+  const candidateCountAfterApprovedFilter = searchCandidateItems.length;
+  const candidateItemsAfterFilter = toEvalCandidateItems(searchCandidateItems);
   if (!prepared) {
     return evalResult(
       retrievalSource,
@@ -241,7 +248,11 @@ async function buildVariantPracticeFromPreparedCorpus(
 
     return {
       viewModel,
-      selectedCandidateItems: selectCandidateItemsFromArtifact(artifact, corpus.items),
+      selectedCandidateItems: selectCandidateItemsFromArtifact(
+        artifact,
+        corpus.items,
+        viewModel.items,
+      ),
     };
   } catch {
     return null;
@@ -284,10 +295,12 @@ function isApprovedDynamicPracticeItem(item: DynamicPracticeCorpusItem): boolean
 function selectCandidateItemsFromArtifact(
   artifact: unknown,
   corpusItems: DynamicPracticeCorpus["items"],
+  productItems: ProductVariantPracticeItem[],
 ): DynamicVariantPracticeEvalResult["selected_candidate_items"] {
-  const selectedItems = readArtifactRecommendationRefs(artifact)
-    .map((recommendationRef) =>
-      findCandidateItemByRecommendationRef(recommendationRef, corpusItems),
+  const recommendationRefs = readArtifactRecommendationRefs(artifact);
+  const selectedItems = productItems
+    .map((productItem) =>
+      findCandidateItemByProductItem(productItem, recommendationRefs, corpusItems),
     )
     .filter((item): item is DynamicPracticeCorpus["items"][number] => Boolean(item));
 
@@ -307,8 +320,7 @@ function readArtifactRecommendationRefs(artifact: unknown): ArtifactRecommendati
   return recommendations
     .map((recommendation) => toArtifactRecommendationRef(recommendation))
     .filter((recommendation): recommendation is ArtifactRecommendationRef => Boolean(recommendation))
-    .sort((left, right) => left.rank - right.rank)
-    .slice(0, 3);
+    .sort((left, right) => left.rank - right.rank);
 }
 
 function toArtifactRecommendationRef(value: unknown): ArtifactRecommendationRef | null {
@@ -320,6 +332,7 @@ function toArtifactRecommendationRef(value: unknown): ArtifactRecommendationRef 
     rank?: unknown;
     item_id?: unknown;
     source_candidate_id?: unknown;
+    question_text?: unknown;
   };
 
   if (
@@ -328,7 +341,9 @@ function toArtifactRecommendationRef(value: unknown): ArtifactRecommendationRef 
     typeof recommendation.item_id !== "string" ||
     !recommendation.item_id.trim() ||
     typeof recommendation.source_candidate_id !== "string" ||
-    !recommendation.source_candidate_id.trim()
+    !recommendation.source_candidate_id.trim() ||
+    typeof recommendation.question_text !== "string" ||
+    !recommendation.question_text.trim()
   ) {
     return null;
   }
@@ -337,7 +352,27 @@ function toArtifactRecommendationRef(value: unknown): ArtifactRecommendationRef 
     rank: recommendation.rank,
     item_id: recommendation.item_id,
     source_candidate_id: recommendation.source_candidate_id,
+    question_text: recommendation.question_text.trim(),
   };
+}
+
+function findCandidateItemByProductItem(
+  productItem: ProductVariantPracticeItem,
+  recommendationRefs: ArtifactRecommendationRef[],
+  corpusItems: DynamicPracticeCorpus["items"],
+): DynamicPracticeCorpus["items"][number] | null {
+  const recommendationRef =
+    recommendationRefs.find(
+      (ref) =>
+        ref.rank === productItem.rank &&
+        ref.question_text === productItem.question_text,
+    ) ?? null;
+
+  if (!recommendationRef) {
+    return null;
+  }
+
+  return findCandidateItemByRecommendationRef(recommendationRef, corpusItems);
 }
 
 function findCandidateItemByRecommendationRef(
@@ -415,4 +450,5 @@ interface ArtifactRecommendationRef {
   rank: number;
   item_id: string;
   source_candidate_id: string;
+  question_text: string;
 }

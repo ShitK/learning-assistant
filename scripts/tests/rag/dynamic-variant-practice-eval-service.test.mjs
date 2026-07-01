@@ -50,6 +50,47 @@ assert.equal(evalResult.candidate_items_after_filter.length, 3);
 assert.equal(evalResult.selected_candidate_items.length, 3);
 assert.deepEqual(evalResult.selected_candidate_items.map((item) => item.id), ["a", "b", "c"]);
 
+const filteredSearchCorpus = {
+  corpus_version: "enriched-practice-corpus-v0",
+  items: [
+    buildItem("search-a", ["monotonicity"], "导数单调区间题 A"),
+    buildItem("search-b", ["monotonicity"], "导数单调区间题 B", {
+      section_title: "考点 3 导数与函数的极值",
+    }),
+    buildItem("search-c", ["parameter_range"], "导数参数范围题 C", {
+      section_title: "专项突破 2 利用导数研究恒(能)成立问题",
+    }),
+    buildItem("visual-skip", ["monotonicity"], "导数单调图像题", {
+      feature_flags: ["needs_visual"],
+    }),
+    buildItem("zero-score", ["sequence_recursion"], "等比数列求和", {
+      knowledge_points: ["sequence"],
+      method_tags: ["sequence_recursion"],
+      section_title: "数列专题",
+    }),
+    {
+      ...buildItem("pending-skip", ["monotonicity"], "导数单调待审题"),
+      tag_review_meta: { review_status: "pending" },
+    },
+  ],
+};
+
+const filteredSearchResult = await service.handleDynamicVariantPracticeEvalRequest(validRequest, {
+  agent: {
+    recommendVariantPractice() {
+      return buildAgentArtifact(filteredSearchCorpus.items.slice(0, 3));
+    },
+  },
+  pgvectorCorpusSource: async () => filteredSearchCorpus,
+});
+
+assert.equal(filteredSearchResult.candidate_count_before_agent, 6);
+assert.equal(filteredSearchResult.candidate_count_after_approved_filter, 3);
+assert.deepEqual(
+  filteredSearchResult.candidate_items_after_filter.map((item) => item.id),
+  ["search-a", "search-b", "search-c"],
+);
+
 const duplicateTextCorpus = {
   corpus_version: "enriched-practice-corpus-v0",
   items: [
@@ -90,6 +131,58 @@ assert.deepEqual(
     { id: "dup-a", source_candidate_id: "candidate-dup-a" },
     { id: "unique-c", source_candidate_id: "candidate-unique-c" },
   ],
+);
+
+const rejectedFirstCorpus = {
+  corpus_version: "enriched-practice-corpus-v0",
+  items: [
+    buildItem("rejected-first", ["monotonicity"], "会被 product mapper 拒绝的题"),
+    buildItem("visible-a", ["monotonicity"], "可见题 A"),
+    buildItem("visible-b", ["monotonicity"], "可见题 B"),
+    buildItem("visible-c", ["parameter_range"], "可见题 C"),
+  ],
+};
+const rejectedFirstResult = await service.handleDynamicVariantPracticeEvalRequest(validRequest, {
+  agent: {
+    recommendVariantPractice() {
+      return {
+        agent_version: "variant-practice-agent-v0",
+        recommendations: [
+          {
+            rank: 1,
+            recommendation_type: "debug_only",
+            item_id: "rejected-first",
+            source_candidate_id: "candidate-rejected-first",
+            question_text: "会被 product mapper 拒绝的题",
+            reason: "测试推荐",
+          },
+          ...buildAgentArtifact(rejectedFirstCorpus.items.slice(1)).recommendations.map(
+            (recommendation) => ({
+              ...recommendation,
+              rank: recommendation.rank + 1,
+            }),
+          ),
+        ],
+      };
+    },
+  },
+  pgvectorCorpusSource: async () => rejectedFirstCorpus,
+});
+
+assert.deepEqual(
+  rejectedFirstResult.product_view_model.items.map((item) => ({
+    rank: item.rank,
+    question_text: item.question_text,
+  })),
+  [
+    { rank: 2, question_text: "可见题 A" },
+    { rank: 3, question_text: "可见题 B" },
+    { rank: 4, question_text: "可见题 C" },
+  ],
+);
+assert.deepEqual(
+  rejectedFirstResult.selected_candidate_items.map((item) => item.id),
+  ["visible-a", "visible-b", "visible-c"],
 );
 
 const publicResult = await service.handleDynamicVariantPracticeRequest(validRequest, {
@@ -171,7 +264,7 @@ assert.equal(unsupported.product_view_model, null);
 
 console.log("dynamic variant practice eval service tests passed");
 
-function buildItem(id, targetSkills, questionText = `测试导数题 ${id}`) {
+function buildItem(id, targetSkills, questionText = `测试导数题 ${id}`, overrides = {}) {
   return {
     id,
     source_candidate_id: `candidate-${id}`,
@@ -182,6 +275,7 @@ function buildItem(id, targetSkills, questionText = `测试导数题 ${id}`) {
     target_skills: targetSkills,
     method_tags: targetSkills,
     tag_review_meta: { review_status: "approved" },
+    ...overrides,
   };
 }
 

@@ -131,6 +131,10 @@ export function buildFindings(evalCase, result, metrics) {
   const productItemCount = result.product_view_model?.items.length ?? 0;
   const selectedCandidateItems = result.selected_candidate_items ?? [];
   const filteredCandidateCount = getFilteredCandidateCount(result);
+  const forbiddenInternalFields = findForbiddenInternalFields(
+    result.product_view_model?.items ?? [],
+    evalCase.expected.forbidden_internal_fields ?? [],
+  );
   const candidateTargetSkillMatches = countTargetSkillMatches(
     result.candidate_items_after_filter ?? [],
     evalCase.expected.required_target_skills,
@@ -160,6 +164,13 @@ export function buildFindings(evalCase, result, metrics) {
       severity: "fail",
       reason: "unsupported_scope",
       message: "推荐题中存在非导数候选。",
+    });
+  }
+  if (forbiddenInternalFields.length > 0) {
+    findings.push({
+      severity: "fail",
+      reason: "internal_field_leak",
+      message: `正式展示题目包含 eval 禁止的内部字段：${forbiddenInternalFields.join("、")}。`,
     });
   }
   if (productItemCount > 0 && selectedCandidateItems.length !== productItemCount) {
@@ -214,6 +225,25 @@ function countTargetSkillMatches(items, requiredTargetSkills) {
   return items.filter((item) =>
     intersects(new Set([...(item.target_skills ?? []), ...(item.method_tags ?? [])]), expectedSkills),
   ).length;
+}
+
+function findForbiddenInternalFields(productItems, forbiddenFields) {
+  if (!Array.isArray(forbiddenFields) || forbiddenFields.length === 0) {
+    return [];
+  }
+
+  const found = new Set();
+  for (const item of productItems) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+    for (const field of forbiddenFields) {
+      if (typeof field === "string" && Object.prototype.hasOwnProperty.call(item, field)) {
+        found.add(field);
+      }
+    }
+  }
+  return Array.from(found).sort();
 }
 
 export function summarizeCases(cases) {
