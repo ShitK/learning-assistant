@@ -169,6 +169,8 @@ P2.7 在确认后的上传题诊断报告之后新增只读动态变式练习 AP
 
 P2.9 将 P2.7 的动态变式练习候选召回升级为 pgvector-backed retrieval：本地维护者可通过 CLI 将已审核通过的 `enriched_practice_corpus.json` 导数题同步到 Supabase Postgres + pgvector 表，运行时 `POST /api/variant-practice` 优先用服务端 query embedding 和 `match_variant_practice_corpus_items` RPC 召回候选题，再复用现有 Variant Practice Agent 和 `ProductVariantPractice` 裁剪展示。pgvector 只替换练习候选来源，不改变 `/api/confirm`。RAG/pgvector 不写 `memory_events`、`student_profiles`、`diagnosis_runs`、`mistake_book_items` 或 `localStorage`，也不决定 `memory_delta` 或 profile persistence。Supabase、embedding provider、RPC 或 pgvector 候选不可用时，接口继续回退到 P2.7 本地 JSON corpus；本地 artifact 仍不提交 Git。
 
+P2.10 在 P2.9 基础上新增离线 Variant Practice Retrieval Quality Evaluation：本地维护者可运行 eval CLI，对固定导数诊断 cases 评估 pgvector/local fallback 推荐的覆盖率、相关性、多样性、fallback 稳定性和边界安全。P2.10 只输出 ignored 本地报告 `artifacts/rag/evals/**`，不改变 `POST /api/variant-practice` 正式响应、不改前端 UI、不写 `memory_events`、`student_profiles`、`diagnosis_runs`、`mistake_book_items` 或 localStorage，也不自动修正题库、标签、召回或排序。
+
 ### 可逐步 Agent 化的边界
 
 为保证演示稳定、数据可控、学生画像不被模型污染，P0/P1 的确定性 Pipeline 是主线。后续可以逐步把部分环节替换为 Agent 或工具调用，但所有智能化输出都必须经过 schema 校验和业务规则收口。

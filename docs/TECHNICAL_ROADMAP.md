@@ -29,6 +29,7 @@
 - P2.7 起，确认后的导数类上传题诊断可以通过只读 `POST /api/variant-practice` 请求服务端 RAG，从本地增强题库返回裁剪后的 3 道变式练习；失败或不支持时仍回退到诊断响应自带练习题。
 - P2.8 起，`VISION_PROVIDER_PROTOCOL=glm_ocr` 可显式切换到智谱 GLM-OCR 文档解析接口 `/layout_parsing`，先把上传图片解析成 OCR markdown/layout，再由本地 mapper 生成 `VisionExtractionDraft`；当前已完成 fake provider 本地验证，真实 GLM-OCR smoke 取决于本地 API Key 配置。
 - P2.9 起，动态变式练习检索可以优先使用 Supabase Postgres + pgvector：本地 CLI 将审核通过的增强题库同步到 service-role-only `variant_practice_corpus_items`，运行时 `/api/variant-practice` 用 query embedding 召回候选题；未配置或失败时仍回退 P2.7 本地 JSON corpus。该 pgvector 层只服务练习题候选召回，不是学生画像事实层。
+- P2.10 起，变式练习推荐新增本地离线 eval：固定诊断 cases，量化 pgvector/local fallback 推荐的 coverage、relevance、diversity、fallback 和安全边界，并输出 ignored `artifacts/rag/evals/**` 报告。该评估不改变学生端 API/UI，也不写画像或错题本。
 
 当前还没有完成：
 
