@@ -1650,10 +1650,10 @@ Expected: PASS.
 Run:
 
 ```bash
-node scripts/rag/evaluate-variant-practice-retrieval.mjs --local-only --no-latest --output /tmp/mathtrace-p210-eval
+node scripts/rag/evaluate-variant-practice-retrieval.mjs --local-only --no-latest --output artifacts/rag/evals/mathtrace-p210-eval
 ```
 
-Expected: exit 0, stdout includes `variant practice retrieval eval report written`, and no files under `artifacts/**` are created by this smoke.
+Expected: exit 0, stdout includes `variant practice retrieval eval report written`, and the generated ignored `artifacts/rag/evals/mathtrace-p210-eval` directory is removed after the smoke.
 
 - [ ] **Step 6: Add CLI test to default suite**
 
@@ -1824,15 +1824,15 @@ After all tasks are complete:
 - [ ] Run local eval smoke:
 
 ```bash
-node scripts/rag/evaluate-variant-practice-retrieval.mjs --local-only --output /tmp/mathtrace-p210-final-eval --no-latest
+node scripts/rag/evaluate-variant-practice-retrieval.mjs --local-only --output artifacts/rag/evals/mathtrace-p210-final-eval --no-latest
 ```
 
-Expected: command exits 0 and writes a JSON report outside the repo artifacts path.
+Expected: command exits 0 and writes an ignored JSON report under `artifacts/rag/evals/**`; remove the generated smoke directory before committing.
 
 - [ ] Optional real pgvector smoke, only when `.env.local` is configured and cost is acceptable:
 
 ```bash
-node --env-file=.env.local scripts/rag/evaluate-variant-practice-retrieval.mjs --pgvector-preferred --output /tmp/mathtrace-p210-pgvector-eval --no-latest
+node --env-file=.env.local scripts/rag/evaluate-variant-practice-retrieval.mjs --pgvector-preferred --output artifacts/rag/evals/mathtrace-p210-pgvector-eval --no-latest
 ```
 
 Expected: command exits 0. If pgvector/provider is unavailable, report records fallback instead of failing.

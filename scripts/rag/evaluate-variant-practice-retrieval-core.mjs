@@ -188,6 +188,17 @@ export function buildFindings(evalCase, result, metrics) {
       message: `低证据展示文案包含具体学生错因断言：${forbiddenClaimTerms.join("、")}。`,
     });
   }
+  if (productItemCount === 0 && evalCase.expected.min_items > 0) {
+    findings.push({
+      severity: "fail",
+      reason: filteredCandidateCount === 0 ? "corpus_gap" : "agent_slotting_gap",
+      message:
+        filteredCandidateCount === 0
+          ? "过滤后无候选，Agent 无法生成 3 道推荐。"
+          : `过滤后有 ${filteredCandidateCount} 道候选，但 Agent/ProductMapper 未能产出 3 道有效推荐。`,
+    });
+    return findings;
+  }
   if (productItemCount > 0 && selectedCandidateItems.length !== productItemCount) {
     findings.push({
       severity: "fail",

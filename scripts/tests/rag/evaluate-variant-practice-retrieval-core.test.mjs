@@ -186,6 +186,41 @@ assert.equal(
   true,
 );
 
+const emptyProductCase = buildCaseReport(cases[0], {
+  retrieval_source: "local_json",
+  pgvector_attempted: false,
+  candidate_count_before_agent: 4,
+  candidate_count_after_approved_filter: 4,
+  candidate_items_after_filter: [
+    buildDebugItem("A", ["monotonicity"]),
+    buildDebugItem("B", ["monotonicity"]),
+    buildDebugItem("C", ["parameter_range"]),
+    buildDebugItem("D", ["parameter_range"]),
+  ],
+  product_view_model: {
+    items: [],
+  },
+  selected_candidate_items: [],
+});
+assert.equal(emptyProductCase.status, "fail");
+assert.equal(
+  emptyProductCase.findings.some(
+    (finding) =>
+      finding.reason === "agent_slotting_gap" &&
+      finding.severity === "fail" &&
+      finding.message.includes("未能产出 3 道有效推荐"),
+  ),
+  true,
+);
+assert.equal(
+  emptyProductCase.findings.some(
+    (finding) =>
+      finding.reason === "metadata_gap" &&
+      finding.message.includes("最终 3 题"),
+  ),
+  false,
+);
+
 const forbiddenFieldCase = buildCaseReport(
   {
     ...cases[0],
