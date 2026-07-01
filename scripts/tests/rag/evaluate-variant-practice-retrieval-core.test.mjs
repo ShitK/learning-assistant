@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   buildCaseReport,
   buildVariantPracticeRetrievalEvalReport,
+  isEvalOutputDirWithinAllowedRoot,
   truncateDebugText,
   validateEvalOutputDir,
   writeEvalReportFiles,
@@ -110,6 +111,12 @@ assert.equal(validateEvalOutputDir("artifacts/../public/evals").ok, false);
 assert.equal(validateEvalOutputDir("./src/generated").ok, false);
 assert.equal(validateEvalOutputDir("app/../public/x").ok, false);
 assert.equal(validateEvalOutputDir("./artifacts/localStorage-cache").ok, false);
+assert.equal(isEvalOutputDirWithinAllowedRoot("task-3"), true);
+assert.equal(isEvalOutputDirWithinAllowedRoot("nested/task-3"), true);
+assert.equal(isEvalOutputDirWithinAllowedRoot("../task-3"), false);
+assert.equal(isEvalOutputDirWithinAllowedRoot("..\\task-3"), false);
+assert.equal(isEvalOutputDirWithinAllowedRoot(""), false);
+assert.equal(isEvalOutputDirWithinAllowedRoot("."), false);
 
 const filteredGapCase = buildCaseReport(cases[0], {
   retrieval_source: "pgvector",

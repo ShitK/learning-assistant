@@ -244,11 +244,7 @@ export function validateEvalOutputDir(outputDir) {
   const allowedRootDir = resolve(process.cwd(), "artifacts", "rag", "evals");
   const relativeToAllowedRoot = normalize(relative(allowedRootDir, resolvedOutputDir));
   const normalizedLower = relativeToAllowedRoot.toLowerCase();
-  const isUnderAllowedRoot =
-    relativeToAllowedRoot !== "" &&
-    relativeToAllowedRoot !== "." &&
-    !relativeToAllowedRoot.startsWith("../") &&
-    relativeToAllowedRoot !== "..";
+  const isUnderAllowedRoot = isEvalOutputDirWithinAllowedRoot(relativeToAllowedRoot);
 
   if (!isUnderAllowedRoot || normalizedLower.includes("localstorage")) {
     return {
@@ -258,6 +254,20 @@ export function validateEvalOutputDir(outputDir) {
     };
   }
   return { ok: true };
+}
+
+export function isEvalOutputDirWithinAllowedRoot(relativeToAllowedRoot) {
+  if (
+    typeof relativeToAllowedRoot !== "string" ||
+    relativeToAllowedRoot === "" ||
+    relativeToAllowedRoot === "." ||
+    isAbsolute(relativeToAllowedRoot)
+  ) {
+    return false;
+  }
+
+  const segments = relativeToAllowedRoot.split(/[\\/]+/);
+  return segments[0] !== "..";
 }
 
 export async function writeEvalReportFiles({ report, outputDir, writeLatest }) {
