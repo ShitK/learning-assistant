@@ -241,10 +241,7 @@ async function buildVariantPracticeFromPreparedCorpus(
 
     return {
       viewModel,
-      selectedCandidateItems: selectCandidateItemsForProductViewModel(
-        viewModel,
-        corpus.items,
-      ),
+      selectedCandidateItems: selectCandidateItemsFromArtifact(artifact, corpus.items),
     };
   } catch {
     return null;
@@ -284,17 +281,81 @@ function isApprovedDynamicPracticeItem(item: DynamicPracticeCorpusItem): boolean
   return item.tag_review_meta?.review_status === "approved";
 }
 
-function selectCandidateItemsForProductViewModel(
-  viewModel: ProductVariantPractice,
+function selectCandidateItemsFromArtifact(
+  artifact: unknown,
   corpusItems: DynamicPracticeCorpus["items"],
 ): DynamicVariantPracticeEvalResult["selected_candidate_items"] {
-  const selectedItems = viewModel.items
-    .map((productItem) =>
-      corpusItems.find((item) => item.question_text === productItem.question_text),
+  const selectedItems = readArtifactRecommendationRefs(artifact)
+    .map((recommendationRef) =>
+      findCandidateItemByRecommendationRef(recommendationRef, corpusItems),
     )
     .filter((item): item is DynamicPracticeCorpus["items"][number] => Boolean(item));
 
   return toEvalCandidateItems(selectedItems);
+}
+
+function readArtifactRecommendationRefs(artifact: unknown): ArtifactRecommendationRef[] {
+  if (!artifact || typeof artifact !== "object" || Array.isArray(artifact)) {
+    return [];
+  }
+
+  const recommendations = (artifact as { recommendations?: unknown }).recommendations;
+  if (!Array.isArray(recommendations)) {
+    return [];
+  }
+
+  return recommendations
+    .map((recommendation) => toArtifactRecommendationRef(recommendation))
+    .filter((recommendation): recommendation is ArtifactRecommendationRef => Boolean(recommendation))
+    .sort((left, right) => left.rank - right.rank)
+    .slice(0, 3);
+}
+
+function toArtifactRecommendationRef(value: unknown): ArtifactRecommendationRef | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const recommendation = value as {
+    rank?: unknown;
+    item_id?: unknown;
+    source_candidate_id?: unknown;
+  };
+
+  if (
+    typeof recommendation.rank !== "number" ||
+    !Number.isInteger(recommendation.rank) ||
+    typeof recommendation.item_id !== "string" ||
+    !recommendation.item_id.trim() ||
+    typeof recommendation.source_candidate_id !== "string" ||
+    !recommendation.source_candidate_id.trim()
+  ) {
+    return null;
+  }
+
+  return {
+    rank: recommendation.rank,
+    item_id: recommendation.item_id,
+    source_candidate_id: recommendation.source_candidate_id,
+  };
+}
+
+function findCandidateItemByRecommendationRef(
+  recommendationRef: ArtifactRecommendationRef,
+  corpusItems: DynamicPracticeCorpus["items"],
+): DynamicPracticeCorpus["items"][number] | null {
+  const exactMatch =
+    corpusItems.find(
+      (item) =>
+        item.id === recommendationRef.item_id &&
+        item.source_candidate_id === recommendationRef.source_candidate_id,
+    ) ?? null;
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  return corpusItems.find((item) => item.id === recommendationRef.item_id) ?? null;
 }
 
 function toEvalCandidateItems(
@@ -348,4 +409,10 @@ interface DynamicVariantPracticeEvalCandidateItem {
   section_title?: string | null;
   target_skills?: string[];
   method_tags?: string[];
+}
+
+interface ArtifactRecommendationRef {
+  rank: number;
+  item_id: string;
+  source_candidate_id: string;
 }
