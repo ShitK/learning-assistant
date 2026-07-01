@@ -26,7 +26,7 @@ try {
       scriptPath,
       "--local-only",
       "--case",
-      "unsupported_non_derivative",
+      "upload_derivative_monotonicity",
       "--output",
       outputDir,
     ],
@@ -40,8 +40,9 @@ try {
   const report = JSON.parse(readFileSync(join(outputDir, "latest.json"), "utf8"));
   assert.equal(report.mode, "local_only");
   assert.equal(report.case_count, 1);
-  assert.equal(report.cases[0].case_id, "unsupported_non_derivative");
-  assert.equal(report.cases[0].retrieval_source, null);
+  assert.equal(report.cases[0].case_id, "upload_derivative_monotonicity");
+  assert.equal(report.cases[0].retrieval_source, "local_json");
+  assert.equal(report.cases[0].pgvector_attempted, false);
 
   const noLatest = spawnSync(
     process.execPath,
@@ -49,7 +50,7 @@ try {
       scriptPath,
       "--local-only",
       "--case",
-      "unsupported_non_derivative",
+      "upload_derivative_monotonicity",
       "--output",
       noLatestDir,
       "--no-latest",
@@ -58,6 +59,25 @@ try {
   );
   assert.equal(noLatest.status, 0, noLatest.stderr);
   assert.equal(existsSync(join(noLatestDir, "latest.json")), false);
+
+  const unsupported = spawnSync(
+    process.execPath,
+    [
+      scriptPath,
+      "--local-only",
+      "--case",
+      "unsupported_non_derivative",
+      "--output",
+      outputDir,
+    ],
+    { cwd: process.cwd(), encoding: "utf8" },
+  );
+  assert.equal(unsupported.status, 0, unsupported.stderr);
+
+  const unsupportedReport = JSON.parse(readFileSync(join(outputDir, "latest.json"), "utf8"));
+  assert.equal(unsupportedReport.cases[0].case_id, "unsupported_non_derivative");
+  assert.equal(unsupportedReport.cases[0].retrieval_source, null);
+  assert.equal(unsupportedReport.cases[0].pgvector_attempted, false);
 
   const badCase = spawnSync(
     process.execPath,
