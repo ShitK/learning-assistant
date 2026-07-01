@@ -238,23 +238,23 @@ export function truncateDebugText(text, maxLength) {
 }
 
 export function validateEvalOutputDir(outputDir) {
-  const normalized = isAbsolute(outputDir)
-    ? normalize(relative(process.cwd(), outputDir))
-    : normalize(relative(process.cwd(), resolve(process.cwd(), outputDir)));
-  const normalizedLower = normalized.toLowerCase();
-  if (
-    normalized === "" ||
-    normalized.startsWith("src/") ||
-    normalized === "src" ||
-    normalized.startsWith("app/") ||
-    normalized === "app" ||
-    normalized.startsWith("public/") ||
-    normalized === "public" ||
-    normalizedLower.includes("localstorage")
-  ) {
+  const resolvedOutputDir = isAbsolute(outputDir)
+    ? resolve(outputDir)
+    : resolve(process.cwd(), outputDir);
+  const allowedRootDir = resolve(process.cwd(), "artifacts", "rag", "evals");
+  const relativeToAllowedRoot = normalize(relative(allowedRootDir, resolvedOutputDir));
+  const normalizedLower = relativeToAllowedRoot.toLowerCase();
+  const isUnderAllowedRoot =
+    relativeToAllowedRoot !== "" &&
+    relativeToAllowedRoot !== "." &&
+    !relativeToAllowedRoot.startsWith("../") &&
+    relativeToAllowedRoot !== "..";
+
+  if (!isUnderAllowedRoot || normalizedLower.includes("localstorage")) {
     return {
       ok: false,
-      message: "eval output must not target source, app, public, or localStorage paths",
+      message:
+        "eval output must be written under artifacts/rag/evals/** and must not target localStorage paths",
     };
   }
   return { ok: true };

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   buildCaseReport,
@@ -98,6 +97,12 @@ assert.equal(Array.from(truncateDebugText("abcdef", 3)).join(""), "abc");
 assert.equal(truncateDebugText("短文本", 200), "短文本");
 
 assert.equal(validateEvalOutputDir(join("artifacts", "rag", "evals", "x")).ok, true);
+assert.equal(validateEvalOutputDir(".").ok, false);
+assert.equal(validateEvalOutputDir(process.cwd()).ok, false);
+assert.equal(validateEvalOutputDir("artifacts").ok, false);
+assert.equal(validateEvalOutputDir(join("artifacts", "rag")).ok, false);
+assert.equal(validateEvalOutputDir("reports").ok, false);
+assert.equal(validateEvalOutputDir("/private/tmp/evals").ok, false);
 assert.equal(validateEvalOutputDir("src/generated").ok, false);
 assert.equal(validateEvalOutputDir("public/evals").ok, false);
 assert.equal(validateEvalOutputDir("./public/evals").ok, false);
@@ -161,18 +166,22 @@ assert.equal(
   true,
 );
 
-const outputDir = mkdtempSync(join(tmpdir(), "variant-practice-eval-"));
-const writeResult = await writeEvalReportFiles({
-  report,
-  outputDir,
-  writeLatest: true,
-});
-assert.equal(existsSync(writeResult.timestampPath), true);
-assert.equal(existsSync(join(outputDir, "latest.json")), true);
-assert.equal(
-  JSON.parse(readFileSync(join(outputDir, "latest.json"), "utf8")).case_count,
-  2,
-);
+const outputDir = join("artifacts", "rag", "evals", `test-${process.pid}-${Date.now()}`);
+try {
+  const writeResult = await writeEvalReportFiles({
+    report,
+    outputDir,
+    writeLatest: true,
+  });
+  assert.equal(existsSync(writeResult.timestampPath), true);
+  assert.equal(existsSync(join(outputDir, "latest.json")), true);
+  assert.equal(
+    JSON.parse(readFileSync(join(outputDir, "latest.json"), "utf8")).case_count,
+    2,
+  );
+} finally {
+  rmSync(outputDir, { recursive: true, force: true });
+}
 
 console.log("evaluate variant practice retrieval core tests passed");
 
