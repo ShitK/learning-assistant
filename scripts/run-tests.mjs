@@ -38,6 +38,7 @@ const suites = {
     "scripts/tests/rag/variant-practice-product-loader.test.mjs",
     "scripts/tests/rag/variant-practice-eval-cases.test.mjs",
     "scripts/tests/rag/variant-practice-eval-report-schema.test.mjs",
+    "scripts/tests/rag/evaluate-variant-practice-retrieval-core.test.mjs",
     "scripts/tests/rag/dynamic-variant-practice-query.test.mjs",
     "scripts/tests/rag/variant-practice-embedding-text.test.mjs",
     "scripts/tests/rag/variant-practice-corpus-source.test.mjs",
