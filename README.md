@@ -1,32 +1,77 @@
-# MathTrace Learning Assistant
+# MathTrace 错因诊断智能体
 
-错因地图 MathTrace 是一个 Next.js + TypeScript 的高中数学错题诊断 Demo。P0 主路径使用内置样例题，P1 图片诊断通过服务端 `/api/diagnose` 调用 vision provider 做图片抽取，再经用户确认后复用本地 Agent Pipeline；确认后可选调用 text analysis provider 增强报告表达。
+MathTrace 是一个面向高中数学错题诊断场景的 AI 应用项目。它不是简单的拍照搜题，而是把错题图片识别、用户确认、大模型辅助分析、学习画像更新和变式练习推荐串成一个可解释、可回顾的学习诊断闭环。
 
-## Getting Started
+![MathTrace 系统架构图](public/mathtrace-architecture.png)
+
+技术栈：
+
+- Next.js App Router / TypeScript / React / Tailwind CSS
+- Supabase PostgreSQL / pgvector
+- OCR / Vision Provider / Text Analysis Provider
+- RAG 变式练习推荐
+- Node.js 脚本测试、smoke test 和离线评估
+
+## 项目流程
+
+错题上传 -> OCR 结构化抽取 -> 用户确认 -> 大模型辅助解题与错因分析 -> 证据校验与学习画像更新 -> RAG 变式练习推荐 -> 离线评估复盘
+
+## 项目亮点
+
+- 受控 Agent 流程：将一次错题诊断拆分为图片抽取、确认、解题说明、错因分析、画像更新和练习推荐等步骤，避免把长期学习状态完全交给大模型自由生成。
+- 可信写入边界：OCR / 视觉模型只负责抽取题干、学生作答和解题步骤；用户确认后，大模型可生成解题说明和错因分析候选；最终错因标签、学习记录写入和画像更新必须经过标签约束与证据校验。
+- 结构化长期记忆：确认后的诊断事实写入 Postgres，画像变化以事件形式保存，再投影为当前学习画像，便于解释“为什么学生画像发生变化”。
+- RAG 变式练习推荐：将审核题源用于变式练习召回，pgvector 只负责候选题检索，最终推荐仍受知识点、错因标签和题型约束，不参与画像写入。
+- 离线评估闭环：通过固定诊断样例评估候选召回、标签命中、偏题检测和降级情况，区分检索质量、题源标签缺口和低证据表述问题。
+
+## 架构边界
+
+MathTrace 的核心边界是：模型可以辅助抽取和表达，但不能直接写入长期画像。
+
+```text
+前端工作台
+  -> /api/diagnose
+      sample_diagnosis: 内置样例题诊断，不依赖外部模型
+      image_diagnosis: 调用 OCR / vision provider，返回待确认识别草稿
+  -> /api/confirm
+      用户确认后进入诊断流程，可选调用 text analysis provider 增强解题说明
+      证据不足或 provider 不可用时回退本地规则报告
+  -> /api/student-profile
+      读取从画像事件投影得到的当前学习画像
+  -> /api/variant-practice
+      RAG 变式练习推荐，只返回裁剪后的学生可见练习卡片
+```
+
+数据分层：
+
+- `diagnosis_runs`：一次诊断运行的审计快照。
+- `mistake_book_items`：错题本条目。
+- `memory_events`：画像变化事件，记录为什么画像发生变化。
+- `student_profiles`：从画像事件投影得到的当前学习画像。
+- pgvector 题源表：用于变式练习候选召回，不写学生画像。
+
+当前项目仍是 demo-first 的求职展示项目：默认学生为 `demo_student_001`，尚未实现真实登录、多用户权限、老师端、面向用户的 RLS 策略或生产级监控。
+
+## 快速开始
+
+克隆项目后安装依赖：
 
 ```bash
 npm install
 npm run dev
 ```
 
-打开 [http://localhost:3000](http://localhost:3000) 进入工作台。
+打开 [http://localhost:3000](http://localhost:3000) 进入 MathTrace 工作台。
 
-## Local Vision Provider Settings
+不配置任何 API Key 时，内置样例题诊断路径仍可运行。图片诊断、确认后文本增强、Supabase 持久化和 pgvector 检索都是可选能力。
 
-图片诊断需要在本地 `.env.local` 配置服务端 vision provider 参数：
+## 本地配置
 
-```bash
-VISION_PROVIDER_PROTOCOL=openai
-VISION_PROVIDER_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-VISION_PROVIDER_MODEL=glm-4.6v-flashx
-VISION_PROVIDER_API_KEY=<local-secret>
-VISION_PROVIDER_NAME=glm_4_6v_flashx
-VISION_PROVIDER_IMAGE_FORMAT=base64
-VISION_PROVIDER_TIMEOUT_MS=60000
-MATHTRACE_CONFIRM_SECRET=<stable-local-secret>
-```
+所有密钥只应写入本地 `.env.local`，不要提交 `.env*`，也不要把真实 API Key 写入日志、截图、文档或提交历史。
 
-GLM-OCR 图片抽取推荐配置：
+### OCR / Vision Provider
+
+图片诊断需要服务端 vision provider。GLM-OCR 示例：
 
 ```bash
 VISION_PROVIDER_PROTOCOL=glm_ocr
@@ -39,11 +84,24 @@ VISION_PROVIDER_TIMEOUT_MS=60000
 MATHTRACE_CONFIRM_SECRET=<stable-local-secret>
 ```
 
-不要把真实 `VISION_PROVIDER_API_KEY` 写入前端代码、日志、文档或提交历史。`MATHTRACE_CONFIRM_SECRET` 用于图片识别确认 token 签名，应独立于任何模型 API Key；生产环境必须配置，本地未配置时会使用稳定 demo secret，避免切换模型 key 导致未确认草稿失效。未配置 vision provider 时，`sample_diagnosis` 仍可稳定演示，`image_diagnosis` 会返回可恢复错误。`VISION_PROVIDER_PROTOCOL` 支持 `anthropic`、`openai` 和 `glm_ocr`；GLM-4.6V-FlashX 使用 OpenAI-compatible `chat/completions` 协议，并需要 `VISION_PROVIDER_IMAGE_FORMAT=base64`；GLM-OCR 使用 `/layout_parsing` 协议，当前本地验证应使用 `VISION_PROVIDER_IMAGE_FORMAT=data_url`。旧的 `MIMO_*` 变量仍作为本地兼容别名保留，新配置请优先使用 `VISION_PROVIDER_*`。`VISION_PROVIDER_TIMEOUT_MS` 默认 15000，图片识别较慢时可在本地调到 60000。
+OpenAI-compatible vision provider 示例：
 
-## Local Analysis Provider Settings
+```bash
+VISION_PROVIDER_PROTOCOL=openai
+VISION_PROVIDER_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+VISION_PROVIDER_MODEL=glm-4.6v-flashx
+VISION_PROVIDER_API_KEY=<local-secret>
+VISION_PROVIDER_NAME=glm_4_6v_flashx
+VISION_PROVIDER_IMAGE_FORMAT=base64
+VISION_PROVIDER_TIMEOUT_MS=60000
+MATHTRACE_CONFIRM_SECRET=<stable-local-secret>
+```
 
-确认图片识别结果后，可以配置服务端 text analysis provider 增强错因说明、步骤分析和标准解法表达。当前本地推荐 DeepSeek V4 Flash：
+`MATHTRACE_CONFIRM_SECRET` 用于确认 token 签名。本地未配置时会使用 demo secret；生产环境必须显式配置。
+
+### Text Analysis Provider
+
+确认图片识别结果后，可以配置文本分析模型生成更自然的解题说明和错因分析候选。模型输出不能直接写入画像。
 
 ```bash
 ANALYSIS_PROVIDER_PROTOCOL=openai
@@ -54,30 +112,24 @@ ANALYSIS_PROVIDER_NAME=deepseek_v4_flash
 ANALYSIS_PROVIDER_TIMEOUT_MS=60000
 ```
 
-`ANALYSIS_PROVIDER_*` 只服务 `/api/confirm` 后的文本分析增强，不接收图片 base64。`ANALYSIS_PROVIDER_PROTOCOL` 当前只支持 `openai`，`ANALYSIS_PROVIDER_BASE_URL` 可以配置 provider 根地址，也可以直接配置到 `/chat/completions`。未配置或请求失败时，确认流程会回退到本地确定性规则报告；DeepSeek 不能写入 `memory_delta`、`student_profile`、`mistake_history`，也不能决定是否持久化长期画像。
+未配置或调用失败时，确认流程会回退到本地规则报告。
 
-## Local Supabase Settings
+### Supabase PostgreSQL
 
-P1.7 引入 Supabase Postgres 作为错题本和长期记忆事件的数据底座。服务端会在确认后的诊断流程中尝试写入 `students`、`diagnosis_runs`、`mistake_book_items` 和 `memory_events`：
-
-- `sample_diagnosis` 是 demo 自动确认路径，诊断主流程成功且 `memory_delta.should_persist=true` 时也会尝试写入。
-- 图片诊断只有经过 `/api/confirm` 确认，并由服务端证据规则允许持久化时才会写入。
-- 当前仍固定使用 `demo_student_001`，不做登录、老师端、真实多用户/RLS 用户策略或完整画像迁移；P2.9 的 RAG/pgvector 仅服务变式练习检索，不写入 `memory_events` / `student_profiles`。
-
-本地如需连接 Supabase，在 `.env.local` 配置：
+如需启用错题本、画像事件和当前画像快照：
 
 ```bash
 SUPABASE_URL=<your-supabase-project-url>
 SUPABASE_SERVICE_ROLE_KEY=<local-service-role-secret>
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` 只能在服务端读取，前端不得直连数据库或 import Supabase admin client；浏览器只能通过 Next.js API 获取错题本数据。不要提交 `.env*`，不要把真实 Supabase key 写入文档、日志、截图或提交历史。
+`SUPABASE_SERVICE_ROLE_KEY` 只能在服务端读取。浏览器端只通过 Next.js API 访问错题本和画像数据，不能直连 Supabase。
 
-未配置 Supabase 时，demo 仍可运行：诊断主流程不因数据库缺失失败，错题本接口返回稳定空列表。P1.7 不保存完整图片 base64；localStorage 暂时继续用于 demo 学生画像恢复，不迁移完整画像到数据库。
+需要应用的 migration 位于 `supabase/migrations/`。
 
-### Local RAG Embedding Provider Settings
+### pgvector / RAG
 
-P2.9 动态变式练习可优先使用 Supabase Postgres + pgvector 召回候选题。本地如需启用 pgvector 路径或运行同步 CLI，需额外配置：
+如需启用 pgvector 变式练习候选召回，需要配置 Supabase 和 embedding provider：
 
 ```bash
 RAG_EMBEDDING_PROVIDER_PROTOCOL=openai
@@ -89,29 +141,54 @@ RAG_EMBEDDING_PROVIDER_TIMEOUT_MS=30000
 RAG_PGVECTOR_QUERY_TIMEOUT_MS=10000
 ```
 
-未配置 Supabase 或 RAG embedding provider 时，`POST /api/variant-practice` 会回退到 P2.7 本地 enriched corpus fallback；前端仍不读取 Supabase、本地 artifact 或 service role key。
-
-同步命令：
+同步审核题源到 pgvector：
 
 ```bash
 node scripts/rag/sync-variant-practice-pgvector.mjs --dry-run
 node --env-file=.env.local scripts/rag/sync-variant-practice-pgvector.mjs --apply
 ```
 
-## Local Smoke Tests
+未配置 Supabase、embedding provider 或本地题源 artifact 时，主诊断流程仍可运行；RAG 推荐能力会按当前可用资源降级。
 
-样例题诊断不依赖外部模型：
+## 常用命令
 
 ```bash
+npm run dev
 npm test
+npm run test:smoke
+npm run test:eval
 npm run lint
 npm run build
 ```
 
-图片诊断需要本地 `.env.local` 中的服务端 vision provider 配置。启动 `npm run dev` 后，在工作台切换到“图片诊断”，上传 PNG/JPEG/WebP 图片；客户端会先校验格式并压缩到约 600KB，再调用 `/api/diagnose`。后端仍保留 1MB 请求图片上限。确认识别草稿后，如果配置了 `ANALYSIS_PROVIDER_*`，`/api/confirm` 会用确认后的文本调用分析模型增强报告表达；没有配置时继续使用本地规则报告。
+命令说明：
 
-## Project Notes
+- `npm test`：运行默认测试并执行 smoke test。
+- `npm run test:smoke`：验证核心 demo 路径和 API contract。
+- `npm run test:eval`：运行评估类测试。
+- `npm run build`：执行 Next.js 构建。
 
-- `sample_diagnosis` 是稳定演示路径，不是模型失败降级路径。
-- `image_diagnosis` 成功后渲染模型识别结果和本地 Pipeline 输出。
-- 低置信度图片结果只展示诊断建议，不写入 localStorage 学生画像。
+## 目录速览
+
+```text
+src/app/api/diagnose/route.ts              诊断入口
+src/app/api/confirm/route.ts               图片识别确认入口
+src/app/api/student-profile/route.ts       当前学习画像读取
+src/app/api/variant-practice/route.ts      RAG 变式练习推荐
+src/lib/diagnosis/                         诊断流程、证据策略、确认服务
+src/lib/vision-extraction/                 OCR / 视觉抽取解析和映射
+src/lib/providers/                         外部模型 provider adapter
+src/lib/persistence/                       Supabase / Postgres 持久化边界
+src/lib/rag/                               变式练习查询、展示模型和 embedding 文本
+scripts/rag/                               题源构建、pgvector 同步和离线评估脚本
+supabase/migrations/                       数据库 schema 和 RPC
+interview/mathtrace-project-narrative.md   项目面试叙事与设计取舍
+```
+
+## 当前限制
+
+- 当前固定使用 `demo_student_001`，不是完整多用户系统。
+- 尚未实现登录、老师端、真实用户级 RLS 策略和生产级监控。
+- pgvector 只服务变式练习候选召回，不是学生记忆系统。
+- RAG 推荐不写学习画像，不影响错题本和画像事件。
+- P2.10 评估是本地离线评估，不是线上 A/B 实验或生产监控。
