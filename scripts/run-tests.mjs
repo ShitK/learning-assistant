@@ -70,6 +70,7 @@ const suites = {
     "scripts/tests/diagnosis/diagnose-client.test.mjs",
     "scripts/tests/image-diagnosis/image-upload-client.test.mjs",
     "scripts/tests/diagnosis/diagnosis-view-model.test.mjs",
+    "scripts/tests/ui/problem-chat-state.test.mjs",
     "scripts/tests/ui/mathtrace-workbench-ui.test.mjs",
     "scripts/tests/diagnosis/agent-pipeline.test.mjs",
     "scripts/tests/demo/demo-state.test.mjs",
