@@ -32,6 +32,7 @@ const workbenchStructureSources = Object.fromEntries(
       "practice-lab.tsx",
       "problem-chat-card.tsx",
       "problem-chat-message.tsx",
+      "problem-chat-workbench-state.ts",
       "profile-insights.tsx",
       "profile-view-model.ts",
       "review-path.tsx",
@@ -129,6 +130,11 @@ assert.match(
   /export function ProblemChatMessageBubble\b/,
   "P2.11 应新增会话消息渲染组件。",
 );
+assert.match(
+  workbenchStructureSources["problem-chat-workbench-state.ts"],
+  /export function useProblemChatWorkbenchState\b/,
+  "P2.11 应把题目会话状态编排从主组件中拆到 hook。",
+);
 assert.equal(
   workbenchStructureSources["problem-chat-card.tsx"].includes(
     "requestSampleDiagnosis",
@@ -152,6 +158,85 @@ assert.match(
   workbenchStructureSources["problem-chat-card.tsx"],
   /placeholder="问问这道题，比如：为什么要分类讨论？"/,
   "题目会话窗口应提供当前题目追问输入。",
+);
+assert.equal(
+  source.includes(
+    'import { MistakeInputCard } from "@/components/workbench/mistake-input-card";',
+  ),
+  false,
+  "P2.11 后工作台首屏左侧应使用 ProblemChatCard，而不是 MistakeInputCard。",
+);
+assert.equal(
+  source.includes(
+    'import { ProblemChatCard } from "@/components/workbench/problem-chat-card";',
+  ),
+  true,
+  "MathTraceWorkbench 应渲染题目会话窗口。",
+);
+assert.match(
+  source,
+  /useProblemChatWorkbenchState/,
+  "工作台应通过题目会话 hook 持有本地会话消息。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-workbench-state.ts"],
+  /createLocalDiagnosisFollowUpAnswer/,
+  "MVP-A 追问应先使用本地诊断解释 helper。",
+);
+assert.doesNotMatch(
+  source,
+  /requestDiagnosisFollowUp|\/api\/diagnosis-follow-up/,
+  "P2.11 MVP 不应新增追问 API 调用。",
+);
+assert.match(
+  source,
+  /<ProblemChatCard[\s\S]*messages=\{problemChatMessages\}[\s\S]*onSubmitProblemFollowUp=\{handleSubmitProblemFollowUp\}/,
+  "ProblemChatCard 应由 MathTraceWorkbench 传入消息和追问回调。",
+);
+assert.match(
+  source,
+  /<DiagnosisResultCard[\s\S]*diagnosis=\{diagnosisView\}/,
+  "右侧标准解法与错因报告卡片应继续独立渲染。",
+);
+assert.match(
+  source,
+  /<PracticeLab[\s\S]*diagnosis=\{diagnosisView\}/,
+  "变式练习应继续在下方结构化卡片渲染。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-workbench-state.ts"],
+  /function resetProblemChatMessages\(nextMessage\?: ProblemChatMessage\): void/,
+  "工作台应提供统一的题目会话消息重置 helper。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-workbench-state.ts"],
+  /function deriveProblemChatStatus\(\): ProblemChatStatus/,
+  "题目会话状态推导应集中在 hook 内。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-workbench-state.ts"],
+  /createLocalDiagnosisFollowUpAnswer/,
+  "MVP-A 本地追问回答应由题目会话 hook 统一追加。",
+);
+assert.match(
+  source,
+  /function handleSelectMode\(nextMode: DiagnosisMode\): void \{[\s\S]*resetProblemChatMessages\(\);/,
+  "切换样例题/图片模式时应重置题目会话消息。",
+);
+assert.match(
+  source,
+  /function handleSelectSample\(sampleId: SampleQuestionId\): void \{[\s\S]*resetProblemChatMessages\(createSampleSelectedMessage\(nextSample\)\);/,
+  "切换样例题时应重置会话，只保留欢迎消息和当前样例题消息。",
+);
+assert.match(
+  source,
+  /function handleImagePrepareStart\(\): void \{[\s\S]*resetProblemChatMessages\(\);/,
+  "重新上传图片时应重置题目会话消息。",
+);
+assert.match(
+  source,
+  /function handleClearImage\(\): void \{[\s\S]*resetProblemChatMessages\(\);/,
+  "清除图片时应重置题目会话消息。",
 );
 
 assert.match(
@@ -846,6 +931,11 @@ for (const { fileName, exportName, pattern } of [
     fileName: "problem-chat-message.tsx",
     exportName: "ProblemChatMessageBubble",
     pattern: /^export\s+function\s+ProblemChatMessageBubble\b/m,
+  },
+  {
+    fileName: "problem-chat-workbench-state.ts",
+    exportName: "useProblemChatWorkbenchState",
+    pattern: /^export\s+function\s+useProblemChatWorkbenchState\b/m,
   },
   {
     fileName: "profile-insights.tsx",
