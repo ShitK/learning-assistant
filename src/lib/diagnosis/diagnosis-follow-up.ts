@@ -5,11 +5,17 @@ export interface CreateLocalDiagnosisFollowUpAnswerInput {
   diagnosis: DiagnosisViewModel;
 }
 
+export function hasSufficientDiagnosisForFollowUp(
+  diagnosis: DiagnosisViewModel,
+): boolean {
+  return diagnosis.standard_solution.trim().length > 0;
+}
+
 export function canSubmitProblemFollowUp(
   text: string,
   diagnosis: DiagnosisViewModel,
 ): boolean {
-  return text.trim().length > 0 && diagnosis.standard_solution.trim().length > 0;
+  return text.trim().length > 0 && hasSufficientDiagnosisForFollowUp(diagnosis);
 }
 
 export function createLocalDiagnosisFollowUpAnswer(

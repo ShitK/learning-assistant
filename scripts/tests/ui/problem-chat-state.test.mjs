@@ -18,7 +18,11 @@ const {
 const {
   canSubmitProblemFollowUp,
   createLocalDiagnosisFollowUpAnswer,
+  hasSufficientDiagnosisForFollowUp,
 } = jiti("./src/lib/diagnosis/diagnosis-follow-up.ts");
+const { deriveProblemChatStatus } = jiti(
+  "./src/components/workbench/problem-chat-workbench-state.ts",
+);
 const { sampleDiagnoses } = jiti("./src/data/mathtrace-demo.ts");
 const { createSampleDiagnosisViewModel } = jiti(
   "./src/lib/diagnosis/diagnosis-view-model.ts",
@@ -87,6 +91,104 @@ assert.equal(canSubmitProblemFollowUp("   ", diagnosis), false);
 assert.equal(canSubmitProblemFollowUp("第 1 步为什么这样做？", diagnosis), true);
 assert.equal(canSubmitProblemFollowUp("第 3 步为什么这样做？", diagnosis), true);
 assert.equal(canSubmitProblemFollowUp("为什么要分类讨论？", diagnosis), true);
+assert.equal(hasSufficientDiagnosisForFollowUp(diagnosis), true);
+assert.equal(
+  hasSufficientDiagnosisForFollowUp({
+    ...diagnosis,
+    standard_solution: "   ",
+  }),
+  false,
+);
+
+const baseStatusInput = {
+  apiErrorMessage: null,
+  isImagePreparing: false,
+  isRequestPending: false,
+  diagnosisMode: "sample",
+  selectedImage: null,
+  editableExtractionDraft: null,
+  isCurrentConfirmedImageReport: false,
+  diagnosisView: diagnosis,
+};
+const preparedImage = {
+  file_name: "wrong-question.png",
+  image_base64: "abc",
+  image_mime_type: "image/png",
+  preview_url: "blob:http://localhost/image",
+  byte_size: 32_000,
+  was_compressed: false,
+};
+const editableDraft = {
+  confirmation_token: "token",
+  question_text: "已知函数，求单调区间。",
+  student_answer: "少分类讨论",
+  steps_text: "求导\n直接判断",
+  extraction_confidence: "medium",
+  warnings: [],
+  can_persist_after_confirmation: true,
+};
+const imageDiagnosis = { ...diagnosis, source: "image" };
+
+assert.equal(deriveProblemChatStatus(baseStatusInput), "report_ready");
+assert.equal(
+  deriveProblemChatStatus({
+    ...baseStatusInput,
+    apiErrorMessage: "模型超时",
+  }),
+  "error",
+);
+assert.equal(
+  deriveProblemChatStatus({
+    ...baseStatusInput,
+    isImagePreparing: true,
+  }),
+  "image_preparing",
+);
+assert.equal(
+  deriveProblemChatStatus({
+    ...baseStatusInput,
+    diagnosisMode: "image",
+    diagnosisView: imageDiagnosis,
+    selectedImage: preparedImage,
+    isRequestPending: true,
+  }),
+  "extracting_image",
+);
+assert.equal(
+  deriveProblemChatStatus({
+    ...baseStatusInput,
+    diagnosisMode: "image",
+    diagnosisView: imageDiagnosis,
+    editableExtractionDraft: editableDraft,
+  }),
+  "reviewing_extraction",
+);
+assert.equal(
+  deriveProblemChatStatus({
+    ...baseStatusInput,
+    diagnosisMode: "image",
+    diagnosisView: imageDiagnosis,
+    isRequestPending: true,
+  }),
+  "diagnosing",
+);
+assert.equal(
+  deriveProblemChatStatus({
+    ...baseStatusInput,
+    diagnosisMode: "image",
+    diagnosisView: imageDiagnosis,
+  }),
+  "idle",
+);
+assert.equal(
+  deriveProblemChatStatus({
+    ...baseStatusInput,
+    diagnosisMode: "image",
+    diagnosisView: imageDiagnosis,
+    isCurrentConfirmedImageReport: true,
+  }),
+  "report_ready",
+);
 
 const classificationAnswer = createLocalDiagnosisFollowUpAnswer({
   question: "为什么要分类讨论？",

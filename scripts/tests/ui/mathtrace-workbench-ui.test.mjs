@@ -210,8 +210,8 @@ assert.match(
 );
 assert.match(
   workbenchStructureSources["problem-chat-workbench-state.ts"],
-  /function deriveProblemChatStatus\(\): ProblemChatStatus/,
-  "题目会话状态推导应集中在 hook 内。",
+  /export function deriveProblemChatStatus\(/,
+  "题目会话状态推导应抽成可测试的纯函数。",
 );
 assert.match(
   workbenchStructureSources["problem-chat-workbench-state.ts"],

@@ -15,6 +15,7 @@ import {
 import {
   canSubmitProblemFollowUp,
   createLocalDiagnosisFollowUpAnswer,
+  hasSufficientDiagnosisForFollowUp,
 } from "@/lib/diagnosis/diagnosis-follow-up";
 import type { PreparedImageUpload } from "@/lib/image-diagnosis/image-upload-client";
 
@@ -40,6 +41,43 @@ export interface ProblemChatWorkbenchState {
   submitProblemFollowUp: () => void;
 }
 
+export function deriveProblemChatStatus(
+  input: UseProblemChatWorkbenchStateInput,
+): ProblemChatStatus {
+  if (input.apiErrorMessage) {
+    return "error";
+  }
+
+  if (input.isImagePreparing) {
+    return "image_preparing";
+  }
+
+  if (
+    input.isRequestPending &&
+    input.diagnosisMode === "image" &&
+    input.selectedImage !== null
+  ) {
+    return "extracting_image";
+  }
+
+  if (input.editableExtractionDraft !== null) {
+    return "reviewing_extraction";
+  }
+
+  if (input.isRequestPending) {
+    return "diagnosing";
+  }
+
+  if (
+    input.isCurrentConfirmedImageReport ||
+    (input.diagnosisMode === "sample" && input.diagnosisView.source === "sample")
+  ) {
+    return "report_ready";
+  }
+
+  return "idle";
+}
+
 export function useProblemChatWorkbenchState(
   input: UseProblemChatWorkbenchStateInput,
 ): ProblemChatWorkbenchState {
@@ -47,46 +85,10 @@ export function useProblemChatWorkbenchState(
     ProblemChatMessage[]
   >(() => createInitialProblemChatMessages());
   const [problemFollowUpQuestion, setProblemFollowUpQuestion] = useState("");
-  const problemChatStatus = deriveProblemChatStatus();
+  const problemChatStatus = deriveProblemChatStatus(input);
   const canAskProblemFollowUp =
     problemChatStatus === "report_ready" &&
-    input.diagnosisView.standard_solution.trim().length > 0;
-
-  function deriveProblemChatStatus(): ProblemChatStatus {
-    if (input.apiErrorMessage) {
-      return "error";
-    }
-
-    if (input.isImagePreparing) {
-      return "image_preparing";
-    }
-
-    if (
-      input.isRequestPending &&
-      input.diagnosisMode === "image" &&
-      input.selectedImage !== null
-    ) {
-      return "extracting_image";
-    }
-
-    if (input.editableExtractionDraft !== null) {
-      return "reviewing_extraction";
-    }
-
-    if (input.isRequestPending) {
-      return "diagnosing";
-    }
-
-    if (
-      input.isCurrentConfirmedImageReport ||
-      (input.diagnosisMode === "sample" &&
-        input.diagnosisView.source === "sample")
-    ) {
-      return "report_ready";
-    }
-
-    return "idle";
-  }
+    hasSufficientDiagnosisForFollowUp(input.diagnosisView);
 
   function appendProblemChatMessage(message: ProblemChatMessage): void {
     setProblemChatMessages((currentMessages) =>

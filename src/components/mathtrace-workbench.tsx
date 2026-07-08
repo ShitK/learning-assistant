@@ -414,6 +414,7 @@ export function MathTraceWorkbench({
     setEditableExtractionDraft(null);
     resetFollowUpState();
     setProblemFollowUpQuestion("");
+    resetProblemChatMessages();
     setIsImagePreparing(false);
     setImageUploadErrorMessage(message);
   }
