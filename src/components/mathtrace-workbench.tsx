@@ -18,10 +18,7 @@ import {
   createDiagnosisReadyMessage,
   createExtractionConfirmedMessage,
   createExtractionReviewMessage,
-  createFollowUpAnswerMessage,
-  createFollowUpQuestionMessage,
   createImageUploadedMessage,
-  createInitialProblemChatMessages,
   createProblemChatErrorMessage,
   createSampleSelectedMessage,
 } from "@/lib/demo/problem-chat-state";
@@ -384,6 +381,7 @@ export function MathTraceWorkbench({
 
   function handleImagePrepareStart(): void {
     clearDynamicVariantPractice();
+    setDiagnosisMode("image");
     setIsImagePreparing(true);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
@@ -397,12 +395,12 @@ export function MathTraceWorkbench({
 
   function handleImagePrepared(image: PreparedImageUpload): void {
     clearDynamicVariantPractice();
+    setDiagnosisMode("image");
     setSelectedImage(image);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
     resetFollowUpState();
     setProblemFollowUpQuestion("");
-    appendProblemChatMessage(createImageUploadedMessage(image));
     setIsImagePreparing(false);
     setImageUploadErrorMessage(null);
   }
@@ -438,6 +436,13 @@ export function MathTraceWorkbench({
       return;
     }
 
+    if (diagnosisMode === "image" && selectedImage) {
+      const imageForDiagnosis = selectedImage;
+      appendProblemChatMessage(createImageUploadedMessage(selectedImage));
+      setSelectedImage(null);
+      void requestDiagnosis(imageForDiagnosis);
+      return;
+    }
     void requestDiagnosis();
   }
 
@@ -575,12 +580,17 @@ export function MathTraceWorkbench({
     setRetainedReportNotice(null);
   }
 
-  async function requestDiagnosis(): Promise<void> {
+  async function requestDiagnosis(
+    imageOverride?: PreparedImageUpload,
+  ): Promise<void> {
     if (isDiagnosisRequestLockedRef.current) {
       return;
     }
 
-    if (diagnosisMode === "image" && !selectedImage) {
+    const requestMode: DiagnosisMode = imageOverride ? "image" : diagnosisMode;
+    const imageForDiagnosis = imageOverride ?? selectedImage;
+
+    if (requestMode === "image" && !imageForDiagnosis) {
       setImageUploadErrorMessage("请先上传一张数学错题图片。");
       return;
     }
@@ -602,7 +612,7 @@ export function MathTraceWorkbench({
     clearDynamicVariantPractice();
 
     try {
-      if (diagnosisMode === "sample") {
+      if (requestMode === "sample") {
         const diagnosis = await requestSampleDiagnosis({
           fetcher: window.fetch.bind(window),
           sample_question_id: selectedSampleId,
@@ -638,14 +648,14 @@ export function MathTraceWorkbench({
         return;
       }
 
-      if (!selectedImage) {
+      if (!imageForDiagnosis) {
         throw new Error("请先上传一张数学错题图片。");
       }
 
       const extractionReview = await requestImageExtractionReview({
         fetcher: window.fetch.bind(window),
-        image_base64: selectedImage.image_base64,
-        image_mime_type: selectedImage.image_mime_type,
+        image_base64: imageForDiagnosis.image_base64,
+        image_mime_type: imageForDiagnosis.image_mime_type,
         student_profile: profileBeforeDiagnosis,
         mistake_history: mistakeHistory,
       });
@@ -663,7 +673,7 @@ export function MathTraceWorkbench({
           ? error.message
           : "诊断接口暂时不可用，已保留当前结果。";
       setApiErrorMessage(message);
-      if (diagnosisMode === "sample") {
+      if (requestMode === "sample") {
         setDiagnosisView(createSampleDiagnosisViewModel(fallbackSample));
         setRetainedReportNotice(null);
       } else {
@@ -674,7 +684,7 @@ export function MathTraceWorkbench({
       appendProblemChatMessage(createProblemChatErrorMessage(message));
       setIsTimelineAnimating(false);
       setCompletedStepCount(
-        diagnosisMode === "sample"
+        requestMode === "sample"
           ? fallbackSample.steps.length
           : diagnosisView.steps.length,
       );
@@ -744,6 +754,7 @@ export function MathTraceWorkbench({
         setPendingFollowUpAnswer(options.follow_up_answer ?? null);
       } else {
         setEditableExtractionDraft(null);
+        setSelectedImage(null);
         resetFollowUpState();
       }
       setRetainedReportNotice(null);
@@ -829,11 +840,8 @@ export function MathTraceWorkbench({
 
           <div className="grid items-stretch gap-5 lg:grid-cols-2">
             <ProblemChatCard
-              mode={diagnosisMode}
               status={problemChatStatus}
               messages={problemChatMessages}
-              selectedSample={selectedSample}
-              selectedSampleId={selectedSampleId}
               selectedImage={selectedImage}
               editableExtractionDraft={editableExtractionDraft}
               selectedFollowUpChoiceId={selectedFollowUpChoiceId}
@@ -846,7 +854,6 @@ export function MathTraceWorkbench({
               apiErrorMessage={apiErrorMessage}
               imageUploadErrorMessage={imageUploadErrorMessage}
               onSelectMode={handleSelectMode}
-              onSelectSample={handleSelectSample}
               onStartDiagnosis={handleStartDiagnosis}
               onUpdateEditableExtractionDraft={handleUpdateEditableExtractionDraft}
               onConfirmExtraction={handleConfirmExtraction}

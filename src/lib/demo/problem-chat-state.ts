@@ -38,7 +38,7 @@ export function createInitialProblemChatMessages(): ProblemChatMessage[] {
     {
       role: "agent",
       kind: "welcome",
-      text: "可以选择样例题，也可以上传一张错题图片。我会先确认题目，再把正式报告放到右侧。",
+      text: "把错题图片拖到下方输入框，或点击 + 上传。我会先识别题目，再把正式报告放到右侧。",
     },
   ];
 }

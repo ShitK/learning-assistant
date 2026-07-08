@@ -38,7 +38,7 @@ const initialMessages = createInitialProblemChatMessages();
 assert.equal(initialMessages.length, 1);
 assert.equal(initialMessages[0].role, "agent");
 assert.equal(initialMessages[0].kind, "welcome");
-assert.match(initialMessages[0].text, /上传图片|样例题/);
+assert.match(initialMessages[0].text, /错题图片|上传/);
 
 const sampleMessage = createSampleSelectedMessage(sample);
 assert.equal(sampleMessage.role, "student");

@@ -130,6 +130,11 @@ assert.match(
   /export function ProblemChatMessageBubble\b/,
   "P2.11 应新增会话消息渲染组件。",
 );
+assert.equal(
+  workbenchStructureSources["problem-chat-message.tsx"].includes("<img"),
+  false,
+  "上传后的图片预览应只由底部 composer 承载，聊天气泡不应重复渲染图片。",
+);
 assert.match(
   workbenchStructureSources["problem-chat-workbench-state.ts"],
   /export function useProblemChatWorkbenchState\b/,
@@ -156,8 +161,59 @@ assert.equal(
 );
 assert.match(
   workbenchStructureSources["problem-chat-card.tsx"],
-  /placeholder="问问这道题，比如：为什么要分类讨论？"/,
-  "题目会话窗口应提供当前题目追问输入。",
+  /拖入错题图片，或点击左侧 \+ 上传/,
+  "题目会话窗口应在底部 composer 支持拖拽上传图片。",
+);
+assert.equal(
+  workbenchStructureSources["problem-chat-card.tsx"].includes(
+    "也可以先用样例题体验完整诊断",
+  ),
+  false,
+  "题目会话窗口不应再展示样例题快捷块。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /继续追问这道题，比如：为什么要分类讨论？/,
+  "题目会话窗口应在报告生成后提供当前题目追问输入。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /aria-label="删除已上传图片"/,
+  "上传图片缩略图右上角应提供删除按钮。",
+);
+assert.doesNotMatch(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /selectedImage\.file_name[\s\S]*<\/p>|selectedImage\.byte_size/,
+  "composer 图片预览只应展示缩略图和删除按钮，不应重复展示文件名或大小。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /prepareImageForDiagnosis/,
+  "题目会话 composer 应复用现有图片压缩和校验逻辑。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /canSendImageForDiagnosis[\s\S]*onStartDiagnosis\(\)/,
+  "图片上传到 composer 后应等待用户点击发送，再触发识别。",
+);
+assert.match(
+  source,
+  /const imageForDiagnosis = selectedImage;[\s\S]*appendProblemChatMessage\(createImageUploadedMessage\(selectedImage\)\);[\s\S]*setSelectedImage\(null\);[\s\S]*requestDiagnosis\(imageForDiagnosis\)/,
+  "点击发送图片后应立即清空 composer 预览，并继续用已捕获的图片发起识别。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /w-full max-w-\[98%\]/,
+  "识别结果确认气泡应比普通消息更宽，便于编辑题干和步骤。",
+);
+const handleImagePreparedSource = source.match(
+  /function handleImagePrepared[\s\S]*?function handleImagePrepareError/,
+)?.[0];
+assert.ok(handleImagePreparedSource, "工作台应保留图片准备完成 handler。");
+assert.doesNotMatch(
+  handleImagePreparedSource,
+  /requestDiagnosis|createImageUploadedMessage/,
+  "图片准备完成后只应更新 composer 预览，不能自动识别或追加用户消息。",
 );
 assert.equal(
   source.includes(
@@ -241,8 +297,8 @@ assert.match(
 
 assert.match(
   workbenchUiSource,
-  /riskFollowUp \? null : \(/,
-  "低证据追问模式下不应展示外层“确认生成报告”按钮。",
+  /riskFollowUp \? \([\s\S]*<RiskFollowUpPanel[\s\S]*\) : \(/,
+  "低证据追问模式下应在 Agent 气泡内展示追问面板，而不是外层确认按钮。",
 );
 
 assert.equal(
