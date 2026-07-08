@@ -171,6 +171,8 @@ P2.9 将 P2.7 的动态变式练习候选召回升级为 pgvector-backed retriev
 
 P2.10 在 P2.9 基础上新增离线 Variant Practice Retrieval Quality Evaluation：本地维护者可运行 eval CLI，对固定导数诊断 cases 评估 pgvector/local fallback 推荐的覆盖率、相关性、多样性、fallback 稳定性和边界安全。P2.10 只输出 ignored 本地报告 `artifacts/rag/evals/**`，不改变 `POST /api/variant-practice` 正式响应、不改前端 UI、不写 `memory_events`、`student_profiles`、`diagnosis_runs`、`mistake_book_items` 或 localStorage，也不自动修正题库、标签、召回或排序。
 
+P2.11 把左侧输入区升级为题目会话窗口 MVP，但不改变诊断事实链。学生可以在同一个窗口中选择样例题、上传图片、确认识别草稿、处理低证据追问，并围绕当前题目的标准解法继续提问；右侧 `DiagnosisResultCard` 和下方 `PracticeLab`、`ProfileInsights`、`ReviewPath`、`MistakeBookPanel` 继续作为正式结构化结果区。P2.11 第一版追问采用本地展示增强：回答只基于当前 `DiagnosisViewModel` 的 `standard_solution`、`solution_highlights`、`step_analysis` 和错因摘要生成，不调用新的追问 API，不写 `memory_events` / `student_profiles` / `diagnosis_runs` / `mistake_book_items`，也不更新 localStorage 学生画像。后续如新增只读追问 API，必须单独校验输出 schema，并继续保持追问回答与画像写入门控分离。
+
 ### 可逐步 Agent 化的边界
 
 为保证演示稳定、数据可控、学生画像不被模型污染，P0/P1 的确定性 Pipeline 是主线。后续可以逐步把部分环节替换为 Agent 或工具调用，但所有智能化输出都必须经过 schema 校验和业务规则收口。

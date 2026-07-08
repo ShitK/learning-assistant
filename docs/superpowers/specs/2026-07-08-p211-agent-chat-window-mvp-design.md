@@ -104,7 +104,6 @@ extracting_image
 reviewing_extraction
 diagnosing
 report_ready
-asking_follow_up
 error
 ```
 

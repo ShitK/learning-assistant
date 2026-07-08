@@ -2887,6 +2887,76 @@ eval CLI 只写 ignored `artifacts/rag/evals/**` 报告。正式 `/api/variant-p
 
 我没有只把 pgvector 接上就结束，而是补了离线评估。这样推荐质量下降时，我可以先用确定性指标做初步归因：是题库/标签缺口、向量召回太泛，还是 Agent 最后三卡片选择没有用好候选。
 
+## 25. P2.11 题目会话窗口 MVP
+
+### 当前状态
+
+已实现本地单题会话 MVP。左侧输入区从表单式“上传/选择错题”升级为题目会话窗口；正式诊断报告、变式练习、画像变化和 7 天建议仍保留在结构化卡片中。
+
+### 功能价值
+
+这个阶段把 MathTrace 从“点按钮生成报告”的 demo 体验，推进到“学生围绕一道错题和 Agent 对话”的学习体验。学生可以上传图片、确认识别结果、补充卡点，并继续追问当前题目的解法。
+
+### 关键设计
+
+会话窗口只承载交互过程：上传、确认、追问和错误恢复。诊断事实仍由 `/api/diagnose`、`/api/confirm`、确定性 pipeline、画像写入 gate 和结构化结果卡片负责。
+
+本地会话消息只存在 React state 中，刷新后丢失。切换样例题、切换输入模式、重新上传或清除图片时，会话消息重置到当前题目上下文，避免上一题的聊天记录混入下一题。
+
+### 技术决策与取舍
+
+第一版选择本地单题会话，不做多题历史、不做数据库消息持久化、不新增追问 API。这样可以先验证 Agent 体验，同时不把自由聊天内容混入 `memory_events` 或 `student_profiles`。
+
+追问回答由 `createLocalDiagnosisFollowUpAnswer()` 基于当前 `DiagnosisViewModel` 派生，只作为展示增强。它不调用 provider，不写数据库，不更新 localStorage 学生画像；只有现有确认链路和服务端 gate 继续决定画像写入。
+
+### 性能收益
+
+P2.11 没有新增网络请求或模型调用。本地追问直接基于当前报告生成，避免为了 MVP 体验额外拉长 `/api/confirm` 或引入新的 provider 失败路径。会话 UI 替换左侧输入卡，不改变右侧报告和下方练习/画像卡片的数据流。
+
+### 面试官可能怎么问
+
+- 为什么不直接做完整聊天历史？
+- 追问回答为什么不写入画像？
+- 怎么避免模型聊天污染长期记忆？
+- 为什么右侧报告还要保留结构化卡片？
+- 后续如何扩展成完整学习会话？
+
+### 推荐回答
+
+我没有把它做成通用 ChatGPT 式聊天，而是先收敛为单题会话窗口。聊天负责收集和解释，正式诊断报告仍由结构化 pipeline 生成；只有用户确认后的错因证据才会进入画像写入 gate。这样既能提升交互感，又不会牺牲 MathTrace 最重要的可解释记忆边界。
+
+### 可能被继续追问
+
+- 如果后续接真实追问 API，怎么限制模型输出？
+- 多题会话历史什么时候需要持久化？
+- 聊天消息是否应该进入错题本？
+- 用户追问中暴露的新错因，如何升级为可写入证据？
+- 如何从错题本重新打开某道题的会话上下文？
+
+### 反思与后续优化
+
+MVP-A 的本地追问回答比较保守，适合演示“报告可继续解释”，但不能替代真正的个性化答疑。后续可以新增只读追问 API，让 text analysis provider 基于诊断摘要回答当前题追问；但这个 API 仍应保持 display-only，不返回 `memory_delta`，也不写学生画像。
+
+### 项目中的真实证据
+
+- 代码：
+  - `src/lib/demo/problem-chat-state.ts`
+  - `src/lib/diagnosis/diagnosis-follow-up.ts`
+  - `src/components/workbench/problem-chat-card.tsx`
+  - `src/components/workbench/problem-chat-message.tsx`
+  - `src/components/workbench/problem-chat-workbench-state.ts`
+  - `src/components/mathtrace-workbench.tsx`
+- 测试：
+  - `scripts/tests/ui/problem-chat-state.test.mjs`
+  - `scripts/tests/ui/mathtrace-workbench-ui.test.mjs`
+- 文档：
+  - `docs/superpowers/specs/2026-07-08-p211-agent-chat-window-mvp-design.md`
+  - `docs/superpowers/plans/2026-07-08-p211-agent-chat-window-mvp.md`
+  - `docs/superpowers/specs/2026-05-28-math-mistake-agent-prd.md`
+- 验证：
+  - `node scripts/tests/ui/problem-chat-state.test.mjs`
+  - `node scripts/tests/ui/mathtrace-workbench-ui.test.mjs`
+
 ---
 
 ## 后续可追加的阶段
