@@ -30,6 +30,8 @@ const workbenchStructureSources = Object.fromEntries(
       "header-bar.tsx",
       "mistake-input-card.tsx",
       "practice-lab.tsx",
+      "problem-chat-card.tsx",
+      "problem-chat-message.tsx",
       "profile-insights.tsx",
       "profile-view-model.ts",
       "review-path.tsx",
@@ -115,6 +117,41 @@ assert.equal(
   workbenchUiSource.includes("diagnosis conclusion"),
   false,
   "分析结果 UI 不应再展示偏离点结论卡片。",
+);
+
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /export function ProblemChatCard\b/,
+  "P2.11 应新增题目会话窗口组件。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-message.tsx"],
+  /export function ProblemChatMessageBubble\b/,
+  "P2.11 应新增会话消息渲染组件。",
+);
+assert.equal(
+  workbenchStructureSources["problem-chat-card.tsx"].includes(
+    "requestSampleDiagnosis",
+  ),
+  false,
+  "ProblemChatCard 只能通过回调触发诊断，不能直接请求诊断 API。",
+);
+assert.equal(
+  workbenchStructureSources["problem-chat-card.tsx"].includes(
+    "writeStoredStudentProfile",
+  ),
+  false,
+  "ProblemChatCard 不能写 localStorage 学生画像。",
+);
+assert.equal(
+  workbenchStructureSources["problem-chat-card.tsx"].includes("memory_events"),
+  false,
+  "题目会话 UI 不能声称直接写 memory_events。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /placeholder="问问这道题，比如：为什么要分类讨论？"/,
+  "题目会话窗口应提供当前题目追问输入。",
 );
 
 assert.match(
@@ -799,6 +836,16 @@ for (const { fileName, exportName, pattern } of [
     fileName: "practice-lab.tsx",
     exportName: "PracticeLab",
     pattern: /^export\s+function\s+PracticeLab\b/m,
+  },
+  {
+    fileName: "problem-chat-card.tsx",
+    exportName: "ProblemChatCard",
+    pattern: /^export\s+function\s+ProblemChatCard\b/m,
+  },
+  {
+    fileName: "problem-chat-message.tsx",
+    exportName: "ProblemChatMessageBubble",
+    pattern: /^export\s+function\s+ProblemChatMessageBubble\b/m,
   },
   {
     fileName: "profile-insights.tsx",
