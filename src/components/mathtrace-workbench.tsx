@@ -1,48 +1,30 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import { MistakeBookPanel } from "@/components/mistake-book-panel";
 import { AgentTimeline } from "@/components/workbench/agent-timeline";
 import { DiagnosisResultCard } from "@/components/workbench/diagnosis-result-card";
 import { HeaderBar } from "@/components/workbench/header-bar";
-import { MistakeInputCard } from "@/components/workbench/mistake-input-card";
 import { PracticeLab } from "@/components/workbench/practice-lab";
+import { ProblemChatCard } from "@/components/workbench/problem-chat-card";
+import { useProblemChatWorkbenchState } from "@/components/workbench/problem-chat-workbench-state";
 import { ProfileInsights } from "@/components/workbench/profile-insights";
 import { ReviewPath } from "@/components/workbench/review-path";
-import type {
-  ConfirmedDiagnosisOptions,
-  DiagnosisMode,
-  ProfilePreview,
-} from "@/components/workbench/workbench-types";
+import type { ConfirmedDiagnosisOptions, DiagnosisMode, ProfilePreview } from "@/components/workbench/workbench-types";
+import { demoStudentContext, demoStudentProfile, mistakeHistory, sampleDiagnoses } from "@/data/mathtrace-demo";
+import { clearStoredStudentProfile, readStoredStudentProfile, writeStoredStudentProfile } from "@/lib/demo/demo-state";
 import {
-  demoStudentContext,
-  demoStudentProfile,
-  mistakeHistory,
-  sampleDiagnoses,
-} from "@/data/mathtrace-demo";
-import {
-  clearStoredStudentProfile,
-  readStoredStudentProfile,
-  writeStoredStudentProfile,
-} from "@/lib/demo/demo-state";
-import {
-  requestConfirmedImageDiagnosis,
-  requestImageExtractionReview,
-  requestSampleDiagnosis,
-  shouldPersistDiagnoseProfile,
-} from "@/lib/diagnosis/diagnose-client";
+  createDiagnosisReadyMessage,
+  createExtractionConfirmedMessage,
+  createExtractionReviewMessage,
+  createImageUploadedMessage,
+  createProblemChatErrorMessage,
+  createSampleSelectedMessage,
+} from "@/lib/demo/problem-chat-state";
+import { requestConfirmedImageDiagnosis, requestImageExtractionReview, requestSampleDiagnosis, shouldPersistDiagnoseProfile } from "@/lib/diagnosis/diagnose-client";
 import { requestDynamicVariantPractice } from "@/lib/rag/dynamic-variant-practice-client";
-import {
-  deleteMistakeBookItem,
-  requestMistakeBookItems,
-} from "@/lib/mistake-book/mistake-book-client";
+import { deleteMistakeBookItem, requestMistakeBookItems } from "@/lib/mistake-book/mistake-book-client";
 import {
   DATABASE_NOT_CONFIGURED_WARNING,
   DATABASE_WRITE_FAILED_WARNING,
@@ -51,30 +33,11 @@ import {
 } from "@/lib/shared/persistence-warnings";
 import { requestCloudStudentProfile } from "@/lib/student-profile/student-profile-client";
 import { requestStudentProfileEvidence } from "@/lib/student-profile/student-profile-evidence-client";
-import {
-  canConfirmEditableExtractionDraft,
-  createEditableExtractionDraft,
-  createExtractionReviewRetainedReportNotice,
-  createFollowUpDraftFromChoice,
-  createImageDiagnosisViewModel,
-  createRetainedReportNotice,
-  createSampleDiagnosisViewModel,
-  createVisionExtractionDraftFromEditableDraft,
-} from "@/lib/diagnosis/diagnosis-view-model";
+import { canConfirmEditableExtractionDraft, createEditableExtractionDraft, createExtractionReviewRetainedReportNotice, createFollowUpDraftFromChoice, createImageDiagnosisViewModel, createRetainedReportNotice, createSampleDiagnosisViewModel, createVisionExtractionDraftFromEditableDraft } from "@/lib/diagnosis/diagnosis-view-model";
 import { parseConfirmedExtractionDraft } from "@/lib/image-diagnosis/image-confirmation";
-import type {
-  SampleDiagnosis,
-  SampleQuestionId,
-  StudentProfile,
-} from "@/data/mathtrace-demo";
-import type {
-  DiagnosisViewModel,
-  EditableExtractionDraft,
-} from "@/lib/diagnosis/diagnosis-view-model";
-import type {
-  DiagnoseImageSuccessResponse,
-  FollowUpAnswerDraft,
-} from "@/lib/diagnosis/diagnose-api";
+import type { SampleDiagnosis, SampleQuestionId, StudentProfile } from "@/data/mathtrace-demo";
+import type { DiagnosisViewModel, EditableExtractionDraft } from "@/lib/diagnosis/diagnosis-view-model";
+import type { DiagnoseImageSuccessResponse, FollowUpAnswerDraft } from "@/lib/diagnosis/diagnose-api";
 import type { MistakeBookResponse } from "@/lib/mistake-book/mistake-book-client";
 import type { PreparedImageUpload } from "@/lib/image-diagnosis/image-upload-client";
 import type { StudentProfileEvidenceSummary } from "@/lib/student-profile/student-profile-evidence-service";
@@ -169,6 +132,25 @@ export function MathTraceWorkbench({
       : diagnosisMode === "sample" && diagnosisView.id === DEFAULT_SAMPLE_ID
         ? initialVariantPractice
         : null;
+  const {
+    problemChatMessages,
+    problemFollowUpQuestion,
+    problemChatStatus,
+    canAskProblemFollowUp,
+    setProblemFollowUpQuestion,
+    appendProblemChatMessage,
+    resetProblemChatMessages,
+    submitProblemFollowUp,
+  } = useProblemChatWorkbenchState({
+    apiErrorMessage,
+    isImagePreparing,
+    isRequestPending,
+    diagnosisMode,
+    selectedImage,
+    editableExtractionDraft,
+    isCurrentConfirmedImageReport,
+    diagnosisView,
+  });
 
   const refreshMistakeBook = useCallback(async (): Promise<void> => {
     setMistakeBookStatus("loading");
@@ -362,6 +344,8 @@ export function MathTraceWorkbench({
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
     resetFollowUpState();
+    setProblemFollowUpQuestion("");
+    resetProblemChatMessages(createSampleSelectedMessage(nextSample));
     setApiErrorMessage(null);
     setRetainedReportNotice(null);
     setImageUploadErrorMessage(null);
@@ -379,6 +363,8 @@ export function MathTraceWorkbench({
     setDiagnosisMode(nextMode);
     setEditableExtractionDraft(null);
     resetFollowUpState();
+    setProblemFollowUpQuestion("");
+    resetProblemChatMessages();
     setApiErrorMessage(null);
     setRetainedReportNotice(null);
     setImageUploadErrorMessage(null);
@@ -395,10 +381,13 @@ export function MathTraceWorkbench({
 
   function handleImagePrepareStart(): void {
     clearDynamicVariantPractice();
+    setDiagnosisMode("image");
     setIsImagePreparing(true);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
     resetFollowUpState();
+    setProblemFollowUpQuestion("");
+    resetProblemChatMessages();
     setImageUploadErrorMessage(null);
     setApiErrorMessage(null);
     setRetainedReportNotice(null);
@@ -406,10 +395,12 @@ export function MathTraceWorkbench({
 
   function handleImagePrepared(image: PreparedImageUpload): void {
     clearDynamicVariantPractice();
+    setDiagnosisMode("image");
     setSelectedImage(image);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
     resetFollowUpState();
+    setProblemFollowUpQuestion("");
     setIsImagePreparing(false);
     setImageUploadErrorMessage(null);
   }
@@ -420,6 +411,8 @@ export function MathTraceWorkbench({
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
     resetFollowUpState();
+    setProblemFollowUpQuestion("");
+    resetProblemChatMessages();
     setIsImagePreparing(false);
     setImageUploadErrorMessage(message);
   }
@@ -433,6 +426,8 @@ export function MathTraceWorkbench({
     setSelectedImage(null);
     setIsCurrentConfirmedImageReport(false);
     setEditableExtractionDraft(null);
+    setProblemFollowUpQuestion("");
+    resetProblemChatMessages();
     setImageUploadErrorMessage(null);
   }
 
@@ -441,6 +436,13 @@ export function MathTraceWorkbench({
       return;
     }
 
+    if (diagnosisMode === "image" && selectedImage) {
+      const imageForDiagnosis = selectedImage;
+      appendProblemChatMessage(createImageUploadedMessage(selectedImage));
+      setSelectedImage(null);
+      void requestDiagnosis(imageForDiagnosis);
+      return;
+    }
     void requestDiagnosis();
   }
 
@@ -463,6 +465,7 @@ export function MathTraceWorkbench({
       return;
     }
 
+    appendProblemChatMessage(createExtractionConfirmedMessage());
     void requestConfirmedDiagnosis(editableExtractionDraft);
   }
 
@@ -539,6 +542,14 @@ export function MathTraceWorkbench({
     });
   }
 
+  function handleUpdateProblemFollowUpQuestion(text: string): void {
+    setProblemFollowUpQuestion(text);
+  }
+
+  function handleSubmitProblemFollowUp(): void {
+    submitProblemFollowUp();
+  }
+
   function resetFollowUpState(): void {
     setSelectedFollowUpChoiceId(null);
     setFollowUpCustomText("");
@@ -569,12 +580,17 @@ export function MathTraceWorkbench({
     setRetainedReportNotice(null);
   }
 
-  async function requestDiagnosis(): Promise<void> {
+  async function requestDiagnosis(
+    imageOverride?: PreparedImageUpload,
+  ): Promise<void> {
     if (isDiagnosisRequestLockedRef.current) {
       return;
     }
 
-    if (diagnosisMode === "image" && !selectedImage) {
+    const requestMode: DiagnosisMode = imageOverride ? "image" : diagnosisMode;
+    const imageForDiagnosis = imageOverride ?? selectedImage;
+
+    if (requestMode === "image" && !imageForDiagnosis) {
       setImageUploadErrorMessage("请先上传一张数学错题图片。");
       return;
     }
@@ -596,7 +612,7 @@ export function MathTraceWorkbench({
     clearDynamicVariantPractice();
 
     try {
-      if (diagnosisMode === "sample") {
+      if (requestMode === "sample") {
         const diagnosis = await requestSampleDiagnosis({
           fetcher: window.fetch.bind(window),
           sample_question_id: selectedSampleId,
@@ -610,6 +626,7 @@ export function MathTraceWorkbench({
         setDiagnosisView(nextView);
         setIsCurrentConfirmedImageReport(false);
         setRetainedReportNotice(null);
+        appendProblemChatMessage(createDiagnosisReadyMessage(nextView));
         if (!hasDuplicateMistakeBookItemWarning(diagnosis.warnings)) {
           setSessionStudentProfile(diagnosis.student_profile);
           writeStoredStudentProfile(window.localStorage, diagnosis.student_profile);
@@ -631,20 +648,20 @@ export function MathTraceWorkbench({
         return;
       }
 
-      if (!selectedImage) {
+      if (!imageForDiagnosis) {
         throw new Error("请先上传一张数学错题图片。");
       }
 
       const extractionReview = await requestImageExtractionReview({
         fetcher: window.fetch.bind(window),
-        image_base64: selectedImage.image_base64,
-        image_mime_type: selectedImage.image_mime_type,
+        image_base64: imageForDiagnosis.image_base64,
+        image_mime_type: imageForDiagnosis.image_mime_type,
         student_profile: profileBeforeDiagnosis,
         mistake_history: mistakeHistory,
       });
-      setEditableExtractionDraft(
-        createEditableExtractionDraft(extractionReview),
-      );
+      const nextDraft = createEditableExtractionDraft(extractionReview);
+      setEditableExtractionDraft(nextDraft);
+      appendProblemChatMessage(createExtractionReviewMessage(nextDraft));
       setRetainedReportNotice(
         createExtractionReviewRetainedReportNotice(diagnosisView),
       );
@@ -656,7 +673,7 @@ export function MathTraceWorkbench({
           ? error.message
           : "诊断接口暂时不可用，已保留当前结果。";
       setApiErrorMessage(message);
-      if (diagnosisMode === "sample") {
+      if (requestMode === "sample") {
         setDiagnosisView(createSampleDiagnosisViewModel(fallbackSample));
         setRetainedReportNotice(null);
       } else {
@@ -664,9 +681,10 @@ export function MathTraceWorkbench({
           createRetainedReportNotice(diagnosisView, message),
         );
       }
+      appendProblemChatMessage(createProblemChatErrorMessage(message));
       setIsTimelineAnimating(false);
       setCompletedStepCount(
-        diagnosisMode === "sample"
+        requestMode === "sample"
           ? fallbackSample.steps.length
           : diagnosisView.steps.length,
       );
@@ -736,9 +754,11 @@ export function MathTraceWorkbench({
         setPendingFollowUpAnswer(options.follow_up_answer ?? null);
       } else {
         setEditableExtractionDraft(null);
+        setSelectedImage(null);
         resetFollowUpState();
       }
       setRetainedReportNotice(null);
+      appendProblemChatMessage(createDiagnosisReadyMessage(nextView));
 
       if (
         shouldPersistDiagnoseProfile(diagnosis) &&
@@ -767,6 +787,7 @@ export function MathTraceWorkbench({
           ? error.message
           : "诊断接口暂时不可用，已保留当前结果。";
       setApiErrorMessage(message);
+      appendProblemChatMessage(createProblemChatErrorMessage(message));
       setRetainedReportNotice(createRetainedReportNotice(diagnosisView, message));
       setCompletedStepCount(1);
       setIsTimelineAnimating(false);
@@ -818,21 +839,21 @@ export function MathTraceWorkbench({
           />
 
           <div className="grid items-stretch gap-5 lg:grid-cols-2">
-            <MistakeInputCard
-              mode={diagnosisMode}
-              selectedSample={selectedSample}
-              selectedSampleId={selectedSampleId}
+            <ProblemChatCard
+              status={problemChatStatus}
+              messages={problemChatMessages}
               selectedImage={selectedImage}
               editableExtractionDraft={editableExtractionDraft}
               selectedFollowUpChoiceId={selectedFollowUpChoiceId}
               followUpCustomText={followUpCustomText}
               pendingFollowUpAnswer={pendingFollowUpAnswer}
+              problemFollowUpQuestion={problemFollowUpQuestion}
+              canAskProblemFollowUp={canAskProblemFollowUp}
               isDiagnosing={isDiagnosing}
               isImagePreparing={isImagePreparing}
               apiErrorMessage={apiErrorMessage}
               imageUploadErrorMessage={imageUploadErrorMessage}
               onSelectMode={handleSelectMode}
-              onSelectSample={handleSelectSample}
               onStartDiagnosis={handleStartDiagnosis}
               onUpdateEditableExtractionDraft={handleUpdateEditableExtractionDraft}
               onConfirmExtraction={handleConfirmExtraction}
@@ -845,6 +866,8 @@ export function MathTraceWorkbench({
               onImagePrepared={handleImagePrepared}
               onImagePrepareError={handleImagePrepareError}
               onClearImage={handleClearImage}
+              onUpdateProblemFollowUpQuestion={handleUpdateProblemFollowUpQuestion}
+              onSubmitProblemFollowUp={handleSubmitProblemFollowUp}
             />
             <DiagnosisResultCard
               diagnosis={diagnosisView}

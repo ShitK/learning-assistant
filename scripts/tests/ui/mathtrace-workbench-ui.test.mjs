@@ -30,6 +30,9 @@ const workbenchStructureSources = Object.fromEntries(
       "header-bar.tsx",
       "mistake-input-card.tsx",
       "practice-lab.tsx",
+      "problem-chat-card.tsx",
+      "problem-chat-message.tsx",
+      "problem-chat-workbench-state.ts",
       "profile-insights.tsx",
       "profile-view-model.ts",
       "review-path.tsx",
@@ -118,9 +121,184 @@ assert.equal(
 );
 
 assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /export function ProblemChatCard\b/,
+  "P2.11 应新增题目会话窗口组件。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-message.tsx"],
+  /export function ProblemChatMessageBubble\b/,
+  "P2.11 应新增会话消息渲染组件。",
+);
+assert.equal(
+  workbenchStructureSources["problem-chat-message.tsx"].includes("<img"),
+  false,
+  "上传后的图片预览应只由底部 composer 承载，聊天气泡不应重复渲染图片。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-workbench-state.ts"],
+  /export function useProblemChatWorkbenchState\b/,
+  "P2.11 应把题目会话状态编排从主组件中拆到 hook。",
+);
+assert.equal(
+  workbenchStructureSources["problem-chat-card.tsx"].includes(
+    "requestSampleDiagnosis",
+  ),
+  false,
+  "ProblemChatCard 只能通过回调触发诊断，不能直接请求诊断 API。",
+);
+assert.equal(
+  workbenchStructureSources["problem-chat-card.tsx"].includes(
+    "writeStoredStudentProfile",
+  ),
+  false,
+  "ProblemChatCard 不能写 localStorage 学生画像。",
+);
+assert.equal(
+  workbenchStructureSources["problem-chat-card.tsx"].includes("memory_events"),
+  false,
+  "题目会话 UI 不能声称直接写 memory_events。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /拖入错题图片，或点击左侧 \+ 上传/,
+  "题目会话窗口应在底部 composer 支持拖拽上传图片。",
+);
+assert.equal(
+  workbenchStructureSources["problem-chat-card.tsx"].includes(
+    "也可以先用样例题体验完整诊断",
+  ),
+  false,
+  "题目会话窗口不应再展示样例题快捷块。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /继续追问这道题，比如：为什么要分类讨论？/,
+  "题目会话窗口应在报告生成后提供当前题目追问输入。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /aria-label="删除已上传图片"/,
+  "上传图片缩略图右上角应提供删除按钮。",
+);
+assert.doesNotMatch(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /selectedImage\.file_name[\s\S]*<\/p>|selectedImage\.byte_size/,
+  "composer 图片预览只应展示缩略图和删除按钮，不应重复展示文件名或大小。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /prepareImageForDiagnosis/,
+  "题目会话 composer 应复用现有图片压缩和校验逻辑。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /canSendImageForDiagnosis[\s\S]*onStartDiagnosis\(\)/,
+  "图片上传到 composer 后应等待用户点击发送，再触发识别。",
+);
+assert.match(
+  source,
+  /const imageForDiagnosis = selectedImage;[\s\S]*appendProblemChatMessage\(createImageUploadedMessage\(selectedImage\)\);[\s\S]*setSelectedImage\(null\);[\s\S]*requestDiagnosis\(imageForDiagnosis\)/,
+  "点击发送图片后应立即清空 composer 预览，并继续用已捕获的图片发起识别。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-card.tsx"],
+  /w-full max-w-\[98%\]/,
+  "识别结果确认气泡应比普通消息更宽，便于编辑题干和步骤。",
+);
+const handleImagePreparedSource = source.match(
+  /function handleImagePrepared[\s\S]*?function handleImagePrepareError/,
+)?.[0];
+assert.ok(handleImagePreparedSource, "工作台应保留图片准备完成 handler。");
+assert.doesNotMatch(
+  handleImagePreparedSource,
+  /requestDiagnosis|createImageUploadedMessage/,
+  "图片准备完成后只应更新 composer 预览，不能自动识别或追加用户消息。",
+);
+assert.equal(
+  source.includes(
+    'import { MistakeInputCard } from "@/components/workbench/mistake-input-card";',
+  ),
+  false,
+  "P2.11 后工作台首屏左侧应使用 ProblemChatCard，而不是 MistakeInputCard。",
+);
+assert.equal(
+  source.includes(
+    'import { ProblemChatCard } from "@/components/workbench/problem-chat-card";',
+  ),
+  true,
+  "MathTraceWorkbench 应渲染题目会话窗口。",
+);
+assert.match(
+  source,
+  /useProblemChatWorkbenchState/,
+  "工作台应通过题目会话 hook 持有本地会话消息。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-workbench-state.ts"],
+  /createLocalDiagnosisFollowUpAnswer/,
+  "MVP-A 追问应先使用本地诊断解释 helper。",
+);
+assert.doesNotMatch(
+  source,
+  /requestDiagnosisFollowUp|\/api\/diagnosis-follow-up/,
+  "P2.11 MVP 不应新增追问 API 调用。",
+);
+assert.match(
+  source,
+  /<ProblemChatCard[\s\S]*messages=\{problemChatMessages\}[\s\S]*onSubmitProblemFollowUp=\{handleSubmitProblemFollowUp\}/,
+  "ProblemChatCard 应由 MathTraceWorkbench 传入消息和追问回调。",
+);
+assert.match(
+  source,
+  /<DiagnosisResultCard[\s\S]*diagnosis=\{diagnosisView\}/,
+  "右侧标准解法与错因报告卡片应继续独立渲染。",
+);
+assert.match(
+  source,
+  /<PracticeLab[\s\S]*diagnosis=\{diagnosisView\}/,
+  "变式练习应继续在下方结构化卡片渲染。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-workbench-state.ts"],
+  /function resetProblemChatMessages\(nextMessage\?: ProblemChatMessage\): void/,
+  "工作台应提供统一的题目会话消息重置 helper。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-workbench-state.ts"],
+  /export function deriveProblemChatStatus\(/,
+  "题目会话状态推导应抽成可测试的纯函数。",
+);
+assert.match(
+  workbenchStructureSources["problem-chat-workbench-state.ts"],
+  /createLocalDiagnosisFollowUpAnswer/,
+  "MVP-A 本地追问回答应由题目会话 hook 统一追加。",
+);
+assert.match(
+  source,
+  /function handleSelectMode\(nextMode: DiagnosisMode\): void \{[\s\S]*resetProblemChatMessages\(\);/,
+  "切换样例题/图片模式时应重置题目会话消息。",
+);
+assert.match(
+  source,
+  /function handleSelectSample\(sampleId: SampleQuestionId\): void \{[\s\S]*resetProblemChatMessages\(createSampleSelectedMessage\(nextSample\)\);/,
+  "切换样例题时应重置会话，只保留欢迎消息和当前样例题消息。",
+);
+assert.match(
+  source,
+  /function handleImagePrepareStart\(\): void \{[\s\S]*resetProblemChatMessages\(\);/,
+  "重新上传图片时应重置题目会话消息。",
+);
+assert.match(
+  source,
+  /function handleClearImage\(\): void \{[\s\S]*resetProblemChatMessages\(\);/,
+  "清除图片时应重置题目会话消息。",
+);
+
+assert.match(
   workbenchUiSource,
-  /riskFollowUp \? null : \(/,
-  "低证据追问模式下不应展示外层“确认生成报告”按钮。",
+  /riskFollowUp \? \([\s\S]*<RiskFollowUpPanel[\s\S]*\) : \(/,
+  "低证据追问模式下应在 Agent 气泡内展示追问面板，而不是外层确认按钮。",
 );
 
 assert.equal(
@@ -799,6 +977,21 @@ for (const { fileName, exportName, pattern } of [
     fileName: "practice-lab.tsx",
     exportName: "PracticeLab",
     pattern: /^export\s+function\s+PracticeLab\b/m,
+  },
+  {
+    fileName: "problem-chat-card.tsx",
+    exportName: "ProblemChatCard",
+    pattern: /^export\s+function\s+ProblemChatCard\b/m,
+  },
+  {
+    fileName: "problem-chat-message.tsx",
+    exportName: "ProblemChatMessageBubble",
+    pattern: /^export\s+function\s+ProblemChatMessageBubble\b/m,
+  },
+  {
+    fileName: "problem-chat-workbench-state.ts",
+    exportName: "useProblemChatWorkbenchState",
+    pattern: /^export\s+function\s+useProblemChatWorkbenchState\b/m,
   },
   {
     fileName: "profile-insights.tsx",

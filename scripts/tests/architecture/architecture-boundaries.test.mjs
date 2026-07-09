@@ -369,6 +369,77 @@ for (const [filePath, source] of sourceByFilePath.entries()) {
   );
 }
 
+for (const filePath of clientReachableFiles) {
+  const source = sourceByFilePath.get(filePath);
+  const importSources = getRuntimeImportSources(source, filePath);
+
+  assert.equal(
+    filePath.startsWith("src/lib/diagnosis/agents/"),
+    false,
+    `${filePath} must not be in the client component runtime graph.`,
+  );
+  assert.equal(
+    importSources.some((importSource) =>
+      importSource.startsWith("@/lib/diagnosis/agents/"),
+    ),
+    false,
+    `${filePath} must not import server-side diagnosis agent modules.`,
+  );
+}
+
+const agentBoundaryRules = [
+  {
+    file: "src/lib/diagnosis/agents/vision-extraction-agent.ts",
+    forbidden_source_patterns: [
+      /persistDiagnosisResponse/,
+      /syncProjectedStudentProfile/,
+      /createSupabaseAdminClient/,
+      /@\/lib\/persistence\//,
+      /@\/lib\/student-profile\//,
+      /memory_events/,
+      /student_profiles/,
+      /mistake_book_items/,
+    ],
+  },
+  {
+    file: "src/lib/diagnosis/agents/mistake-diagnosis-agent.ts",
+    forbidden_source_patterns: [
+      /persistDiagnosis/,
+      /syncProjectedStudentProfile/,
+      /createSupabaseAdminClient/,
+      /@\/lib\/persistence\//,
+      /@\/lib\/student-profile\//,
+      /@\/lib\/providers\//,
+      /service_role/,
+    ],
+  },
+  {
+    file: "src/lib/diagnosis/agents/learning-memory-agent.ts",
+    forbidden_source_patterns: [
+      /@\/lib\/providers\//,
+      /createVisionProvider/,
+      /createAnalysisProvider/,
+      /parseDiagnoseRequest/,
+      /parseConfirmedExtractionDraft/,
+      /runMathTraceAgent/,
+      /runImageMathTraceAgent/,
+    ],
+  },
+];
+
+for (const rule of agentBoundaryRules) {
+  const source = sourceByFilePath.get(rule.file);
+  assert.ok(source, `${rule.file} should exist.`);
+
+  for (const pattern of rule.forbidden_source_patterns) {
+    assert.equal(
+      pattern.test(source),
+      false,
+      `${rule.file} violates diagnosis agent boundary: ${pattern}`,
+    );
+  }
+}
+
 const domainBoundaryRules = [
   {
     from_dir: "src/lib/providers/",

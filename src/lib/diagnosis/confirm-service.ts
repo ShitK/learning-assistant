@@ -12,11 +12,10 @@ import {
   createImageConfirmationFingerprint,
   verifyImageConfirmationToken,
 } from "@/lib/image-diagnosis/image-confirmation-token";
-import { persistDiagnosisIfNeeded } from "@/lib/diagnosis/diagnose-service";
-import { runImageMathTraceAgent } from "@/lib/image-diagnosis/image-diagnosis-pipeline";
+import { runLearningMemoryAgent } from "@/lib/diagnosis/agents/learning-memory-agent";
+import { runConfirmedImageMistakeDiagnosisAgent } from "@/lib/diagnosis/agents/mistake-diagnosis-agent";
 import { isRecord } from "@/lib/shared/utils";
-import type { DiagnosisPersistenceRepository } from "@/lib/persistence/diagnosis-persistence";
-import type { StudentProfileProjectionRepository } from "@/lib/persistence/student-profile-persistence";
+import type { LearningMemoryAgentRepositories } from "@/lib/diagnosis/agents/diagnosis-agent-types";
 import type {
   AnalysisEnhancementDraft,
   AnalysisProvider,
@@ -58,9 +57,7 @@ export async function handleConfirmRequest(
   payload: unknown,
   deps?: {
     analysis_provider?: AnalysisProvider;
-    persistence_repository?: DiagnosisPersistenceRepository;
-    student_profile_repository?: StudentProfileProjectionRepository;
-  },
+  } & LearningMemoryAgentRepositories,
 ): Promise<DiagnoseServiceResult> {
   const parsed = parseConfirmImageDiagnosisRequest(payload);
   if (!parsed.ok) {
@@ -82,10 +79,10 @@ export async function handleConfirmRequest(
     },
   );
 
-  return persistDiagnosisIfNeeded(
-    {
+  return runLearningMemoryAgent({
+    result: {
       status: 200,
-      body: runImageMathTraceAgent({
+      body: runConfirmedImageMistakeDiagnosisAgent({
         request: parsed.value.request,
         extraction: parsed.value.extraction,
         is_extraction_confirmed: parsed.value.is_confirmation_token_matched,
@@ -94,9 +91,9 @@ export async function handleConfirmRequest(
         analysis,
       }),
     },
-    deps?.persistence_repository,
-    deps?.student_profile_repository,
-  );
+    persistence_repository: deps?.persistence_repository,
+    student_profile_repository: deps?.student_profile_repository,
+  });
 }
 
 async function getAnalysisEnhancement(
