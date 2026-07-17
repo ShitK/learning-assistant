@@ -4,6 +4,11 @@ MathTrace 是一个面向高中数学错题诊断场景的 AI 学习辅助系统
 
 项目采用轻量多智能体职责编排，将一次错题诊断拆分为图片识别、错因分析、学习记忆更新和变式练习推荐等子智能体职责。为了避免 Agent 只停留在“能跑通 demo”，项目重点设计了一套 Agent Harness：通过输入输出契约、用户确认、标签约束、证据校验、降级策略和离线评估脚本，持续检查 Agent 输出是否可信、是否越权写入、推荐结果是否命中当前错因。
 
+## 演示视频
+
+- 🎬 [查看 MathTrace 演示视频 Release](https://github.com/ShitK/learning-assistant/releases/tag/demo-v1)
+- ⬇️ [直接下载演示视频（MOV，66.7 MB）](https://github.com/ShitK/learning-assistant/releases/download/demo-v1/Mathtrace.mov)
+
 ![MathTrace 系统架构图](public/mathtrace-architecture.png)
 
 技术栈：
